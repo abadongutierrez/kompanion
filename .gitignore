@@ -1,0 +1,18 @@
+node_modules/
+dist/
+.env
+*.tsbuildinfo
+.DS_Store
+__pycache__/
+*.pyc
+
+# Runtime task workspaces (created per-task at run time; harnesses/ stays a
+# pure, immutable template — mutable state lives here instead). Both
+# backends have their own — server/ and server-kotlin/ are kept at feature
+# parity (see AGENTS.md) and each maintains its own workspace root.
+server/workspaces/
+server-kotlin/workspaces/
+
+# Claude Code's own per-session runtime lock for this repo, not project
+# config — recreated automatically, nothing to track.
+.claude/scheduled_tasks.lock

@@ -1,0 +1,23 @@
+{
+  "name": "sdlc-paperclip",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@11.9.0",
+  "scripts": {
+    "dev:server": "pnpm --filter @sdlc/server dev",
+    "dev:ui": "pnpm --filter @sdlc/ui dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "test:e2e": "pnpm --filter @sdlc/e2e-tests test:e2e",
+    "db:up": "docker compose -f docker-compose.dev.yml up -d",
+    "db:down": "docker compose -f docker-compose.dev.yml down",
+    "db:migrate": "pnpm --filter @sdlc/server db:migrate"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3"
+  }
+}

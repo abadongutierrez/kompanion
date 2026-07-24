@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo \"$(date -u +%Y-%m-%dT%H:%M:%SZ) product_manager session stopped\" >> \"$TASK_WORKSPACE_DIR/activity.log\""
+          }
+        ]
+      }
+    ]
+  }
+}

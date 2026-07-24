@@ -1,0 +1,7 @@
+packages:
+  - packages/*
+  - server
+  - ui
+  - e2e-tests
+allowBuilds:
+  esbuild: true
