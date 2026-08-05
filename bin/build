@@ -1,0 +1,25 @@
+#!/bin/bash
+set -e
+
+# Colors
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+RED='\033[0;31m'
+NC='\033[0m'
+
+echo -e "${GREEN}🏗️  Building SDLC Kompanion${NC}\n"
+
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$PROJECT_ROOT"
+
+echo -e "${BLUE}Building all packages...${NC}\n"
+if pnpm build; then
+  echo -e "\n${GREEN}✅ Build successful${NC}"
+  echo -e "${BLUE}Build artifacts:${NC}"
+  echo -e "   UI: ui/dist"
+  echo -e "   Server: server/dist"
+  echo -e "   Kotlin: server-kotlin/build/libs\n"
+else
+  echo -e "\n${RED}❌ Build failed${NC}"
+  exit 1
+fi

@@ -1,0 +1,64 @@
+#!/bin/bash
+set -e
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+echo -e "${GREEN}🔧 SDLC Kompanion Dev Environment Setup${NC}\n"
+
+# Check Node.js 20+
+echo -e "${BLUE}📋 Checking Node.js 20+...${NC}"
+if ! command -v node &> /dev/null; then
+  echo -e "${RED}❌ Node.js not installed${NC}"
+  echo "   Visit: https://nodejs.org"
+  exit 1
+fi
+
+NODE_VERSION=$(node -v | sed 's/v//')
+MAJOR_VERSION=$(echo $NODE_VERSION | cut -d. -f1)
+if [ $MAJOR_VERSION -lt 20 ]; then
+  echo -e "${RED}❌ Node.js 20+ required (found $NODE_VERSION)${NC}"
+  echo "   Visit: https://nodejs.org"
+  exit 1
+fi
+echo -e "${GREEN}✓ Node.js $NODE_VERSION${NC}"
+
+# Check pnpm
+echo -e "\n${BLUE}📋 Checking pnpm...${NC}"
+if ! command -v pnpm &> /dev/null; then
+  echo -e "${RED}❌ pnpm not installed${NC}"
+  echo "   Run: npm install -g pnpm"
+  exit 1
+fi
+
+PNPM_VERSION=$(pnpm -v)
+echo -e "${GREEN}✓ pnpm $PNPM_VERSION${NC}"
+
+# Check Docker
+echo -e "\n${BLUE}📋 Checking Docker...${NC}"
+if ! command -v docker &> /dev/null; then
+  echo -e "${RED}❌ Docker not installed${NC}"
+  echo "   Visit: https://docs.docker.com/get-docker/"
+  exit 1
+fi
+
+if ! docker ps &> /dev/null; then
+  echo -e "${RED}❌ Docker daemon not running${NC}"
+  echo "   Start Docker Desktop or run: sudo systemctl start docker"
+  exit 1
+fi
+echo -e "${GREEN}✓ Docker is running${NC}"
+
+# Install dependencies
+echo -e "\n${BLUE}📋 Installing dependencies...${NC}"
+pnpm install --frozen-lockfile 2>&1 | tail -5 || {
+  echo -e "${RED}❌ Failed to install dependencies${NC}"
+  exit 1
+}
+echo -e "${GREEN}✓ Dependencies installed${NC}"
+
+echo -e "\n${GREEN}✅ Setup complete! Run: bin/start${NC}\n"

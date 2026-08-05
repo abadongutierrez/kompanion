@@ -1,0 +1,22 @@
+#!/bin/bash
+set -e
+
+# Colors
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+RED='\033[0;31m'
+NC='\033[0m'
+
+echo -e "${GREEN}🧪 Running unit tests${NC}\n"
+
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$PROJECT_ROOT"
+
+# Run all workspace tests
+echo -e "${BLUE}Running workspace tests...${NC}\n"
+if pnpm test; then
+  echo -e "\n${GREEN}✅ All tests passed${NC}\n"
+else
+  echo -e "\n${RED}❌ Some tests failed${NC}"
+  exit 1
+fi

@@ -1,0 +1,35 @@
+#!/bin/bash
+
+# Colors
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+RED='\033[0;31m'
+NC='\033[0m'
+
+echo -e "${GREEN}📋 Application Logs${NC}\n"
+
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# Show PostgreSQL logs
+echo -e "${BLUE}📦 PostgreSQL Logs:${NC}"
+docker compose -f "$PROJECT_ROOT/docker-compose.dev.yml" logs db 2>/dev/null || echo "PostgreSQL not running"
+
+# Show TypeScript Server logs
+if [ -f "$PROJECT_ROOT/.server.log" ]; then
+  echo -e "\n${BLUE}🚀 TypeScript Server Logs (last 20 lines):${NC}"
+  tail -20 "$PROJECT_ROOT/.server.log"
+fi
+
+# Show React UI logs
+if [ -f "$PROJECT_ROOT/.ui.log" ]; then
+  echo -e "\n${BLUE}⚛️  React UI Logs (last 20 lines):${NC}"
+  tail -20 "$PROJECT_ROOT/.ui.log"
+fi
+
+# Show Kotlin Server logs
+if [ -f "$PROJECT_ROOT/.kotlin-server.log" ]; then
+  echo -e "\n${BLUE}☕ Kotlin Server Logs (last 20 lines):${NC}"
+  tail -20 "$PROJECT_ROOT/.kotlin-server.log"
+fi
+
+echo -e "\n${GREEN}Press Ctrl+C to exit${NC}"

@@ -1,0 +1,30 @@
+#!/bin/bash
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PIDS_FILE="$PROJECT_ROOT/.dev_pids"
+
+echo -e "${GREEN}⏹️  Stopping SDLC Kompanion${NC}\n"
+
+# Kill processes from .dev_pids
+if [ -f "$PIDS_FILE" ]; then
+  echo -e "${BLUE}🧹 Stopping Node.js processes...${NC}"
+  while IFS= read -r pid; do
+    if kill -0 "$pid" 2>/dev/null; then
+      kill "$pid" 2>/dev/null || true
+    fi
+  done < "$PIDS_FILE"
+  rm "$PIDS_FILE"
+  sleep 1
+fi
+
+# Stop Kotlin server if running
+echo -e "${BLUE}📦 Stopping Docker containers...${NC}"
+docker compose -f "$PROJECT_ROOT/docker-compose.dev.yml" down 2>/dev/null || true
+
+echo -e "${GREEN}✓ All services stopped${NC}\n"
