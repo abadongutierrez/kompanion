@@ -13,39 +13,26 @@ against the primary root; an absolute file_path outside every allowed root
 is denied rather than silently redirected (guessing where it "should" go is
 worse than refusing).
 
-Bash: best-effort only, not a hard guarantee. A stateless hook can't tell a
-legitimate `cd` into a secondary linked repo (from several calls ago, still
-in effect via Claude Code's persistent shell) apart from genuine drift, so
-only commands with no `cd` at all get anchored to the primary root — a
-command that already navigates somewhere is trusted.
+Bash: also a hard guarantee now — every raw Bash command is denied outright
+except one exact shape: invoking exec_in_folder.py (which does its own
+folder-membership check, then runs the command and logs it to
+commands.log). This replaces the previous best-effort cd-detection
+heuristic, which could only anchor commands with no `cd` at all and had to
+trust anything that already navigated somewhere.
 """
 import json
 import os
 import sys
 
+from _workspace_common import is_under_any_root, load_allowed_roots
+
 FILE_PATH_TOOLS = {"Edit", "Write", "MultiEdit", "Read"}
 
-
-def load_allowed_roots():
-    # TASK_WORKSPACE_DIR is set on the claude process's own environment at
-    # spawn time and inherited by this hook subprocess (confirmed: hook
-    # commands inherit the parent process's env) — manifest.json lives
-    # there, not under this script's own directory.
-    task_workspace_dir = os.environ["TASK_WORKSPACE_DIR"]
-    manifest_path = os.path.join(task_workspace_dir, "manifest.json")
-    with open(manifest_path) as f:
-        manifest = json.load(f)
-    roots = [manifest["primary"]["workspaceLocalPath"]]
-    roots += [r["workspaceLocalPath"] for r in manifest.get("otherRepos", [])]
-    return roots
-
-
-def is_under_any_root(path, roots):
-    abspath = os.path.abspath(path)
-    return any(
-        abspath == root or abspath.startswith(root.rstrip(os.sep) + os.sep)
-        for root in roots
-    )
+EXEC_IN_FOLDER_HINT = (
+    'Raw Bash commands aren\'t allowed. Use: python3 '
+    '.claude/hooks/exec_in_folder.py '
+    '--taskId <id> --folder <path> --command "..."'
+)
 
 
 def allow(extra=None):
@@ -104,14 +91,11 @@ def main():
         return
 
     if tool_name == "Bash":
-        command = tool_input.get("command", "")
-        stripped = command.strip()
-        has_cd = stripped.startswith("cd ") or " cd " in f" {command} "
-        if not has_cd:
-            new_command = f'cd "{primary}" && ({command})'
-            allow({"updatedInput": {"command": new_command}})
+        command = tool_input.get("command", "").strip()
+        if command.startswith("python3") and "exec_in_folder.py" in command:
+            allow()
             return
-        allow()
+        deny(EXEC_IN_FOLDER_HINT)
         return
 
     allow()
