@@ -5,9 +5,9 @@ plugins {
 	id("io.spring.dependency-management") version "1.1.7"
 }
 
-group = "com.sdlcpaperclip"
+group = "com.kompanion"
 version = "0.0.1-SNAPSHOT"
-description = "SDLC Paperclip server (Kotlin port)"
+description = "SDLC Kompanion server (Kotlin port)"
 
 java {
 	toolchain {
