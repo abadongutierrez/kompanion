@@ -8,7 +8,7 @@ import {
   type TaskStatus,
   type TaskType,
   type TaskWithRepositories,
-} from "@sdlc/shared";
+} from "@kompanion/shared";
 import { api } from "../api.js";
 import { RunTranscript } from "./RunTranscript.js";
 

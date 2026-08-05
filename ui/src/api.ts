@@ -1,4 +1,5 @@
 import type {
+  AssignRoleInput,
   BuiltinHarness,
   CreateProjectInput,
   CreateRepositoryInput,
@@ -7,6 +8,7 @@ import type {
   CreateTaskDependencyInput,
   CreateTaskInput,
   CreateTeamInput,
+  HarnessTemplate,
   Project,
   Repository,
   Role,
@@ -21,7 +23,7 @@ import type {
   UpdateRoleInput,
   UpdateTaskInput,
   UpdateTeamBudgetInput,
-} from "@sdlc/shared";
+} from "@kompanion/shared";
 
 export type HeartbeatStatus = {
   enabled: boolean;
@@ -63,20 +65,38 @@ export const api = {
       body: JSON.stringify({ name: input.name }),
     }),
 
+  // Roles assigned to a team (join over team_roles server-side).
   listRoles: (teamId: string) => request<Role[]>(`${base}/teams/${teamId}/roles`),
-  createRole: (input: CreateRoleInput) =>
-    request<Role>(`${base}/teams/${input.teamId}/roles`, {
+  assignRole: (teamId: string, input: AssignRoleInput) =>
+    request<Role>(`${base}/teams/${teamId}/roles`, {
       method: "POST",
-      body: JSON.stringify({
-        title: input.title,
-        harnessPath: input.harnessPath,
-      }),
+      body: JSON.stringify(input),
     }),
-  updateRole: (teamId: string, roleId: string, input: UpdateRoleInput) =>
-    request<Role>(`${base}/teams/${teamId}/roles/${roleId}`, {
+  unassignRole: (teamId: string, roleId: string) =>
+    fetch(`${base}/teams/${teamId}/roles/${roleId}`, { method: "DELETE" }),
+
+  // The app-wide Role library — create/edit/the shared CLAUDE.md template
+  // all operate here, affecting every team the role is assigned to,
+  // regardless of which project that team belongs to.
+  listAllRoles: () => request<Role[]>(`${base}/roles`),
+  createRole: (input: CreateRoleInput) =>
+    request<Role>(`${base}/roles`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  updateRole: (roleId: string, input: UpdateRoleInput) =>
+    request<Role>(`${base}/roles/${roleId}`, {
       method: "PATCH",
       body: JSON.stringify(input),
     }),
+  getHarnessTemplate: (roleId: string) =>
+    request<HarnessTemplate>(`${base}/roles/${roleId}/harness-template`),
+  updateHarnessTemplate: (roleId: string, content: string) =>
+    request<HarnessTemplate>(`${base}/roles/${roleId}/harness-template`, {
+      method: "PATCH",
+      body: JSON.stringify({ content }),
+    }),
+
   listBuiltinHarnesses: () => request<BuiltinHarness[]>(`${base}/harnesses`),
 
   listTasks: (teamId: string) =>

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { Project } from "@sdlc/shared";
+import type { Project } from "@kompanion/shared";
 import { api } from "../api.js";
 
 export function CreateProjectForm({

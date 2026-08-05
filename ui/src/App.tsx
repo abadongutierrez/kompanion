@@ -1,73 +1,45 @@
-import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Navigate, NavLink, Route, Routes } from "react-router-dom";
 import { api } from "./api.js";
-import { CreateProjectForm } from "./components/CreateProjectForm.js";
-import { CreateTeamForm } from "./components/CreateTeamForm.js";
-import { TaskBoard } from "./components/TaskBoard.js";
-import { RolesPanel } from "./components/RolesPanel.js";
-import { RepositoriesPanel } from "./components/RepositoriesPanel.js";
-import { BudgetPanel } from "./components/BudgetPanel.js";
-import { Sidebar, type Section } from "./components/Sidebar.js";
+import { ProjectsPage } from "./components/ProjectsPage.js";
+import { ProjectShell } from "./components/ProjectShell.js";
+import { RolesLibraryPage } from "./components/RolesLibraryPage.js";
 
 export function App() {
-  const [projectId, setProjectId] = useState<string | null>(null);
-  const [teamId, setTeamId] = useState<string | null>(null);
-  const [section, setSection] = useState<Section>("board");
-
-  const projects = useQuery({ queryKey: ["projects"], queryFn: api.listProjects });
-
-  const activeProjectId = projectId ?? projects.data?.[0]?.id ?? null;
-
-  const teams = useQuery({
-    queryKey: ["teams", activeProjectId],
-    queryFn: () => api.listTeams(activeProjectId!),
-    enabled: !!activeProjectId,
-  });
-
-  const activeTeamId = teamId ?? teams.data?.[0]?.id ?? null;
-
   return (
     <div className="min-h-screen bg-neutral-50 text-neutral-900">
       <header className="flex items-center justify-between border-b border-neutral-200 bg-white px-6 py-4">
-        <div>
-          <h1 className="text-lg font-semibold">SDLC Paperclip</h1>
-          <p className="text-sm text-neutral-500">
-            Project → Team → Role → Task
-          </p>
+        <div className="flex items-center gap-6">
+          <h1 className="text-lg font-semibold">SDLC Kompanion</h1>
+          <nav className="flex gap-3 text-sm">
+            <NavLink
+              to="/"
+              end
+              className={({ isActive }) =>
+                isActive ? "font-medium text-neutral-900" : "text-neutral-500 hover:text-neutral-700"
+              }
+            >
+              Projects
+            </NavLink>
+            <NavLink
+              to="/roles"
+              className={({ isActive }) =>
+                isActive ? "font-medium text-neutral-900" : "text-neutral-500 hover:text-neutral-700"
+              }
+            >
+              Roles
+            </NavLink>
+          </nav>
         </div>
         <HeartbeatIndicator />
       </header>
 
-      {!activeProjectId && (
-        <main className="mx-auto max-w-6xl px-6 py-8">
-          <CreateProjectForm onCreated={(project) => setProjectId(project.id)} />
-        </main>
-      )}
-
-      {activeProjectId && !activeTeamId && (
-        <main className="mx-auto max-w-6xl px-6 py-8">
-          <CreateTeamForm
-            projectId={activeProjectId}
-            onCreated={(team) => setTeamId(team.id)}
-          />
-        </main>
-      )}
-
-      {activeProjectId && activeTeamId && (
-        <div className="flex">
-          <Sidebar active={section} onSelect={setSection} />
-          <main className="min-w-0 flex-1 px-6 py-8">
-            {section === "board" && (
-              <TaskBoard teamId={activeTeamId} projectId={activeProjectId} />
-            )}
-            {section === "roles" && <RolesPanel teamId={activeTeamId} />}
-            {section === "repositories" && (
-              <RepositoriesPanel projectId={activeProjectId} />
-            )}
-            {section === "budget" && <BudgetPanel teamId={activeTeamId} />}
-          </main>
-        </div>
-      )}
+      <Routes>
+        <Route path="/" element={<ProjectsPage />} />
+        <Route path="/roles" element={<RolesLibraryPage />} />
+        <Route path="/projects/:projectId/:section?" element={<ProjectShell />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
     </div>
   );
 }

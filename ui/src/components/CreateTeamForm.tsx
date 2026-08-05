@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { Team } from "@sdlc/shared";
+import type { Team } from "@kompanion/shared";
 import { api } from "../api.js";
 
 export function CreateTeamForm({

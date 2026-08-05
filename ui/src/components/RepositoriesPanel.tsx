@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Repository } from "@sdlc/shared";
+import type { Repository } from "@kompanion/shared";
 import { api } from "../api.js";
 
 export function RepositoriesPanel({ projectId }: { projectId: string }) {

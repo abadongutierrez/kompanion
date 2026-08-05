@@ -4,7 +4,7 @@ import {
   createTranscriptState,
   type RunEventRaw,
   type TranscriptState,
-} from "@sdlc/shared";
+} from "@kompanion/shared";
 import { api } from "../api.js";
 
 // Same component serves a live run and a replay of a finished one: the SSE
