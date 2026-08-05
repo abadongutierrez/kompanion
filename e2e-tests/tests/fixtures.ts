@@ -41,8 +41,10 @@ export async function ensureProjectAndTeam(request: APIRequestContext): Promise<
 }
 
 // Seeds the team's roles from the server's built-in harnesses if it has
-// none yet — direct port of RolesPanel.tsx's "Seed from built-ins" button
-// (a client-side loop over createRole, not a single backend endpoint).
+// none yet — direct port of RolesPanel.tsx's "Seed from built-ins" button:
+// find-or-create in the app-wide role library (GET/POST /api/roles), then
+// assign (POST /api/teams/:teamId/roles with { roleId }) — roles are
+// fully independent of any project/team, only assignment is team-scoped.
 export async function ensureRoles(request: APIRequestContext, teamId: string) {
   const roles = await json<{ id: string; title: string }[]>(
     await request.get(`/api/teams/${teamId}/roles`),
@@ -52,10 +54,19 @@ export async function ensureRoles(request: APIRequestContext, teamId: string) {
   const harnesses = await json<{ title: string; path: string }[]>(
     await request.get("/api/harnesses"),
   );
+  const allRoles = await json<{ id: string; harnessPath: string }[]>(
+    await request.get("/api/roles"),
+  );
   for (const harness of harnesses) {
-    await request.post(`/api/teams/${teamId}/roles`, {
-      data: { title: harness.title, harnessPath: harness.path },
-    });
+    const existing = allRoles.find((r) => r.harnessPath === harness.path);
+    const role =
+      existing ??
+      (await json<{ id: string }>(
+        await request.post("/api/roles", {
+          data: { title: harness.title, harnessPath: harness.path },
+        }),
+      ));
+    await request.post(`/api/teams/${teamId}/roles`, { data: { roleId: role.id } });
   }
   return json<{ id: string; title: string }[]>(
     await request.get(`/api/teams/${teamId}/roles`),

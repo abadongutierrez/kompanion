@@ -1,5 +1,5 @@
 {
-  "name": "@sdlc/e2e-tests",
+  "name": "@kompanion/e2e-tests",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -11,7 +11,7 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",
-    "@sdlc/shared": "workspace:*",
+    "@kompanion/shared": "workspace:*",
     "@types/node": "^22.10.5"
   }
 }

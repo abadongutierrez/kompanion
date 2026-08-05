@@ -2,11 +2,13 @@ import { test, expect } from "@playwright/test";
 import { ensureProjectAndTeam, ensureRoles, deleteTask } from "./fixtures.js";
 
 test.describe("task board", () => {
+  let projectId: string;
   let teamId: string;
   let createdTaskId: string | undefined;
 
   test.beforeAll(async ({ request }) => {
     const seeded = await ensureProjectAndTeam(request);
+    projectId = seeded.projectId;
     teamId = seeded.teamId;
     await ensureRoles(request, teamId);
   });
@@ -19,8 +21,8 @@ test.describe("task board", () => {
   });
 
   test("auto-selects the existing project/team and shows the board", async ({ page }) => {
-    await page.goto("/");
-    await expect(page.getByText("Project → Team → Role → Task")).toBeVisible();
+    await page.goto(`/projects/${projectId}/board`);
+    await expect(page.getByRole("heading", { name: "SDLC Kompanion" })).toBeVisible();
     await expect(page.getByRole("button", { name: "+ New Task" })).toBeVisible();
     // Column headers are rendered as e.g. "Backlog (0)" and only made to
     // *look* upper-case via a CSS `uppercase` class — match case-insensitively
@@ -31,7 +33,7 @@ test.describe("task board", () => {
   });
 
   test("creates a task, assigns a role, and moves it through valid transitions only", async ({ page }) => {
-    await page.goto("/");
+    await page.goto(`/projects/${projectId}/board`);
 
     const title = `E2E task ${Date.now()}`;
     await page.getByRole("button", { name: "+ New Task" }).click();

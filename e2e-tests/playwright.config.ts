@@ -24,7 +24,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: "pnpm --filter @sdlc/ui dev",
+    command: "pnpm --filter @kompanion/ui dev",
     cwd: "..",
     url: "http://localhost:5173",
     reuseExistingServer: true,
