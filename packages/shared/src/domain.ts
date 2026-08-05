@@ -50,9 +50,15 @@ export type Team = z.infer<typeof Team>;
 // local folder its harness (.claude/ skills, agents, hooks) lives in.
 // harnessPath is the sole source of a Role's harness — there's no
 // discipline-keyed fallback convention.
+//
+// Roles are fully app-wide — the same level as Project itself, with no
+// project (or team) association at all. Create one once in the global
+// Role library, then assign it to whichever Teams in whichever Projects
+// want it (see team_roles). This makes sharing a harnessPath/CLAUDE.md an
+// intentional, visible action instead of an accident of two Teams
+// pointing at the same directory.
 export const Role = z.object({
   id: z.string(),
-  teamId: z.string(),
   title: z.string(),
   slug: z.string(),
   harnessPath: z.string(),
@@ -132,19 +138,37 @@ export const CreateTeamInput = Team.pick({ name: true }).extend({
 });
 export type CreateTeamInput = z.infer<typeof CreateTeamInput>;
 
+// Creates a Role in the app-wide role library — POST /api/roles.
 export const CreateRoleInput = Role.pick({
   title: true,
   harnessPath: true,
-}).extend({
-  teamId: z.string(),
 });
 export type CreateRoleInput = z.infer<typeof CreateRoleInput>;
 
+// POST /api/teams/:teamId/roles — assign an existing Role to this team.
+// Roles are only ever created via the global /api/roles library; within a
+// team's context it's assignment-only.
+export const AssignRoleInput = z.object({
+  roleId: z.string(),
+});
+export type AssignRoleInput = z.infer<typeof AssignRoleInput>;
+
+// PATCH /api/roles/:roleId — edits the shared Role itself (affects every
+// Team it's assigned to). slug is only touched when explicitly provided —
+// unlike creation, editing never silently re-derives it from a title change.
 export const UpdateRoleInput = Role.pick({
   title: true,
+  slug: true,
   harnessPath: true,
 }).partial();
 export type UpdateRoleInput = z.infer<typeof UpdateRoleInput>;
+
+// GET/PATCH .../roles/:roleId/harness-template — the role's CLAUDE.md
+// content, read/written as plain text (never parsed).
+export const HarnessTemplate = z.object({
+  content: z.string(),
+});
+export type HarnessTemplate = z.infer<typeof HarnessTemplate>;
 
 export const BuiltinHarness = z.object({
   slug: z.string(),
