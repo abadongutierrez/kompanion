@@ -66,7 +66,7 @@ Starts the complete dev environment: PostgreSQL (Docker) + TypeScript server + K
 
 **Access:**
 - UI: http://localhost:5173
-- API (TypeScript): http://localhost:3000
+- API (TypeScript): http://localhost:3100
 - Kotlin API: http://localhost:8081
 - Press Ctrl+C to stop
 
@@ -79,7 +79,7 @@ $ ./bin/start
 ✓ PostgreSQL ready
 
 🚀 Starting services...
-✓ TypeScript server on http://localhost:3000
+✓ TypeScript server on http://localhost:3100
 ✓ React UI on http://localhost:5173
 ✓ Kotlin server on http://localhost:8081
 
