@@ -1,5 +1,5 @@
 {
-  "name": "@sdlc/server",
+  "name": "@kompanion/server",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -12,7 +12,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@sdlc/shared": "workspace:*",
+    "@kompanion/shared": "workspace:*",
     "cors": "^2.8.5",
     "express": "^5.1.0",
     "postgres": "^3.4.5",

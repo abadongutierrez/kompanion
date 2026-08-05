@@ -1,4 +1,4 @@
-# Design: an SDLC-flavored Paperclip
+# Design: SDLC Kompanion (an SDLC-flavored Paperclip)
 
 **Status:** working system. Domain model, Claude-only harness mechanism, cross-role shared workspaces, autonomous heartbeat execution, and budget enforcement are all implemented and verified end-to-end. See **What's built** below for the honest current state — Objectives, Ceremonies, and Review gates are still just table entries, not code.
 

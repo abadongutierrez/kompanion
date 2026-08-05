@@ -6,12 +6,11 @@ dist/
 __pycache__/
 *.pyc
 
-# Runtime task workspaces (created per-task at run time; harnesses/ stays a
-# pure, immutable template — mutable state lives here instead). Both
-# backends have their own — server/ and server-kotlin/ are kept at feature
-# parity (see AGENTS.md) and each maintains its own workspace root.
-server/workspaces/
-server-kotlin/workspaces/
+# Runtime task workspaces (created per-task at run time) — shared by both
+# backends (see AGENTS.md) under one workspace/ folder at the repo root.
+# workspace/harnesses/ stays a pure, immutable template and IS tracked;
+# only the mutable per-task scratch state here is ignored.
+workspace/tasks/
 
 # Claude Code's own per-session runtime lock for this repo, not project
 # config — recreated automatically, nothing to track.
