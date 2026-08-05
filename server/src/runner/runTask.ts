@@ -1,8 +1,8 @@
 import { spawn } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import type { Repository, Role, Task, TaskStatus } from "@sdlc/shared";
-import { isValidTaskTransition } from "@sdlc/shared";
+import type { Repository, Role, Task, TaskStatus } from "@kompanion/shared";
+import { isValidTaskTransition } from "@kompanion/shared";
 import { sql } from "../db/client.js";
 import { resolveHarnessDir, resolveWorkspaceDir } from "./claudeHarness.js";
 import { getTeamSpend } from "./budget.js";
@@ -20,11 +20,12 @@ function buildPrompt(
 ): string {
   const workspaceLine = manifest.primary.repositoryLocalPath
     ? manifest.otherRepos.length > 0
-      ? `Workspace: this directory is a real git repository ('${manifest.primary.name}', branch ${manifest.branchName}) — implement/verify/refine as real code, right here, and commit your changes with a clear message. ${manifest.otherRepos.length} other linked repositor${manifest.otherRepos.length === 1 ? "y is" : "ies are"} also on the same branch, at these absolute paths — cd there directly if the change touches them too, and commit separately in each: ${manifest.otherRepos.map((r) => `${r.name} (${r.workspaceLocalPath})`).join(", ")}. A manifest.json in this directory also records these paths and the branch name if you need to double-check.`
+      ? `Workspace: this directory is a real git repository ('${manifest.primary.name}', branch ${manifest.branchName}) — implement/verify/refine as real code, right here, and commit your changes with a clear message. ${manifest.otherRepos.length} other linked repositor${manifest.otherRepos.length === 1 ? "y is" : "ies are"} also on the same branch, at these absolute paths — pass that path as --folder to exec_in_folder.py if the change touches them too, and commit separately in each: ${manifest.otherRepos.map((r) => `${r.name} (${r.workspaceLocalPath})`).join(", ")}. A manifest.json in this directory also records these paths and the branch name if you need to double-check.`
       : `Workspace: this directory is a real git repository (branch ${manifest.branchName}) — implement/verify/refine as real code, right here, and commit your changes with a clear message. A manifest.json in this directory records the branch name and repo path if you need to double-check.`
     : `Workspace: scratch (no repository linked) — use the solution.md/notes.md convention from your skill.`;
 
   const lines = [
+    `Task ID: ${task.id}`,
     `Task: ${task.title}`,
     `Type: ${task.type}`,
     task.description ? `Description: ${task.description}` : null,
@@ -45,7 +46,11 @@ function buildPrompt(
 // query crosses into a single Task's prompt, deliberately scoped to just
 // this one Role rather than generalizing prompt-building early.
 async function buildTeamSnapshot(teamId: string): Promise<string> {
-  const roles = await sql`select * from roles where team_id = ${teamId}`;
+  const roles = await sql`
+    select r.* from roles r
+    join team_roles tr on tr.role_id = r.id
+    where tr.team_id = ${teamId}
+  `;
   const activeCounts = await sql`
     select role_id, count(*)::int as active_count
     from tasks
@@ -154,6 +159,7 @@ function runClaudeStreaming(
   runId: string,
   systemPromptAppend: string | null,
   taskWorkspaceDir: string,
+  taskId: string,
 ): Promise<ClaudeResult> {
   return new Promise((resolve) => {
     const bin = process.env.CLAUDE_BIN ?? "claude";
@@ -178,7 +184,7 @@ function runClaudeStreaming(
     // live that hook subprocesses inherit this env var.
     const child = spawn(bin, args, {
       cwd,
-      env: { ...process.env, TASK_WORKSPACE_DIR: taskWorkspaceDir },
+      env: { ...process.env, TASK_WORKSPACE_DIR: taskWorkspaceDir, TASK_ID: taskId },
     });
 
     let buffer = "";
@@ -434,6 +440,7 @@ export async function runTaskWithClaude(
         runId,
         systemPromptAppend,
         taskWorkspaceDir,
+        task.id,
       );
 
       await transitionTaskStatus(

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { CreateProjectInput } from "@sdlc/shared";
+import { CreateProjectInput } from "@kompanion/shared";
 import { sql } from "../db/client.js";
 
 export const projectsRouter = Router();

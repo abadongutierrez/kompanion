@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { Router } from "express";
-import { CreateRepositoryInput, UpdateRepositoryInput } from "@sdlc/shared";
+import { CreateRepositoryInput, UpdateRepositoryInput } from "@kompanion/shared";
 import { sql } from "../db/client.js";
 
 export const repositoriesRouter = Router({ mergeParams: true });

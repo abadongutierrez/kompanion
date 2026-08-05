@@ -1,4 +1,4 @@
-import type { Role, Task } from "@sdlc/shared";
+import type { Role, Task } from "@kompanion/shared";
 import { sql } from "../db/client.js";
 import { resolveHarnessDir } from "./claudeHarness.js";
 import { runTaskWithClaude } from "./runTask.js";

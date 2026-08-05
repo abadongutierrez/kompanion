@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { Repository, Task } from "@sdlc/shared";
+import type { Repository, Task } from "@kompanion/shared";
 
 const BRANCH_PREFIX_BY_TYPE: Record<Task["type"], string> = {
   bug: "fix",

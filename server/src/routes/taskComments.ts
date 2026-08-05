@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { CreateTaskCommentInput, Role, Task } from "@sdlc/shared";
+import { CreateTaskCommentInput, Role, Task } from "@kompanion/shared";
 import { sql } from "../db/client.js";
 import { runTaskWithClaude } from "../runner/runTask.js";
 
@@ -21,7 +21,9 @@ async function resolveMentions(teamId: string, body: string) {
   const slugs = extractMentionedSlugs(body);
   if (slugs.length === 0) return [];
   const roles = await sql`
-    select id, title, slug from roles where team_id = ${teamId} and slug in ${sql(slugs)}
+    select r.id, r.title, r.slug from roles r
+    join team_roles tr on tr.role_id = r.id
+    where tr.team_id = ${teamId} and r.slug in ${sql(slugs)}
   `;
   return roles.map((r) => ({ id: r.id, title: r.title, slug: r.slug }));
 }
@@ -130,7 +132,9 @@ taskCommentsRouter.post("/:commentId/reply-as/:roleId", async (req, res) => {
   }
 
   const [role] = await sql`
-    select * from roles where id = ${roleId} and team_id = ${teamId}
+    select r.* from roles r
+    join team_roles tr on tr.role_id = r.id
+    where r.id = ${roleId} and tr.team_id = ${teamId}
   `;
   if (!role) {
     return res.status(404).json({ error: "role not found on this team" });

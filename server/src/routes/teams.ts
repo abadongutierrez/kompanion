@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { Team } from "@sdlc/shared";
+import { Team } from "@kompanion/shared";
 import { sql } from "../db/client.js";
 
 export const teamsRouter = Router({ mergeParams: true });

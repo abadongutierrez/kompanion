@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { CreateTaskDependencyInput } from "@sdlc/shared";
+import { CreateTaskDependencyInput } from "@kompanion/shared";
 import { sql } from "../db/client.js";
 
 export const taskDependenciesRouter = Router({ mergeParams: true });

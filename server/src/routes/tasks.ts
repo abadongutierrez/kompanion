@@ -6,7 +6,7 @@ import {
   UpdateTaskInput,
   UpdateTaskStatusInput,
   isValidTaskTransition,
-} from "@sdlc/shared";
+} from "@kompanion/shared";
 import { sql } from "../db/client.js";
 import { runTaskWithClaude } from "../runner/runTask.js";
 

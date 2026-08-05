@@ -1,13 +1,19 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { Router } from "express";
-import { Role } from "@sdlc/shared";
+import { AssignRoleInput, CreateRoleInput, HarnessTemplate, UpdateRoleInput } from "@kompanion/shared";
 import { sql } from "../db/client.js";
 
-export const rolesRouter = Router({ mergeParams: true });
+// The app-wide Role library: create, edit, and the shared CLAUDE.md
+// template all operate on the Role itself here, regardless of which
+// Team(s) currently have it assigned — Roles are fully independent, the
+// same level as Project itself, with no project/team ownership at all.
+export const globalRolesRouter = Router();
 
-const CreateRoleBody = Role.pick({ title: true, harnessPath: true });
-const UpdateRoleBody = Role.pick({ title: true, harnessPath: true }).partial();
+// Team-scoped: which Roles this Team currently has assigned
+// (team_roles), plus assign/unassign. Roles are only ever *created* via
+// the global library above — this router is assignment-only.
+export const teamRolesRouter = Router({ mergeParams: true });
 
 type TeamParams = { teamId: string };
 
@@ -20,26 +26,16 @@ function slugify(title: string): string {
 
 // A Role's slug is its only stable, machine-usable identifier (e.g. the
 // Project Manager team-snapshot gate keys off slug === "project-manager").
-// Unique per team — on collision, append -2, -3, ... rather than fail.
-// excludeRoleId lets an update keep its own slug when the title didn't
-// meaningfully change (or just re-derive cleanly if it did).
-async function uniqueSlugForTeam(
-  teamId: string,
-  title: string,
-  excludeRoleId?: string,
-): Promise<string> {
+// Unique app-wide — on collision, append -2, -3, ... rather than fail.
+// excludeRoleId lets an update keep its own slug when it didn't change.
+async function uniqueSlug(title: string, excludeRoleId?: string): Promise<string> {
   const base = slugify(title) || "role";
   let candidate = base;
   let suffix = 2;
   while (true) {
     const existing = excludeRoleId
-      ? await sql`
-          select 1 from roles
-          where team_id = ${teamId} and slug = ${candidate} and id != ${excludeRoleId}
-        `
-      : await sql`
-          select 1 from roles where team_id = ${teamId} and slug = ${candidate}
-        `;
+      ? await sql`select 1 from roles where slug = ${candidate} and id != ${excludeRoleId}`
+      : await sql`select 1 from roles where slug = ${candidate}`;
     if (existing.length === 0) return candidate;
     candidate = `${base}-${suffix}`;
     suffix += 1;
@@ -59,17 +55,13 @@ function validateHarnessPath(harnessPath: string): string | null {
   return null;
 }
 
-rolesRouter.get("/", async (req, res) => {
-  const { teamId } = req.params as TeamParams;
-  const roles = await sql`
-    select * from roles where team_id = ${teamId} order by created_at
-  `;
+globalRolesRouter.get("/", async (_req, res) => {
+  const roles = await sql`select * from roles order by created_at`;
   res.json(roles);
 });
 
-rolesRouter.post("/", async (req, res) => {
-  const { teamId } = req.params as TeamParams;
-  const parsed = CreateRoleBody.safeParse(req.body);
+globalRolesRouter.post("/", async (req, res) => {
+  const parsed = CreateRoleInput.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: parsed.error.flatten() });
   }
@@ -80,23 +72,23 @@ rolesRouter.post("/", async (req, res) => {
     return res.status(400).json({ error: harnessError });
   }
 
-  const slug = await uniqueSlugForTeam(teamId, title);
+  const slug = await uniqueSlug(title);
 
   const [role] = await sql`
-    insert into roles (team_id, title, slug, harness_path)
-    values (${teamId}, ${title}, ${slug}, ${harnessPath})
+    insert into roles (title, slug, harness_path)
+    values (${title}, ${slug}, ${harnessPath})
     returning *
   `;
   res.status(201).json(role);
 });
 
-rolesRouter.patch("/:roleId", async (req, res) => {
-  const { teamId, roleId } = req.params as TeamParams & { roleId: string };
-  const parsed = UpdateRoleBody.safeParse(req.body);
+globalRolesRouter.patch("/:roleId", async (req, res) => {
+  const { roleId } = req.params;
+  const parsed = UpdateRoleInput.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: parsed.error.flatten() });
   }
-  const { title, harnessPath } = parsed.data;
+  const { title, slug, harnessPath } = parsed.data;
 
   if (harnessPath !== undefined) {
     const harnessError = validateHarnessPath(harnessPath);
@@ -105,8 +97,12 @@ rolesRouter.patch("/:roleId", async (req, res) => {
     }
   }
 
-  const slug =
-    title !== undefined ? await uniqueSlugForTeam(teamId, title, roleId) : undefined;
+  if (slug !== undefined) {
+    const collision = await sql`select 1 from roles where slug = ${slug} and id != ${roleId}`;
+    if (collision.length > 0) {
+      return res.status(409).json({ error: `slug "${slug}" is already used by another role` });
+    }
+  }
 
   const [role] = await sql`
     update roles
@@ -114,11 +110,88 @@ rolesRouter.patch("/:roleId", async (req, res) => {
       title = coalesce(${title ?? null}, title),
       slug = coalesce(${slug ?? null}, slug),
       harness_path = coalesce(${harnessPath ?? null}, harness_path)
-    where id = ${roleId} and team_id = ${teamId}
+    where id = ${roleId}
     returning *
   `;
   if (!role) {
     return res.status(404).json({ error: "role not found" });
   }
   res.json(role);
+});
+
+async function loadRole(roleId: string) {
+  const [role] = await sql`select * from roles where id = ${roleId}`;
+  return role as { harnessPath: string } | undefined;
+}
+
+globalRolesRouter.get("/:roleId/harness-template", async (req, res) => {
+  const { roleId } = req.params;
+  const role = await loadRole(roleId);
+  if (!role) {
+    return res.status(404).json({ error: "role not found" });
+  }
+  const claudeMdPath = join(role.harnessPath, "CLAUDE.md");
+  const content = existsSync(claudeMdPath) ? readFileSync(claudeMdPath, "utf8") : "";
+  res.json({ content });
+});
+
+globalRolesRouter.patch("/:roleId/harness-template", async (req, res) => {
+  const { roleId } = req.params;
+  const parsed = HarnessTemplate.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: parsed.error.flatten() });
+  }
+  const role = await loadRole(roleId);
+  if (!role) {
+    return res.status(404).json({ error: "role not found" });
+  }
+  writeFileSync(join(role.harnessPath, "CLAUDE.md"), parsed.data.content, "utf8");
+  res.json({ content: parsed.data.content });
+});
+
+teamRolesRouter.get("/", async (req, res) => {
+  const { teamId } = req.params as TeamParams;
+  const roles = await sql`
+    select r.* from roles r
+    join team_roles tr on tr.role_id = r.id
+    where tr.team_id = ${teamId}
+    order by r.created_at
+  `;
+  res.json(roles);
+});
+
+teamRolesRouter.post("/", async (req, res) => {
+  const { teamId } = req.params as TeamParams;
+  const parsed = AssignRoleInput.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: parsed.error.flatten() });
+  }
+
+  const [team] = await sql`select * from teams where id = ${teamId}`;
+  if (!team) {
+    return res.status(404).json({ error: "team not found" });
+  }
+
+  const [role] = await sql`select * from roles where id = ${parsed.data.roleId}`;
+  if (!role) {
+    return res.status(404).json({ error: "role not found" });
+  }
+
+  await sql`
+    insert into team_roles (team_id, role_id) values (${teamId}, ${role.id})
+    on conflict do nothing
+  `;
+
+  res.status(201).json(role);
+});
+
+teamRolesRouter.delete("/:roleId", async (req, res) => {
+  const { teamId, roleId } = req.params as TeamParams & { roleId: string };
+  const deleted = await sql`
+    delete from team_roles where team_id = ${teamId} and role_id = ${roleId} returning *
+  `;
+  if (deleted.length === 0) {
+    return res.status(404).json({ error: "role is not assigned to this team" });
+  }
+  res.status(204).send();
 });

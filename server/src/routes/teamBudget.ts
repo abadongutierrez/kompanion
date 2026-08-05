@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { UpdateTeamBudgetInput } from "@sdlc/shared";
+import { UpdateTeamBudgetInput } from "@kompanion/shared";
 import { sql } from "../db/client.js";
 import { getTeamSpend } from "../runner/budget.js";
 

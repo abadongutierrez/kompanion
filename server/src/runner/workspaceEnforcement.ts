@@ -1,9 +1,13 @@
 import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
+import { workspaceRoot } from "./claudeHarness.js";
 
-const serverRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
-const enforcementScriptSrc = join(serverRoot, "hooks", "enforce-workspace.py");
+const hooksSrcDir = join(workspaceRoot, "hooks");
+// enforce-workspace.py denies every raw Bash call except one shape:
+// invoking exec_in_folder.py, which does its own folder-membership check
+// and logs to commands.log — both scripts (plus the helper module they
+// share) have to travel together into the workspace.
+const HOOK_FILES = ["enforce-workspace.py", "exec_in_folder.py", "_workspace_common.py"];
 
 const ENFORCEMENT_MATCHER = "Bash|Edit|Write|MultiEdit|Read";
 const ENFORCEMENT_COMMAND =
@@ -57,7 +61,9 @@ export function installCwdEnforcement(
 
   const hooksDir = join(cwdDir, ".claude", "hooks");
   mkdirSync(hooksDir, { recursive: true });
-  cpSync(enforcementScriptSrc, join(hooksDir, "enforce-workspace.py"));
+  for (const file of HOOK_FILES) {
+    cpSync(join(hooksSrcDir, file), join(hooksDir, file));
+  }
 
   const settingsPath = join(cwdDir, ".claude", "settings.json");
   let settings: SettingsJson = {};
