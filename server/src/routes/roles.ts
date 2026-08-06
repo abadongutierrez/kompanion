@@ -61,62 +61,82 @@ globalRolesRouter.get("/", async (_req, res) => {
 });
 
 globalRolesRouter.post("/", async (req, res) => {
-  const parsed = CreateRoleInput.safeParse(req.body);
-  if (!parsed.success) {
-    return res.status(400).json({ error: parsed.error.flatten() });
-  }
-  const { title, harnessPath } = parsed.data;
+  try {
+    const parsed = CreateRoleInput.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.flatten() });
+    }
+    const { title, harnessPath } = parsed.data;
 
-  const harnessError = validateHarnessPath(harnessPath);
-  if (harnessError) {
-    return res.status(400).json({ error: harnessError });
-  }
-
-  const slug = await uniqueSlug(title);
-
-  const [role] = await sql`
-    insert into roles (title, slug, harness_path)
-    values (${title}, ${slug}, ${harnessPath})
-    returning *
-  `;
-  res.status(201).json(role);
-});
-
-globalRolesRouter.patch("/:roleId", async (req, res) => {
-  const { roleId } = req.params;
-  const parsed = UpdateRoleInput.safeParse(req.body);
-  if (!parsed.success) {
-    return res.status(400).json({ error: parsed.error.flatten() });
-  }
-  const { title, slug, harnessPath } = parsed.data;
-
-  if (harnessPath !== undefined) {
     const harnessError = validateHarnessPath(harnessPath);
     if (harnessError) {
       return res.status(400).json({ error: harnessError });
     }
-  }
 
-  if (slug !== undefined) {
-    const collision = await sql`select 1 from roles where slug = ${slug} and id != ${roleId}`;
-    if (collision.length > 0) {
-      return res.status(409).json({ error: `slug "${slug}" is already used by another role` });
+    const slug = await uniqueSlug(title);
+
+    const [role] = await sql`
+      insert into roles (title, slug, harness_path)
+      values (${title}, ${slug}, ${harnessPath})
+      returning *
+    `;
+    res.status(201).json(role);
+  } catch (error) {
+    console.error("Error creating role:", error);
+    res
+      .status(500)
+      .json({
+        error:
+          error instanceof Error ? error.message : "Failed to create role",
+      });
+  }
+});
+
+globalRolesRouter.patch("/:roleId", async (req, res) => {
+  try {
+    const { roleId } = req.params;
+    const parsed = UpdateRoleInput.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.flatten() });
     }
-  }
+    const { title, slug, harnessPath } = parsed.data;
 
-  const [role] = await sql`
-    update roles
-    set
-      title = coalesce(${title ?? null}, title),
-      slug = coalesce(${slug ?? null}, slug),
-      harness_path = coalesce(${harnessPath ?? null}, harness_path)
-    where id = ${roleId}
-    returning *
-  `;
-  if (!role) {
-    return res.status(404).json({ error: "role not found" });
+    if (harnessPath !== undefined) {
+      const harnessError = validateHarnessPath(harnessPath);
+      if (harnessError) {
+        return res.status(400).json({ error: harnessError });
+      }
+    }
+
+    if (slug !== undefined) {
+      const collision = await sql`select 1 from roles where slug = ${slug} and id != ${roleId}`;
+      if (collision.length > 0) {
+        return res.status(409).json({ error: `slug "${slug}" is already used by another role` });
+      }
+    }
+
+    const [role] = await sql`
+      update roles
+      set
+        title = coalesce(${title ?? null}, title),
+        slug = coalesce(${slug ?? null}, slug),
+        harness_path = coalesce(${harnessPath ?? null}, harness_path)
+      where id = ${roleId}
+      returning *
+    `;
+    if (!role) {
+      return res.status(404).json({ error: "role not found" });
+    }
+    res.json(role);
+  } catch (error) {
+    console.error("Error updating role:", error);
+    res
+      .status(500)
+      .json({
+        error:
+          error instanceof Error ? error.message : "Failed to update role",
+      });
   }
-  res.json(role);
 });
 
 async function loadRole(roleId: string) {
@@ -161,28 +181,38 @@ teamRolesRouter.get("/", async (req, res) => {
 });
 
 teamRolesRouter.post("/", async (req, res) => {
-  const { teamId } = req.params as TeamParams;
-  const parsed = AssignRoleInput.safeParse(req.body);
-  if (!parsed.success) {
-    return res.status(400).json({ error: parsed.error.flatten() });
+  try {
+    const { teamId } = req.params as TeamParams;
+    const parsed = AssignRoleInput.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.flatten() });
+    }
+
+    const [team] = await sql`select * from teams where id = ${teamId}`;
+    if (!team) {
+      return res.status(404).json({ error: "team not found" });
+    }
+
+    const [role] = await sql`select * from roles where id = ${parsed.data.roleId}`;
+    if (!role) {
+      return res.status(404).json({ error: "role not found" });
+    }
+
+    await sql`
+      insert into team_roles (team_id, role_id) values (${teamId}, ${role.id})
+      on conflict do nothing
+    `;
+
+    res.status(201).json(role);
+  } catch (error) {
+    console.error("Error assigning role:", error);
+    res
+      .status(500)
+      .json({
+        error:
+          error instanceof Error ? error.message : "Failed to assign role",
+      });
   }
-
-  const [team] = await sql`select * from teams where id = ${teamId}`;
-  if (!team) {
-    return res.status(404).json({ error: "team not found" });
-  }
-
-  const [role] = await sql`select * from roles where id = ${parsed.data.roleId}`;
-  if (!role) {
-    return res.status(404).json({ error: "role not found" });
-  }
-
-  await sql`
-    insert into team_roles (team_id, role_id) values (${teamId}, ${role.id})
-    on conflict do nothing
-  `;
-
-  res.status(201).json(role);
 });
 
 teamRolesRouter.delete("/:roleId", async (req, res) => {
