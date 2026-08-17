@@ -13,10 +13,9 @@ Vite dev server (via Playwright's `webServer`, reusing it if already
 running). Before running tests, from the repo root:
 
 ```bash
-pnpm db:up                                    # Postgres, once
-cd server-kotlin && gradle bootRun            # or the Node server on :3100 —
-                                               # whichever ui/vite.config.ts's
-                                               # /api proxy currently targets
+pnpm db:up                          # Postgres, once
+cd server-kotlin && ./gradlew bootRun   # the backend on :3200, which
+                                        # ui/vite.config.ts's /api proxy targets
 ```
 
 ## Running

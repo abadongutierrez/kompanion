@@ -14,9 +14,16 @@ cd "$PROJECT_ROOT"
 
 # Run all workspace tests
 echo -e "${BLUE}Running workspace tests...${NC}\n"
-if pnpm test; then
-  echo -e "\n${GREEN}✅ All tests passed${NC}\n"
-else
+if ! pnpm test; then
   echo -e "\n${RED}❌ Some tests failed${NC}"
   exit 1
 fi
+
+# Run the Kotlin server tests
+echo -e "\n${BLUE}Running server-kotlin tests...${NC}\n"
+if ! (cd "$PROJECT_ROOT/server-kotlin" && ./gradlew test); then
+  echo -e "\n${RED}❌ Some tests failed${NC}"
+  exit 1
+fi
+
+echo -e "\n${GREEN}✅ All tests passed${NC}\n"

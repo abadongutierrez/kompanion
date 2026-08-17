@@ -15,9 +15,6 @@ workspace/tasks/
 # Claude Code's own per-session runtime lock for this repo, not project
 # config — recreated automatically, nothing to track.
 .claude/scheduled_tasks.lock
-.server.log
 .ui.log
 .kotlin-server.log
 .dev_pids
-.dev_pids_ts
-.dev_pids_kotlin

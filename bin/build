@@ -13,13 +13,18 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$PROJECT_ROOT"
 
 echo -e "${BLUE}Building all packages...${NC}\n"
-if pnpm build; then
-  echo -e "\n${GREEN}✅ Build successful${NC}"
-  echo -e "${BLUE}Build artifacts:${NC}"
-  echo -e "   UI: ui/dist"
-  echo -e "   Server: server/dist"
-  echo -e "   Kotlin: server-kotlin/build/libs\n"
-else
+if ! pnpm build; then
   echo -e "\n${RED}❌ Build failed${NC}"
   exit 1
 fi
+
+echo -e "\n${BLUE}Building the Kotlin server...${NC}\n"
+if ! (cd "$PROJECT_ROOT/server-kotlin" && ./gradlew build -x test); then
+  echo -e "\n${RED}❌ Build failed${NC}"
+  exit 1
+fi
+
+echo -e "\n${GREEN}✅ Build successful${NC}"
+echo -e "${BLUE}Build artifacts:${NC}"
+echo -e "   UI: ui/dist"
+echo -e "   Kotlin: server-kotlin/build/libs\n"

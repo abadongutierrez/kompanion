@@ -1,10 +1,9 @@
 import { defineConfig, devices } from "@playwright/test";
 
-// This suite drives the real UI (ui/) against whatever backend it's
-// currently proxying to (see ui/vite.config.ts's /api proxy target — as of
-// the Kotlin port cutover, that's server-kotlin on :3200). It assumes
-// Postgres and that backend are already running (see README.md); it only
-// takes responsibility for the UI dev server itself.
+// This suite drives the real UI (ui/) against the Kotlin backend it proxies
+// to (see ui/vite.config.ts's /api proxy target — server-kotlin on :3200).
+// It assumes Postgres and that backend are already running (see README.md);
+// it only takes responsibility for the UI dev server itself.
 export default defineConfig({
   testDir: "./tests",
   fullyParallel: false,

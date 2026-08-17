@@ -7,15 +7,14 @@
   },
   "packageManager": "pnpm@11.9.0",
   "scripts": {
-    "dev:server": "pnpm --filter @kompanion/server dev",
+    "dev:server": "cd server-kotlin && ./gradlew bootRun",
     "dev:ui": "pnpm --filter @kompanion/ui dev",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
     "test:e2e": "pnpm --filter @kompanion/e2e-tests test:e2e",
     "db:up": "docker compose -f docker-compose.dev.yml up -d",
-    "db:down": "docker compose -f docker-compose.dev.yml down",
-    "db:migrate": "pnpm --filter @kompanion/server db:migrate"
+    "db:down": "docker compose -f docker-compose.dev.yml down"
   },
   "devDependencies": {
     "typescript": "^5.7.3"

@@ -1,17 +1,19 @@
 # Agent notes
 
-## Dual-server parity
+## Single backend
 
-This repo has two backend implementations of the same app:
+The backend is `server-kotlin/` — a Kotlin/Spring Boot app on port `3200`
+(see `ui/vite.config.ts`'s `/api` proxy target). It owns the schema via
+Flyway migrations in `server-kotlin/src/main/resources/db/migration/`,
+which run on boot.
 
-- `server/` — the original Node/Express/TypeScript server.
-- `server-kotlin/` — a Kotlin/Spring Boot port of it, same DB/schema, same
-  API shapes, different port (see `ui/vite.config.ts`'s `/api` proxy
-  target, which points at whichever one is currently "live").
+This repo used to carry a second, equivalent Node/Express/TypeScript
+backend in `server/`, kept in lockstep with the Kotlin one. That server
+was removed from `main`; it is preserved intact on the
+`typescript-server` branch. Docs written before the removal (`DESIGN.md`,
+`docs/`, `.plans/`) still cite `server/src/...` paths — read those as
+historical references to the TypeScript implementation, and use the
+Kotlin equivalent under `server-kotlin/src/main/kotlin/com/kompanion/server/`.
 
-**Any feature, endpoint, or behavior change added to one must also be
-added to the other — no exceptions.** They are meant to be fully
-interchangeable backends for the same UI, not a primary implementation
-plus a lagging fork. Before implementing a backend change, plan for both
-stacks up front; if something is awkward to replicate in one of them,
-flag it rather than silently only building it in the other.
+The remaining pnpm workspaces are `ui/`, `packages/shared/` (Zod schemas
+and types the UI consumes), and `e2e-tests/`.

@@ -54,20 +54,18 @@ $ ./bin/setup
 ### Running the App
 
 #### `./bin/start`
-Starts the complete dev environment: PostgreSQL (Docker) + TypeScript server + Kotlin server + React UI.
+Starts the complete dev environment: PostgreSQL (Docker) + Kotlin server + React UI.
 
 **Does:**
 1. Checks Docker is running
 2. Starts PostgreSQL container
 3. Waits for database to be ready
-4. Starts TypeScript server on http://localhost:3000
+4. Starts the Kotlin server on http://localhost:3200 (Flyway applies migrations on boot)
 5. Starts React UI on http://localhost:5173
-6. Starts Kotlin server on http://localhost:8081
 
 **Access:**
 - UI: http://localhost:5173
-- API (TypeScript): http://localhost:3100
-- Kotlin API: http://localhost:8081
+- API: http://localhost:3200
 - Press Ctrl+C to stop
 
 **Example:**
@@ -79,9 +77,8 @@ $ ./bin/start
 ✓ PostgreSQL ready
 
 🚀 Starting services...
-✓ TypeScript server on http://localhost:3100
+✓ Kotlin server on http://localhost:3200
 ✓ React UI on http://localhost:5173
-✓ Kotlin server on http://localhost:8081
 
 Press Ctrl+C to stop
 ```
@@ -89,11 +86,11 @@ Press Ctrl+C to stop
 ---
 
 #### `./bin/stop`
-Gracefully stops all services (PostgreSQL, servers, UI).
+Gracefully stops all services (PostgreSQL, server, UI).
 
 **Does:**
 1. Stops Docker containers
-2. Kills Node.js processes
+2. Kills the server and UI processes
 3. Cleans up
 
 **Example:**
@@ -110,14 +107,20 @@ $ ./bin/stop
 ### Testing
 
 #### `./bin/test`
-Runs the entire test suite (unit tests across workspaces).
+Runs the entire test suite: the pnpm workspace tests, then `server-kotlin`'s
+Gradle tests.
+
+**Requires:** PostgreSQL running (`pnpm db:up`) — the Kotlin suite includes a
+Spring context-load test that connects to the database.
 
 **Example:**
 ```bash
 $ ./bin/test
-🧪 Running tests
+🧪 Running unit tests
 
 Running workspace tests...
+
+Running server-kotlin tests...
 
 ✅ All tests passed
 ```
@@ -176,7 +179,7 @@ Waiting for PostgreSQL...
 #### `./bin/build`
 Creates production-ready builds for all packages.
 
-**Requires:** Node.js 20+
+**Requires:** Node.js 20+ and a JDK (via the Gradle wrapper)
 
 **Creates:** Build artifacts in each package's dist/build directory
 
@@ -191,8 +194,7 @@ Building all packages...
 
 ✅ Build successful
    UI: ui/dist
-   Server: server/dist
-   Kotlin: server-kotlin/target
+   Kotlin: server-kotlin/build/libs
 ```
 
 ---
@@ -210,7 +212,7 @@ $ ./bin/logs
 PostgreSQL logs:
 [...]
 
-TypeScript Server logs:
+Kotlin Server logs:
 [...]
 ```
 

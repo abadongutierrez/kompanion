@@ -1,5 +1,7 @@
 # Design: SDLC Kompanion (an SDLC-flavored Paperclip)
 
+**Backend:** `server-kotlin/` (Kotlin/Spring Boot, port 3200). An equivalent Node/TypeScript backend in `server/` was maintained alongside it until it was removed from `main`; it lives on the `typescript-server` branch, and a few notes below are explicitly flagged as historical to it.
+
 **Status:** working system. Domain model, Claude-only harness mechanism, cross-role shared workspaces, autonomous heartbeat execution, and budget enforcement are all implemented and verified end-to-end. See **What's built** below for the honest current state — Objectives, Ceremonies, and Review gates are still just table entries, not code.
 
 ## One-liner
@@ -55,14 +57,14 @@ A Company can run multiple Projects (e.g. "Acme Corp" running a "Website" Projec
 `backlog → in_progress → in_review → done`, with `blocked` reachable from (and returning to) any non-terminal state. Transitions happen two ways:
 
 - **Manual**, via the UI's per-card buttons — any transition `isValidTaskTransition()` allows.
-- **Automatic**, driven by a Claude run's outcome (`server/src/runner/runTask.ts`): starting a run moves `backlog → in_progress`; a successful run moves to `in_review`; a failed run moves to `blocked`. Both call the same `transitionTaskStatus()` helper, so a run can never violate the state machine — it just silently no-ops if the current state doesn't allow the target transition (e.g. re-running an already-`done` task doesn't move it).
+- **Automatic**, driven by a Claude run's outcome (`server-kotlin/src/main/kotlin/com/kompanion/server/service/RunTaskService.kt`): starting a run moves `backlog → in_progress`; a successful run moves to `in_review`; a failed run moves to `blocked`. Both call the same `transitionTaskStatus()` helper, so a run can never violate the state machine — it just silently no-ops if the current state doesn't allow the target transition (e.g. re-running an already-`done` task doesn't move it).
 
 ## Role harness
 
-A Role harness is a template directory under `server/harnesses/<discipline>/`:
+A Role harness is a template directory under `workspace/harnesses/<discipline>/`:
 
 ```
-server/harnesses/engineer/
+workspace/harnesses/engineer/
   CLAUDE.md                     # role framing
   .claude/
     skills/implement-task/SKILL.md
@@ -70,9 +72,9 @@ server/harnesses/engineer/
     settings.json                # Stop hook
 ```
 
-Three exist: `engineer` (implement-task skill, planner subagent), `qa` (verify-task skill, test-planner subagent), `product_manager` (refine-task skill, breakdown subagent). Mapping is a fixed `HARNESS_DIR_BY_DISCIPLINE` constant in `server/src/runner/claudeHarness.ts` — not a DB column, per the "shared template" resolution below.
+Three exist: `engineer` (implement-task skill, planner subagent), `qa` (verify-task skill, test-planner subagent), `product_manager` (refine-task skill, breakdown subagent). A Role resolves its harness through its own `harness_path` column, read by `resolveHarnessDir()` in `server-kotlin/src/main/kotlin/com/kompanion/server/service/ClaudeHarnessService.kt` — no fallback, no discipline→directory mapping table. (This started as a fixed `HARNESS_DIR_BY_DISCIPLINE` constant; the column replaced it once harnesses moved to the shared repo-root `workspace/`.)
 
-**Workspaces are shared across roles, not per-role.** Each Task gets exactly one workspace, `server/workspaces/<taskId>/` — not one per role. Before every run, `runTaskWithClaude()` wipes and re-copies the *currently assigned* role's `.claude/` + `CLAUDE.md` into that workspace (`prepareWorkspace()` in `server/src/runner/runTask.ts`), but leaves everything else — prior roles' output files, the shared `activity.log` — untouched. This is what actually makes "QA verifies the Engineer's work" true: reassign a Task from Engineer to QA and QA's session starts in the exact same directory Engineer just wrote to. Verified live: QA found and ran Engineer's actual code, then PM read both Engineer's solution and QA's verdict and tightened the acceptance criteria to close the exact gaps QA flagged.
+**Workspaces are shared across roles, not per-role.** Each Task gets exactly one workspace, `workspace/tasks/<taskId>/` — not one per role. Before every run, `runTaskWithClaude()` wipes and re-copies the *currently assigned* role's `.claude/` + `CLAUDE.md` into that workspace (`copyHarnessSkills()` in `server-kotlin/src/main/kotlin/com/kompanion/server/service/RunTaskService.kt`), but leaves everything else — prior roles' output files, the shared `activity.log` — untouched. This is what actually makes "QA verifies the Engineer's work" true: reassign a Task from Engineer to QA and QA's session starts in the exact same directory Engineer just wrote to. Verified live: QA found and ran Engineer's actual code, then PM read both Engineer's solution and QA's verdict and tightened the acceptance criteria to close the exact gaps QA flagged.
 
 **A real gotcha this uncovered:** Claude Code resolves `.claude/settings.json` hooks *only* from the exact `cwd`, not by walking up to an ancestor directory — confirmed by testing, not documentation. Skills and `CLAUDE.md` *do* get discovered from ancestors, hooks don't. This is why the workspace is a real, self-contained directory with its own copied-in `.claude/`, rather than a subdirectory nested under the harness template with cwd left at the harness root.
 
@@ -80,12 +82,12 @@ Execution is **synchronous**: `-p --output-format json --dangerously-skip-permis
 
 ## Repositories & Worktrees (planned — not built yet)
 
-Everything above is proven against a **disposable scratch directory** (`server/workspaces/<taskId>/`) with no relationship to a real codebase — the point so far was proving the harness mechanism, not shipping code. That changes now: a Task's workspace should be a real **git worktree** against a real repo, so an Engineer's "solution" is an actual commit on an actual branch, not a markdown file.
+Everything above is proven against a **disposable scratch directory** (`workspace/tasks/<taskId>/`) with no relationship to a real codebase — the point so far was proving the harness mechanism, not shipping code. That changes now: a Task's workspace should be a real **git worktree** against a real repo, so an Engineer's "solution" is an actual commit on an actual branch, not a markdown file.
 
 - **Project gains Repositories.** A Project owns a list of Repositories that together make up "the product" — each with at least a git remote URL, a name/slug, and a default branch.
-- **Project gains a local workspace root.** Something like `server/project-workspaces/<projectId>/repos/<repoSlug>/` — each Repository cloned once and kept up to date (pulled), not re-cloned per Task. This is the Project-level analog of what `server/harnesses/` is for Roles: a stable thing that gets checked out from, not recreated each run.
+- **Project gains a local workspace root.** Something like `workspace/project-workspaces/<projectId>/repos/<repoSlug>/` — each Repository cloned once and kept up to date (pulled), not re-cloned per Task. This is the Project-level analog of what `workspace/harnesses/` is for Roles: a stable thing that gets checked out from, not recreated each run.
 - **A Task targets one Repository** (of the Project's list) for v1 — no multi-repo Tasks yet, keeps this tractable.
-- **Running a Task creates (or reuses) a worktree**, not a bare directory: `git worktree add <path> -b task/<taskId>` off the target Repository's default branch, rooted under something like `server/project-workspaces/<projectId>/worktrees/<taskId>/`. The Role harness's `.claude/` + `CLAUDE.md` still get materialized into that worktree directory exactly as they do into today's scratch workspace — same mechanism, just a real git working directory as the destination instead of an empty folder.
+- **Running a Task creates (or reuses) a worktree**, not a bare directory: `git worktree add <path> -b task/<taskId>` off the target Repository's default branch, rooted under something like `workspace/project-workspaces/<projectId>/worktrees/<taskId>/`. The Role harness's `.claude/` + `CLAUDE.md` still get materialized into that worktree directory exactly as they do into today's scratch workspace — same mechanism, just a real git working directory as the destination instead of an empty folder.
 - **Cross-role collaboration gets stronger, not different.** Engineer, QA, and PM already prove out working sequentially in the same shared directory for a Task (see Role harness above) — with a real worktree, that becomes Engineer committing real code, QA running it for real and potentially adding real test files, PM annotating real diffs. The mechanism doesn't change; what's real underneath it does.
 - **`branchOrPrLink`** (currently unused on Task) gets populated with the worktree's branch name once this lands.
 
@@ -93,7 +95,7 @@ Everything above is proven against a **disposable scratch directory** (`server/w
 
 ## Heartbeats
 
-`server/src/runner/heartbeat.ts` — a background scheduler, **off by default** (`HEARTBEAT_ENABLED` / `HEARTBEAT_INTERVAL_MS` env vars). When enabled, it ticks on an interval: finds the oldest `backlog` Task whose assigned Role has a resolvable harness, and runs it through the same `runTaskWithClaude()` path a manual "Run with Claude" click uses — same workspace behavior, same auto-transitions, same audit trail. A `ticking` in-memory flag keeps runs strictly sequential (one Claude Code process at a time, never concurrent). `GET /api/heartbeat/status` + a header indicator in the UI surface enabled/interval/last-tick state.
+`server-kotlin/src/main/kotlin/com/kompanion/server/service/HeartbeatService.kt` — a background scheduler, **off by default** (`HEARTBEAT_ENABLED` / `HEARTBEAT_INTERVAL_MS` env vars). When enabled, it ticks on an interval: finds the oldest `backlog` Task whose assigned Role has a resolvable harness, and runs it through the same `runTaskWithClaude()` path a manual "Run with Claude" click uses — same workspace behavior, same auto-transitions, same audit trail. A `ticking` in-memory flag keeps runs strictly sequential (one Claude Code process at a time, never concurrent). `GET /api/heartbeat/status` + a header indicator in the UI surface enabled/interval/last-tick state.
 
 **Known limitation, accepted:** no atomic row-level task checkout (e.g. `SELECT ... FOR UPDATE SKIP LOCKED`). A manual "Run" click and a heartbeat tick could theoretically both read the same task as `backlog` in the same instant. Not fixed — acceptable for a single-operator setup, would need addressing before any real concurrent-user scenario.
 
@@ -102,9 +104,9 @@ Everything above is proven against a **disposable scratch directory** (`server/w
 Scoped to **Team**, not Project as originally sketched in the domain model — Team is where Roles and Tasks actually live day to day, and Project doesn't yet do anything beyond containment, so Team was the pragmatic choice for v1.
 
 - `teams.monthly_budget_usd` (nullable) — set via `PATCH /api/teams/:teamId/budget`.
-- Every `task_runs` row now carries `cost_usd`, extracted from Claude's own `--output-format json` result (`total_cost_usd` — **snake_case**; worth noting because postgres.js's `camelCase` transform on the way out of the DB made it *look* camelCased in every earlier inspection, which cost real debugging time before the actual raw field name was found).
-- `getTeamSpend()` (`server/src/runner/budget.ts`) sums `cost_usd` for the current calendar month. `runTaskWithClaude()` checks this **before** touching the harness or spawning Claude — if spend ≥ budget, it inserts a `task_runs` row with `status: "over_budget"` (cost `0`, a clear summary) and refuses, rather than throwing a bare error. Manual runs and heartbeat runs both inherit this for free since they call the same function.
-- A `numeric` Postgres columns gotcha, fixed once at the client level (`server/src/db/client.ts`): the `postgres` driver returns `numeric` as a string by default (precision safety) — registered a custom type parser so `cost_usd` / `monthly_budget_usd` come back as real JS numbers everywhere, not strings that silently break `.toFixed()` or numeric comparisons.
+- Every `task_runs` row now carries `cost_usd`, extracted from Claude's own `--output-format json` result (`total_cost_usd` — **snake_case**; worth noting because the TypeScript backend's postgres.js `camelCase` transform on the way out of the DB made it *look* camelCased in every earlier inspection, which cost real debugging time before the actual raw field name was found).
+- `getTeamSpend()` (`server-kotlin/src/main/kotlin/com/kompanion/server/service/BudgetService.kt`) sums `cost_usd` for the current calendar month. `runTaskWithClaude()` checks this **before** touching the harness or spawning Claude — if spend ≥ budget, it inserts a `task_runs` row with `status: "over_budget"` (cost `0`, a clear summary) and refuses, rather than throwing a bare error. Manual runs and heartbeat runs both inherit this for free since they call the same function.
+- A `numeric` Postgres columns gotcha, historical to the TypeScript backend (fixed once at the client level in `server/src/db/client.ts`): the `postgres` driver returned `numeric` as a string by default (precision safety), so a custom type parser was registered to make `cost_usd` / `monthly_budget_usd` real JS numbers everywhere. The Kotlin backend maps those columns to `BigDecimal` via JPA, so the same hazard shows up instead as scale/rounding on serialization, not as strings.
 
 ## Stack
 

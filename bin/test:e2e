@@ -15,7 +15,7 @@ cd "$PROJECT_ROOT"
 
 # Check if services are running
 echo -e "${YELLOW}Checking if services are running...${NC}"
-if ! curl -s http://localhost:3100/health &> /dev/null; then
+if ! curl -s http://localhost:3200/health &> /dev/null; then
   echo -e "${YELLOW}⚠️  Services not running. Run './bin/start' in another terminal first.${NC}\n"
 fi
 

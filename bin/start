@@ -43,6 +43,12 @@ if ! docker ps &> /dev/null; then
   exit 1
 fi
 
+# Check Gradle wrapper
+if ! [ -f "$PROJECT_ROOT/server-kotlin/gradlew" ] && ! command -v gradle &> /dev/null; then
+  echo -e "${RED}❌ Gradle not found. Install Gradle or ensure gradlew is in server-kotlin/.${NC}"
+  exit 1
+fi
+
 # Start database
 echo -e "${BLUE}📦 Starting PostgreSQL...${NC}"
 cd "$PROJECT_ROOT"
@@ -65,18 +71,19 @@ for i in {1..30}; do
   sleep 1
 done
 
-# Run migrations
-echo -e "${BLUE}🔄 Running database migrations...${NC}"
-pnpm db:migrate 2>&1 | tail -3 || true
-echo -e "${GREEN}✓ Migrations complete${NC}"
-
-# Start TypeScript server
-echo -e "\n${BLUE}🚀 Starting services...${NC}"
-echo -e "${BLUE}   TypeScript Server on http://localhost:3100${NC}"
-pnpm dev:server > "$PROJECT_ROOT/.server.log" 2>&1 &
+# Start Kotlin server (Flyway runs the migrations on boot)
+echo -e "${BLUE}🚀 Starting services...${NC}"
+echo -e "${BLUE}   Kotlin Server on http://localhost:3200${NC}"
+cd "$PROJECT_ROOT/server-kotlin"
+if [ -f "gradlew" ]; then
+  ./gradlew bootRun > "$PROJECT_ROOT/.kotlin-server.log" 2>&1 &
+else
+  gradle bootRun > "$PROJECT_ROOT/.kotlin-server.log" 2>&1 &
+fi
 SERVER_PID=$!
 echo "$SERVER_PID" >> "$PIDS_FILE"
-sleep 2
+cd "$PROJECT_ROOT"
+sleep 3
 
 # Start React UI
 echo -e "${BLUE}   React UI on http://localhost:5173${NC}"
@@ -84,16 +91,6 @@ pnpm dev:ui > "$PROJECT_ROOT/.ui.log" 2>&1 &
 UI_PID=$!
 echo "$UI_PID" >> "$PIDS_FILE"
 sleep 2
-
-# Start Kotlin server (optional, if gradle is available)
-if command -v gradle &> /dev/null || [ -f "$PROJECT_ROOT/server-kotlin/gradlew" ]; then
-  echo -e "${BLUE}   Kotlin Server on http://localhost:8081${NC}"
-  cd "$PROJECT_ROOT/server-kotlin"
-  ./gradlew bootRun > "$PROJECT_ROOT/.kotlin-server.log" 2>&1 &
-  KOTLIN_PID=$!
-  echo "$KOTLIN_PID" >> "$PIDS_FILE"
-  sleep 3
-fi
 
 echo -e "\n${GREEN}✓ All services started${NC}"
 echo -e "${YELLOW}Press Ctrl+C to stop${NC}\n"

@@ -49,8 +49,10 @@ polling `agent.wait`.
 
 ## How this project runs agents today
 
-For comparison, `server/src/runner/runTask.ts` (TS backend; `RunTaskService`
-+ `ClaudeHarnessService` in Kotlin — see [[dual-server-parity]]) currently:
+For comparison, `RunTaskService` + `ClaudeHarnessService` in
+`server-kotlin/` currently (this section was written while an equivalent
+TypeScript backend still existed in `server/`; it was removed from `main` and
+lives on the `typescript-server` branch):
 
 1. Spawns `claude -p <prompt> --output-format stream-json
    --include-partial-messages --dangerously-skip-permissions` directly via
@@ -102,7 +104,7 @@ Cost: it's a real architectural dependency — requires the `herdrd` (or
 equivalent) background process running alongside the app, a new client
 layer for the socket protocol (no official Node/Kotlin SDK found on the
 site; would mean hand-rolling a small NDJSON-over-unix-socket client in
-both `server/` and `server-kotlin/`, per [[dual-server-parity]]), and it
+`server-kotlin/`), and it
 only really pays off in a **single-machine, single-operator deployment** —
 same shape this project already targets (per `DESIGN.md`'s accepted
 heartbeat limitation), so this is a plausible fit, not a mismatch, but it's

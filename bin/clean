@@ -35,6 +35,6 @@ docker compose -f docker-compose.dev.yml down -v 2>/dev/null || true
 
 # Remove log files
 echo -e "${BLUE}Removing log files...${NC}"
-rm -f "$PROJECT_ROOT/.server.log" "$PROJECT_ROOT/.ui.log" "$PROJECT_ROOT/.kotlin-server.log"
+rm -f "$PROJECT_ROOT/.ui.log" "$PROJECT_ROOT/.kotlin-server.log"
 
 echo -e "${GREEN}✓ Clean complete${NC}\n"

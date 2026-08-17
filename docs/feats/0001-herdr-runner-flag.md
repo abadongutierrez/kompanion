@@ -1,6 +1,14 @@
 # 0001: Flagged Herdr runner (Option A prototype)
 
-**Status:** proposed, not built. Background/rationale in
+**Status:** proposed, not built — and **needs a rewrite before it can be
+built**: it was written against the TypeScript backend (`server/`), which has
+since been removed from `main` (it survives on the `typescript-server`
+branch). The design below still holds in shape — a `CLAUDE_RUNNER` flag
+selecting between the existing `spawn` path and a Herdr path behind the same
+seam — but the seam, the code samples, and the "which backend" scope section
+all need re-pointing at `server-kotlin`'s `RunTaskService.runClaudeStreaming`.
+
+Background/rationale in
 [`docs/herdr-integration.md`](../herdr-integration.md). See [`INDEX.md`](INDEX.md)
 for the full feature list.
 

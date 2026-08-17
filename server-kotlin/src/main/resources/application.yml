@@ -12,8 +12,8 @@ spring:
     username: ${SPRING_DATASOURCE_USERNAME:sdlc}
     password: ${SPRING_DATASOURCE_PASSWORD:sdlc}
     hikari:
-      # The Node server's postgres.js driver defaults every session to UTC;
-      # without this, date_trunc('month', now()) here runs in the DB
+      # Pin sessions to UTC (the removed Node server's postgres.js driver
+      # did this by default); without it, date_trunc('month', now()) runs in the DB
       # server/OS local time zone instead, shifting periodStart/spend-window
       # boundaries by the local UTC offset.
       connection-init-sql: SET TIME ZONE 'UTC'

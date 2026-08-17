@@ -20,17 +20,18 @@ class ClaudeHarnessService {
 
     // Resolved from the JVM's working directory — assumes the app is run
     // from server-kotlin/ (true for `gradle bootRun`/the packaged jar run
-    // from that directory, matching every run so far). The Node original
-    // resolved this from its own source file location via import.meta.url,
-    // which is cwd-independent; this is a known simplification to revisit
-    // if this ever needs to run from an arbitrary working directory.
+    // from that directory, matching every run so far). The removed Node
+    // server resolved this from its own source file location via
+    // import.meta.url, which is cwd-independent; this is a known
+    // simplification to revisit if this ever needs to run from an
+    // arbitrary working directory.
     private val serverRoot = File(".").canonicalFile
 
-    // workspace/ is a single folder shared by both this server and the
-    // Node server (repo root, sibling of server/ and server-kotlin/) — no
-    // longer duplicated per backend. WORKSPACE_ROOT lets it be pointed
-    // elsewhere; the default assumes this server runs from
-    // server-kotlin/, so the parent is the repo root.
+    // workspace/ lives at the repo root, a sibling of server-kotlin/ (it
+    // was hoisted there back when a second backend shared it).
+    // WORKSPACE_ROOT lets it be pointed elsewhere; the default assumes
+    // this server runs from server-kotlin/, so the parent is the repo
+    // root.
     val workspaceRoot: File = System.getenv("WORKSPACE_ROOT")?.let { File(it).canonicalFile }
         ?: File(serverRoot.parentFile, "workspace")
 
