@@ -6,11 +6,15 @@ dist/
 __pycache__/
 *.pyc
 
-# Runtime task workspaces (created per-task at run time) — shared by both
-# backends (see AGENTS.md) under one workspace/ folder at the repo root.
-# workspace/harnesses/ stays a pure, immutable template and IS tracked;
-# only the mutable per-task scratch state here is ignored.
+# Runtime task workspaces (created per-task at run time) under the
+# workspace/ folder at the repo root. workspace/harnesses/ stays a pure,
+# immutable template and IS tracked; only the mutable per-task scratch
+# state here is ignored.
 workspace/tasks/
+
+# Scratch space for research notes, spikes and drafts that aren't part of
+# the project itself. Never tracked.
+.work/
 
 # Claude Code's own per-session runtime lock for this repo, not project
 # config — recreated automatically, nothing to track.

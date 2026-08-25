@@ -1,5 +1,12 @@
 # Agent notes
 
+## How to reply
+
+- be concise and to the point
+- user short sentences
+- use plain english, no fancy working
+- always end your replies with footer: ----- Reply by <model> -----
+
 ## Single backend
 
 The backend is `server-kotlin/` — a Kotlin/Spring Boot app on port `3200`
