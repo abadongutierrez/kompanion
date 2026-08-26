@@ -12,6 +12,7 @@ import { api } from "../api.js";
 // events (still running) or sends `done` immediately (already finished) —
 // so there's no branching needed here for "live" vs "historical".
 export function RunTranscript({
+  id,
   teamId,
   taskId,
   runId,
@@ -20,6 +21,9 @@ export function RunTranscript({
   className = "max-h-64",
   onCostChange,
 }: {
+  // Lets a caller point an aria-controls at this box — RunRow's "Show logs"
+  // button does, so the control and the region it opens are linked.
+  id?: string;
   teamId: string;
   taskId: string;
   runId: string;
@@ -93,6 +97,7 @@ export function RunTranscript({
 
   return (
     <div
+      id={id}
       ref={containerRef}
       onScroll={handleScroll}
       // No sticky overlay here any more: a cost banner pinned to top-0 sat on
