@@ -54,7 +54,12 @@ export function TaskPage() {
     </Link>
   );
 
-  if (tasks.data && !task) {
+  // A project id that resolves to no team (a bad URL, or a project whose team
+  // has not been created yet) leaves teamId null forever, so the task query
+  // never runs — without this the page would sit on "Loading…" indefinitely.
+  const noTeam = !!teams.data && teams.data.length === 0;
+
+  if (noTeam || (tasks.data && !task)) {
     return (
       <main className="mx-auto max-w-xl px-6 py-8">
         <p className="text-sm text-neutral-600">Task not found. {backToBoard}</p>
