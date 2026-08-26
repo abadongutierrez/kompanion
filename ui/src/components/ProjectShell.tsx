@@ -6,7 +6,8 @@ import { TaskBoard } from "./TaskBoard.js";
 import { AgentsPanel } from "./AgentsPanel.js";
 import { RepositoriesPanel } from "./RepositoriesPanel.js";
 import { BudgetPanel } from "./BudgetPanel.js";
-import { Sidebar, type Section } from "./Sidebar.js";
+import { ProjectChrome } from "./ProjectChrome.js";
+import { type Section } from "./Sidebar.js";
 
 const VALID_SECTIONS: Section[] = ["board", "agents", "repositories", "budget"];
 
@@ -24,6 +25,8 @@ export function ProjectShell() {
     ? (sectionParam as Section)
     : "board";
 
+  // Still needed for the not-found branch below; ProjectChrome runs the same
+  // cached query for the header name.
   const projects = useQuery({ queryKey: ["projects"], queryFn: api.listProjects });
   const project = projects.data?.find((p) => p.id === projectId);
 
@@ -47,32 +50,26 @@ export function ProjectShell() {
     );
   }
 
+  if (!projectId) return null;
+
+  if (teams.data && teams.data.length === 0) {
+    return (
+      <ProjectChrome projectId={projectId} withSidebar={false}>
+        <CreateTeamForm projectId={projectId} onCreated={() => {}} />
+      </ProjectChrome>
+    );
+  }
+
   return (
-    <div>
-      <div className="border-b border-neutral-200 bg-white px-6 py-2">
-        <Link to="/" className="text-xs text-neutral-500 hover:text-neutral-700">
-          ← Projects
-        </Link>
-        {project && <p className="text-sm font-medium">{project.name}</p>}
-      </div>
-
-      {projectId && teams.data && teams.data.length === 0 && (
-        <main className="mx-auto max-w-6xl px-6 py-8">
-          <CreateTeamForm projectId={projectId} onCreated={() => {}} />
-        </main>
+    <ProjectChrome projectId={projectId}>
+      {teamId && (
+        <>
+          {section === "board" && <TaskBoard teamId={teamId} projectId={projectId} />}
+          {section === "agents" && <AgentsPanel teamId={teamId} />}
+          {section === "repositories" && <RepositoriesPanel projectId={projectId} />}
+          {section === "budget" && <BudgetPanel teamId={teamId} />}
+        </>
       )}
-
-      {projectId && teamId && (
-        <div className="flex">
-          <Sidebar projectId={projectId} />
-          <main className="min-w-0 flex-1 px-6 py-8">
-            {section === "board" && <TaskBoard teamId={teamId} projectId={projectId} />}
-            {section === "agents" && <AgentsPanel teamId={teamId} />}
-            {section === "repositories" && <RepositoriesPanel projectId={projectId} />}
-            {section === "budget" && <BudgetPanel teamId={teamId} />}
-          </main>
-        </div>
-      )}
-    </div>
+    </ProjectChrome>
   );
 }

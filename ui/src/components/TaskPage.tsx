@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { api } from "../api.js";
 import { RunTranscript } from "./RunTranscript.js";
 import { RUN_STATUS_ICON, formatRunCost } from "./runStatus.js";
+import { ProjectChrome } from "./ProjectChrome.js";
 
 // The board card's "Expand" used to open a modal; it now links here, so this
 // is a real route with its own URL — shareable, reloadable, and back-button
@@ -55,24 +56,30 @@ export function TaskPage() {
   // The same dead end reached a different way: a failed request leaves its
   // `data` undefined for good, so neither the task nor the not-found branch
   // below can ever resolve and the page would sit on "Loading…" forever.
+  // Every branch renders inside the same project frame the board and the
+  // other sections use — this page is routed outside ProjectShell (its URL
+  // isn't a :section), which is why it has to ask for the chrome itself.
+  const framed = (children: React.ReactNode) =>
+    projectId ? (
+      <ProjectChrome projectId={projectId}>{children}</ProjectChrome>
+    ) : (
+      <main className="mx-auto max-w-xl px-6 py-8">{children}</main>
+    );
+
   if (teams.isError || tasks.isError) {
-    return (
-      <main className="mx-auto max-w-xl px-6 py-8">
-        <p className="text-sm text-neutral-600">Could not load this task. {backToBoard}</p>
-      </main>
+    return framed(
+      <p className="text-sm text-neutral-600">Could not load this task. {backToBoard}</p>,
     );
   }
 
   if (noTeam || (tasks.data && !task)) {
-    return (
-      <main className="mx-auto max-w-xl px-6 py-8">
-        <p className="text-sm text-neutral-600">Task not found. {backToBoard}</p>
-      </main>
+    return framed(
+      <p className="text-sm text-neutral-600">Task not found. {backToBoard}</p>,
     );
   }
 
-  return (
-    <main className="mx-auto flex h-[calc(100vh-8rem)] w-full max-w-4xl flex-col gap-3 px-6 py-6">
+  return framed(
+    <div className="flex h-[calc(100vh-13rem)] w-full max-w-4xl flex-col gap-3">
       {backToBoard}
 
       {!task ? (
@@ -116,6 +123,6 @@ export function TaskPage() {
           )}
         </>
       )}
-    </main>
+    </div>,
   );
 }
