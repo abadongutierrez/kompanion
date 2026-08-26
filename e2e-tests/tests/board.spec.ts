@@ -78,4 +78,31 @@ test.describe("task board", () => {
     createdTaskId = tasks.find((t) => t.title === title)?.id;
     expect(createdTaskId).toBeTruthy();
   });
+
+  test("Expand opens the task's own page, not a dialog", async ({ page, request }) => {
+    const title = `E2E expand ${Date.now()}`;
+    const task: { id: string } = await request
+      .post(`/api/teams/${teamId}/tasks`, { data: { teamId, title, type: "story" } })
+      .then((r) => r.json());
+    createdTaskId = task.id;
+
+    await page.goto(`/projects/${projectId}/board`);
+    const card = page.locator("div.border-neutral-200", { hasText: title }).first();
+    await card.getByRole("link", { name: "Expand" }).click();
+
+    // A real route, so the URL changes and the board is gone — the old
+    // behaviour rendered a modal on top of the board instead.
+    await expect(page).toHaveURL(new RegExp(`/projects/${projectId}/tasks/${task.id}$`));
+    await expect(page.getByRole("heading", { name: title })).toBeVisible();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "+ New Task" })).toHaveCount(0);
+
+    // Reloading the URL still lands on the task (the modal had no URL at all).
+    await page.reload();
+    await expect(page.getByRole("heading", { name: title })).toBeVisible();
+
+    await page.getByRole("link", { name: "← Board" }).click();
+    await expect(page).toHaveURL(new RegExp(`/projects/${projectId}/board$`));
+    await expect(page.getByRole("button", { name: "+ New Task" })).toBeVisible();
+  });
 });

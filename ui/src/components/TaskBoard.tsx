@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   TASK_STATUS_TRANSITIONS,
@@ -11,7 +12,6 @@ import {
 } from "@kompanion/shared";
 import { api } from "../api.js";
 import { RunTranscript } from "./RunTranscript.js";
-import { TaskExpandedView } from "./TaskExpandedView.js";
 
 const COLUMNS: { status: TaskStatus; label: string }[] = [
   { status: "backlog", label: "Backlog" },
@@ -156,6 +156,7 @@ export function TaskBoard({
                   <TaskCard
                     key={task.id}
                     teamId={teamId}
+                    projectId={projectId}
                     task={task}
                     agents={agents.data ?? []}
                     allTasks={tasks.data ?? []}
@@ -256,6 +257,7 @@ function EditTaskPage({
 
 function TaskCard({
   teamId,
+  projectId,
   task,
   agents,
   allTasks,
@@ -266,6 +268,7 @@ function TaskCard({
   onEdit,
 }: {
   teamId: string;
+  projectId: string;
   task: TaskWithRepositories;
   agents: Agent[];
   allTasks: TaskWithRepositories[];
@@ -276,7 +279,6 @@ function TaskCard({
   onEdit: () => void;
 }) {
   const nextStatuses = TASK_STATUS_TRANSITIONS[task.status];
-  const [expanded, setExpanded] = useState(false);
   // Every Agent has a harnessPath now (it's one of the only three fields a
   // Agent has) — the client can't check the filesystem, so this is an
   // optimistic guess for the "Run" affordance; the server is the real gate.
@@ -313,9 +315,7 @@ function TaskCard({
   const runs = useQuery({
     queryKey: ["taskRuns", task.id],
     queryFn: () => api.listTaskRuns(teamId, task.id),
-    // Also fetched when expanded: a task whose Agent lost its harness (or has
-    // none) can still have finished runs worth reading back.
-    enabled: hasHarness || expanded,
+    enabled: hasHarness,
     refetchInterval: isRunning ? 3000 : false,
   });
   const latestRun = runs.data?.[0];
@@ -339,13 +339,13 @@ function TaskCard({
           <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-xs text-neutral-500">
             {task.type}
           </span>
-          <button
+          <Link
             className="text-xs text-neutral-400 hover:text-neutral-700"
-            onClick={() => setExpanded(true)}
-            title="Expanded view"
+            to={`/projects/${projectId}/tasks/${task.id}`}
+            title="Open task page"
           >
             Expand
-          </button>
+          </Link>
           <button
             className="text-xs text-neutral-400 hover:text-neutral-700 disabled:cursor-not-allowed disabled:text-neutral-300 disabled:hover:text-neutral-300"
             disabled={isRunning}
@@ -457,15 +457,6 @@ function TaskCard({
             </details>
           )}
         </div>
-      )}
-
-      {expanded && (
-        <TaskExpandedView
-          teamId={teamId}
-          task={task}
-          run={latestRun}
-          onClose={() => setExpanded(false)}
-        />
       )}
     </div>
   );
