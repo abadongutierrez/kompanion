@@ -289,6 +289,8 @@ export const TaskComment = z.object({
   body: z.string(),
   mentionedAgents: z.array(MentionedAgent),
   createdAt: z.string(),
+  // Null until an Operator edits the comment.
+  updatedAt: z.string().nullable(),
 });
 export type TaskComment = z.infer<typeof TaskComment>;
 
@@ -297,3 +299,10 @@ export const CreateTaskCommentInput = z.object({
   body: z.string().min(1),
 });
 export type CreateTaskCommentInput = z.infer<typeof CreateTaskCommentInput>;
+
+// Only the body is editable, and only on Operator-authored comments — an
+// agent's comment is the record of what its run reported.
+export const UpdateTaskCommentInput = z.object({
+  body: z.string().min(1),
+});
+export type UpdateTaskCommentInput = z.infer<typeof UpdateTaskCommentInput>;

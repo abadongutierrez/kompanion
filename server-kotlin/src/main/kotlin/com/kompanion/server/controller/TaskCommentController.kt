@@ -4,6 +4,7 @@ import com.kompanion.server.dto.CreateTaskCommentRequest
 import com.kompanion.server.dto.ErrorResponse
 import com.kompanion.server.dto.MentionedAgentResponse
 import com.kompanion.server.dto.TaskCommentResponse
+import com.kompanion.server.dto.UpdateTaskCommentRequest
 import com.kompanion.server.entity.TaskComment
 import com.kompanion.server.repository.AgentRepository
 import com.kompanion.server.repository.TaskCommentRepository
@@ -16,6 +17,7 @@ import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.web.bind.annotation.*
+import java.time.OffsetDateTime
 import java.util.UUID
 
 @RestController
@@ -71,6 +73,7 @@ class TaskCommentController(
         body = comment.body,
         mentionedAgents = resolveMentions(teamId, comment.body),
         createdAt = comment.createdAt,
+        updatedAt = comment.updatedAt,
     )
 
     @GetMapping
@@ -92,6 +95,32 @@ class TaskCommentController(
         val saved = comments.save(TaskComment(taskId = taskId, agentId = body.agentId, body = body.body))
         val reloaded = comments.findById(saved.id!!).orElse(saved)
         return ResponseEntity.status(HttpStatus.CREATED).body(toResponse(teamId, reloaded))
+    }
+
+    // An Operator can correct what they wrote. Agent-authored comments are
+    // the record of what a run actually reported, so they stay immutable.
+    @PatchMapping("/{commentId}")
+    fun update(
+        @PathVariable teamId: UUID,
+        @PathVariable taskId: UUID,
+        @PathVariable commentId: UUID,
+        @RequestBody body: UpdateTaskCommentRequest,
+    ): ResponseEntity<Any> {
+        val comment = comments.findById(commentId).orElse(null)
+            ?.takeIf { it.taskId == taskId }
+            ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ErrorResponse("comment not found"))
+
+        if (comment.agentId != null) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(ErrorResponse("only operator comments can be edited"))
+        }
+        // Mirrors UpdateTaskCommentInput's Zod `body: z.string().min(1)`.
+        if (body.body.isEmpty()) {
+            return ResponseEntity.badRequest().body(ErrorResponse("body must contain at least 1 character"))
+        }
+
+        val saved = comments.save(comment.copy(body = body.body, updatedAt = OffsetDateTime.now()))
+        return ResponseEntity.ok(toResponse(teamId, saved))
     }
 
     // Backfills a comment from the Task's first-ever run (whichever Agent
