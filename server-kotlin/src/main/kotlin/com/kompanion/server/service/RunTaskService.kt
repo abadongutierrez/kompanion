@@ -330,13 +330,14 @@ class RunTaskService(
         createdAt = rs.getObject("created_at", OffsetDateTime::class.java),
     )
 
-    private fun mapTaskRun(rs: ResultSet): TaskRunResponse {
+    private fun mapTaskRun(rs: ResultSet, agentTitle: String?): TaskRunResponse {
         val rawOutputText = rs.getString("raw_output")
         val rawOutput = rawOutputText?.let { objectMapper.readValue<Any>(it) }
         return TaskRunResponse(
             id = UUID.fromString(rs.getString("id")),
             taskId = UUID.fromString(rs.getString("task_id")),
             agentId = UUID.fromString(rs.getString("agent_id")),
+            agentTitle = agentTitle,
             status = rs.getString("status"),
             summary = rs.getString("summary"),
             rawOutput = rawOutput,
@@ -346,15 +347,17 @@ class RunTaskService(
         )
     }
 
-    private fun insertOverBudgetRun(taskId: UUID, agentId: UUID, summary: String): TaskRunResponse =
+    private fun insertOverBudgetRun(taskId: UUID, agent: Agent, summary: String): TaskRunResponse =
         jdbc.query(
             """
             insert into task_runs (task_id, agent_id, status, summary, cost_usd, duration_ms)
             values (?, ?, 'over_budget', ?, 0, 0)
             returning *
             """.trimIndent(),
-            { rs, _ -> mapTaskRun(rs) },
-            taskId, agentId, summary,
+            // `returning *` can't join, so the title comes from the Agent the
+            // caller already has rather than a second round trip.
+            { rs, _ -> mapTaskRun(rs, agent.title) },
+            taskId, agent.id, summary,
         ).first()
 
     private fun insertRunningRun(taskId: UUID, agentId: UUID): UUID =
@@ -371,6 +374,7 @@ class RunTaskService(
         rawOutput: Any?,
         costUsd: BigDecimal?,
         durationMs: Int?,
+        agentTitle: String?,
     ): TaskRunResponse {
         val rawOutputJson = rawOutput?.let { objectMapper.writeValueAsString(it) }
         return jdbc.query(
@@ -380,7 +384,7 @@ class RunTaskService(
             where id = ?
             returning *
             """.trimIndent(),
-            { rs, _ -> mapTaskRun(rs) },
+            { rs, _ -> mapTaskRun(rs, agentTitle) },
             status, summary, rawOutputJson, costUsd, durationMs, runId,
         ).first()
     }
@@ -391,9 +395,18 @@ class RunTaskService(
         jdbc.update("update task_runs set status = 'failed', summary = ? where id = ?", message, runId)
     }
 
+    // Left join so a run whose Agent was deleted from the library still
+    // lists — it just has no name, the same way a comment with no author
+    // renders as "Operator".
     fun listRuns(taskId: UUID): List<TaskRunResponse> = jdbc.query(
-        "select * from task_runs where task_id = ? order by created_at desc",
-        { rs, _ -> mapTaskRun(rs) },
+        """
+        select tr.*, a.title as agent_title
+        from task_runs tr
+        left join agents a on a.id = tr.agent_id
+        where tr.task_id = ?
+        order by tr.created_at desc
+        """.trimIndent(),
+        { rs, _ -> mapTaskRun(rs, rs.getString("agent_title")) },
         taskId,
     )
 
@@ -410,7 +423,7 @@ class RunTaskService(
         if (spend.monthlyBudgetUsd != null && spend.spendUsd >= spend.monthlyBudgetUsd) {
             val summary = "Team spend \$${spend.spendUsd.setScale(2, java.math.RoundingMode.HALF_UP)} has reached " +
                 "its \$${spend.monthlyBudgetUsd.setScale(2, java.math.RoundingMode.HALF_UP)} monthly budget — run refused before invoking Claude."
-            throw OverBudgetException(insertOverBudgetRun(taskId, agentId, summary))
+            throw OverBudgetException(insertOverBudgetRun(taskId, agent, summary))
         }
 
         // running_since is the one signal any client can poll to know a run
@@ -506,6 +519,7 @@ class RunTaskService(
                     result.rawOutput,
                     result.costUsd,
                     result.durationMs,
+                    agent.title,
                 )
                 // publishEnd must only fire once the row above is already
                 // terminal — otherwise a subscriber that checked status

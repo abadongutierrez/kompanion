@@ -249,6 +249,9 @@ export const TaskRun = z.object({
   id: z.string(),
   taskId: z.string(),
   agentId: z.string(),
+  // Denormalized for display, like TaskComment's authorTitle — null when the
+  // Agent that served the run has since been deleted from the library.
+  agentTitle: z.string().nullable(),
   status: TaskRunStatus,
   summary: z.string().nullable(),
   rawOutput: z.unknown().nullable(),

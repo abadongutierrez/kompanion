@@ -1,15 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
-import type { TaskRun } from "@kompanion/shared";
 import { api } from "../api.js";
 import { RunTranscript } from "./RunTranscript.js";
-
-const RUN_STATUS_ICON: Record<TaskRun["status"], string> = {
-  running: "⏳",
-  succeeded: "✅",
-  failed: "❌",
-  over_budget: "💸",
-};
+import { RUN_STATUS_ICON, formatRunCost } from "./runStatus.js";
 
 // The board card's "Expand" used to open a modal; it now links here, so this
 // is a real route with its own URL — shareable, reloadable, and back-button
@@ -102,11 +95,12 @@ export function TaskPage() {
           {teamId && run ? (
             <>
               <p className="shrink-0 text-xs text-neutral-500">
-                {RUN_STATUS_ICON[run.status]} {run.status.replace("_", " ")} ·{" "}
+                {RUN_STATUS_ICON[run.status]} {run.agentTitle ?? "Unknown agent"} ·{" "}
+                {run.status.replace("_", " ")} ·{" "}
                 {new Date(run.createdAt).toLocaleString()}
                 {run.durationMs != null &&
                   ` · ${(run.durationMs / 1000).toFixed(1)}s`}
-                {run.costUsd != null && ` · $${run.costUsd.toFixed(4)}`}
+                {` · ${formatRunCost(run.costUsd)}`}
               </p>
               <RunTranscript
                 teamId={teamId}

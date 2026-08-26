@@ -10,8 +10,10 @@ import {
   type TaskType,
   type TaskWithRepositories,
 } from "@kompanion/shared";
+import type { TaskRun } from "@kompanion/shared";
 import { api } from "../api.js";
 import { RunTranscript } from "./RunTranscript.js";
+import { RUN_STATUS_ICON, formatRunCost } from "./runStatus.js";
 
 const COLUMNS: { status: TaskStatus; label: string }[] = [
   { status: "backlog", label: "Backlog" },
@@ -396,6 +398,8 @@ function TaskCard({
 
       <DependenciesSection teamId={teamId} task={task} allTasks={allTasks} />
 
+      <RunsSection runs={runs.data} />
+
       <CommentsSection teamId={teamId} task={task} agents={agents} />
 
       {nextStatuses.length > 0 && (
@@ -714,6 +718,54 @@ function DependenciesSection({
         </form>
       )}
     </div>
+  );
+}
+
+// The run history of a task, mirroring CommentsSection: a collapsed
+// <details> that expands into one row per run. Newest first, matching the
+// order listRuns returns. The runs are already fetched by the card above (for
+// the spend total), so they're passed down rather than queried again.
+function RunsSection({ runs }: { runs: TaskRun[] | undefined }) {
+  const count = runs?.length ?? 0;
+
+  return (
+    <details className="space-y-2 border-t border-neutral-100 pt-2 text-xs">
+      <summary className="cursor-pointer font-medium text-neutral-500">
+        Runs {count > 0 && `(${count})`}
+      </summary>
+
+      {count === 0 ? (
+        <p className="text-neutral-400">Not run yet.</p>
+      ) : (
+        (runs ?? []).map((run) => (
+          <div key={run.id} className="space-y-1 rounded bg-neutral-50 p-2">
+            <div className="flex items-center justify-between text-neutral-400">
+              <span className="font-medium text-neutral-600">
+                {RUN_STATUS_ICON[run.status]}{" "}
+                {run.agentTitle ?? "Unknown agent"}
+              </span>
+              <span>{new Date(run.createdAt).toLocaleString()}</span>
+            </div>
+            <div className="flex flex-wrap gap-x-2 text-neutral-400">
+              <span>{run.status.replace("_", " ")}</span>
+              <span>·</span>
+              <span>{formatRunCost(run.costUsd)}</span>
+              {run.durationMs != null && (
+                <>
+                  <span>·</span>
+                  <span>{(run.durationMs / 1000).toFixed(1)}s</span>
+                </>
+              )}
+            </div>
+            {run.summary && (
+              <p className="max-h-24 overflow-y-auto whitespace-pre-wrap text-neutral-600">
+                {run.summary}
+              </p>
+            )}
+          </div>
+        ))
+      )}
+    </details>
   );
 }
 

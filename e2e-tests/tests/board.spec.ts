@@ -105,4 +105,28 @@ test.describe("task board", () => {
     await expect(page).toHaveURL(new RegExp(`/projects/${projectId}/board$`));
     await expect(page.getByRole("button", { name: "+ New Task" })).toBeVisible();
   });
+
+  test("the Runs section lists each run with its agent and cost", async ({
+    page,
+    request,
+  }) => {
+    const title = `E2E runs ${Date.now()}`;
+    const task: { id: string } = await request
+      .post(`/api/teams/${teamId}/tasks`, { data: { teamId, title, type: "story" } })
+      .then((r) => r.json());
+    createdTaskId = task.id;
+
+    await page.goto(`/projects/${projectId}/board`);
+    const card = page.locator("div.border-neutral-200", { hasText: title }).first();
+
+    // Collapsed by default, like Comments — and a never-run task says so
+    // rather than showing an empty list.
+    const runs = card.locator("details", { hasText: "Runs" }).first();
+    await runs.getByText("Runs", { exact: false }).first().click();
+    await expect(runs.getByText("Not run yet.")).toBeVisible();
+
+    // The count only appears once there is at least one run, so an unrun
+    // task reads "Runs", never "Runs (0)".
+    await expect(card.getByText("Runs (", { exact: false })).toHaveCount(0);
+  });
 });

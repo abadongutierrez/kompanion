@@ -10,6 +10,11 @@ data class TaskRunResponse(
     val id: UUID,
     val taskId: UUID,
     val agentId: UUID,
+    // Denormalized for display, exactly like TaskComment's authorTitle: the
+    // runs list needs a name, not an id, and an Agent can be renamed or
+    // reassigned without rewriting history — the title recorded here is
+    // whichever one the run was served by at the time it is read.
+    val agentTitle: String?,
     val status: String,
     val summary: String?,
     val rawOutput: Any?,
