@@ -95,6 +95,20 @@ class TaskController(
         taskId,
     ).firstOrNull()
 
+    // A task is "running" while some agent has a live run on it —
+    // running_since is the single server-side signal for that (set when a
+    // run starts, cleared when it ends). While that holds, the task is
+    // frozen: no field edits, no re-assignment, no repository changes and
+    // no delete, so an in-flight run can't have the ground shift under it.
+    private fun runningConflict(task: Task): ResponseEntity<Any>? =
+        if (task.runningSince != null) {
+            ResponseEntity.status(HttpStatus.CONFLICT).body(
+                ErrorResponse("task is running and cannot be modified until the run finishes"),
+            )
+        } else {
+            null
+        }
+
     @PostMapping
     fun create(
         @PathVariable teamId: UUID,
@@ -151,6 +165,7 @@ class TaskController(
     ): ResponseEntity<Any> {
         val existing = tasks.findById(taskId).orElse(null)
             ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ErrorResponse("task not found"))
+        runningConflict(existing)?.let { return it }
 
         tasks.save(
             existing.copy(
@@ -171,9 +186,9 @@ class TaskController(
         // (both directions) via FK constraints — nothing left orphaned in
         // the DB. Deliberately NOT cleaned up: any on-disk scratch
         // workspace or git worktree this task used.
-        if (!tasks.existsById(taskId)) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ErrorResponse("task not found"))
-        }
+        val existing = tasks.findById(taskId).orElse(null)
+            ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ErrorResponse("task not found"))
+        runningConflict(existing)?.let { return it }
         tasks.deleteById(taskId)
         return ResponseEntity.noContent().build()
     }
@@ -184,6 +199,9 @@ class TaskController(
         @PathVariable taskId: UUID,
         @RequestBody body: LinkRepositoryRequest,
     ): ResponseEntity<Any> {
+        val existing = tasks.findById(taskId).orElse(null)
+            ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ErrorResponse("task not found"))
+        runningConflict(existing)?.let { return it }
         jdbc.update(
             "insert into task_repositories (task_id, repository_id) values (?, ?) on conflict do nothing",
             taskId,
@@ -198,6 +216,9 @@ class TaskController(
         @PathVariable taskId: UUID,
         @PathVariable repositoryId: UUID,
     ): ResponseEntity<Any> {
+        val existing = tasks.findById(taskId).orElse(null)
+            ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ErrorResponse("task not found"))
+        runningConflict(existing)?.let { return it }
         jdbc.update(
             "delete from task_repositories where task_id = ? and repository_id = ?",
             taskId,
@@ -214,6 +235,7 @@ class TaskController(
     ): ResponseEntity<Any> {
         val existing = tasks.findById(taskId).orElse(null)
             ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ErrorResponse("task not found"))
+        runningConflict(existing)?.let { return it }
         tasks.save(existing.copy(agentId = body.agentId, updatedAt = OffsetDateTime.now()))
         return ResponseEntity.ok(findOneWithRepositories(taskId))
     }
@@ -222,6 +244,10 @@ class TaskController(
     fun run(@PathVariable teamId: UUID, @PathVariable taskId: UUID): ResponseEntity<Any> {
         val task = tasks.findById(taskId).orElse(null)
             ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ErrorResponse("task not found"))
+        if (task.runningSince != null) {
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ErrorResponse("task is already running"))
+        }
         val agentId = task.agentId
             ?: return ResponseEntity.badRequest().body(ErrorResponse("task has no agent assigned"))
         val agent = agents.findById(agentId).orElse(null)
