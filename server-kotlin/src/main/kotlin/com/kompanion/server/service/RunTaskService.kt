@@ -212,6 +212,13 @@ class RunTaskService(
         }
 
         val processBuilder = ProcessBuilder(args).directory(cwd)
+        // The prompt goes in via -p, so the CLI has no reason to read stdin
+        // — but without this it inherits the JVM's, waits ~3s on a pipe
+        // nobody ever writes to, warns "no stdin data received in 3s", and
+        // the run dies before Claude does any work (task -> blocked, no
+        // cost recorded). Point it at /dev/null so the read returns EOF
+        // immediately.
+        processBuilder.redirectInput(File("/dev/null"))
         // TASK_WORKSPACE_DIR is where the harness's own Stop hook writes
         // activity.log and where the PreToolUse enforcement hook reads
         // manifest.json from — deliberately separate from cwd (the real
