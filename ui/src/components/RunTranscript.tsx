@@ -15,10 +15,14 @@ export function RunTranscript({
   teamId,
   taskId,
   runId,
+  // Callers own the box: the card leaves this unset for the compact 16rem
+  // default, the expanded view passes a flex-fill class instead.
+  className = "max-h-64",
 }: {
   teamId: string;
   taskId: string;
   runId: string;
+  className?: string;
 }) {
   const [state, setState] = useState<TranscriptState>(() => createTranscriptState());
   const lastSeqRef = useRef(-1);
@@ -74,7 +78,7 @@ export function RunTranscript({
     <div
       ref={containerRef}
       onScroll={handleScroll}
-      className="max-h-64 space-y-1.5 overflow-y-auto rounded bg-neutral-50 p-2 text-xs"
+      className={`${className} space-y-1.5 overflow-y-auto rounded bg-neutral-50 p-2 text-xs`}
     >
       {renderable.length === 0 && (
         <p className="text-neutral-400">Waiting for the agent to start…</p>
