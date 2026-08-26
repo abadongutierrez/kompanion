@@ -16,6 +16,7 @@ import com.kompanion.server.repository.TaskRepository
 import com.kompanion.server.service.NoHarnessException
 import com.kompanion.server.service.OverBudgetException
 import com.kompanion.server.service.RunTaskService
+import com.kompanion.server.service.TaskAlreadyRunningException
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.jdbc.core.JdbcTemplate
@@ -258,6 +259,10 @@ class TaskController(
         } catch (e: NoHarnessException) {
             ResponseEntity.badRequest()
                 .body(ErrorResponse("no harness directory found at agent's harnessPath \"${agent.harnessPath}\""))
+        } catch (e: TaskAlreadyRunningException) {
+            // Lost the race against a concurrent start — the pre-check above
+            // catches the common case, this catches the narrow window.
+            ResponseEntity.status(HttpStatus.CONFLICT).body(ErrorResponse("task is already running"))
         } catch (e: OverBudgetException) {
             // Still a 201: a task_runs record was created (status
             // "over_budget"), just refused before spending anything —

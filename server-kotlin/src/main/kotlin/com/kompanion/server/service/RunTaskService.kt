@@ -18,6 +18,7 @@ import java.util.UUID
 
 class NoHarnessException : RuntimeException("no harness for this agent")
 class OverBudgetException(val run: TaskRunResponse) : RuntimeException("team is over its monthly budget")
+class TaskAlreadyRunningException : RuntimeException("task is already running")
 
 private data class ClaudeResult(
     val ok: Boolean,
@@ -399,15 +400,29 @@ class RunTaskService(
             throw OverBudgetException(insertOverBudgetRun(taskId, agentId, summary))
         }
 
+        // running_since is the one signal any client can poll to know a run
+        // is actually in flight right now, independent of `status` —
+        // cleared in the finally block below. Claiming it with a conditional
+        // update makes "start a run" atomic: whoever flips null -> now()
+        // owns the run, and any concurrent caller (a second POST /run, a
+        // mention reply) loses the race here instead of both proceeding.
+        val claimed = jdbc.update(
+            "update tasks set running_since = now() where id = ? and running_since is null",
+            taskId,
+        )
+        if (claimed == 0) throw TaskAlreadyRunningException()
+
         // The run row is created now, at status "running", rather than only
         // at the end — task_run_events needs a run_id to attach to from the
         // very first streamed line.
-        val runId = insertRunningRun(taskId, agentId)
-
-        // running_since is the one signal any client can poll to know a run
-        // is actually in flight right now, independent of `status` —
-        // cleared in the finally block below.
-        jdbc.update("update tasks set running_since = now() where id = ?", taskId)
+        val runId = try {
+            insertRunningRun(taskId, agentId)
+        } catch (e: Exception) {
+            // Nothing below runs, so release the claim here — a task must
+            // never be left frozen by a run that never started.
+            jdbc.update("update tasks set running_since = null where id = ?", taskId)
+            throw e
+        }
         try {
             try {
                 val taskWorkspaceDir = claudeHarnessService.resolveWorkspaceDir(taskId)
