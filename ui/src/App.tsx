@@ -4,6 +4,7 @@ import { api } from "./api.js";
 import { ProjectsPage } from "./components/ProjectsPage.js";
 import { ProjectShell } from "./components/ProjectShell.js";
 import { AgentsLibraryPage } from "./components/AgentsLibraryPage.js";
+import { TaskPage } from "./components/TaskPage.js";
 
 export function App() {
   return (
@@ -37,6 +38,7 @@ export function App() {
       <Routes>
         <Route path="/" element={<ProjectsPage />} />
         <Route path="/agents" element={<AgentsLibraryPage />} />
+        <Route path="/projects/:projectId/tasks/:taskId" element={<TaskPage />} />
         <Route path="/projects/:projectId/:section?" element={<ProjectShell />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
