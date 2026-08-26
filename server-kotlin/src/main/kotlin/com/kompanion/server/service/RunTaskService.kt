@@ -9,6 +9,7 @@ import com.kompanion.server.entity.Task
 import com.kompanion.server.entity.TaskStatus
 import com.kompanion.server.entity.isValidTaskTransition
 import org.springframework.jdbc.core.JdbcTemplate
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 import java.io.File
 import java.math.BigDecimal
@@ -40,10 +41,15 @@ class RunTaskService(
     private val repoWorkspaceService: RepoWorkspaceService,
     private val workspaceEnforcementService: WorkspaceEnforcementService,
     private val runEventsBus: RunEventsBus,
+    // 180s was set back when a run worked in a throwaway scratch directory
+    // and produced a markdown file. Real work in a real worktree — read the
+    // repo, edit, run the tests, commit — routinely runs longer, and the
+    // kill lands mid-edit: the task goes to blocked and whatever the agent
+    // had done stays uncommitted in its worktree. 30 minutes is a backstop
+    // for a genuinely stuck run, not a work budget; spend is bounded by the
+    // team budget instead (see BudgetService).
+    @Value("\${claude.run-timeout-ms:1800000}") private val runTimeoutMs: Long,
 ) {
-    companion object {
-        const val RUN_TIMEOUT_MS = 180_000L
-    }
 
     private fun buildPrompt(
         task: Task,
@@ -240,7 +246,7 @@ class RunTaskService(
 
         val killer = Thread {
             try {
-                Thread.sleep(RUN_TIMEOUT_MS)
+                Thread.sleep(runTimeoutMs)
                 if (process.isAlive) process.destroyForcibly()
             } catch (e: InterruptedException) {
                 // cancelled normally once the process finished on its own

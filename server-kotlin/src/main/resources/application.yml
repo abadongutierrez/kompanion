@@ -21,6 +21,12 @@ spring:
     baseline-on-migrate: true
     baseline-version: "11"
 
+claude:
+  # Backstop for a stuck run, not a work budget — the process is SIGKILLed
+  # at this point, which loses whatever the agent hadn't committed yet.
+  # Spend is bounded by the team budget instead (see BudgetService).
+  run-timeout-ms: ${CLAUDE_RUN_TIMEOUT_MS:1800000}
+
 heartbeat:
   enabled: ${HEARTBEAT_ENABLED:false}
   interval-ms: ${HEARTBEAT_INTERVAL_MS:30000}
