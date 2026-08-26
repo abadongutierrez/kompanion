@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api.js";
@@ -37,7 +38,12 @@ export function TaskPage() {
     enabled: !!teamId && !!taskId,
     refetchInterval: isRunning ? 3000 : false,
   });
-  const run = runs.data?.[0];
+  // Accordion state: exactly one run's transcript is open at a time. null
+  // means "nothing picked yet", which resolves to the newest run — so the
+  // page opens on the latest run, and keeps following it across refetches
+  // until the reader picks a different one.
+  const [chosenRunId, setChosenRunId] = useState<string | null>(null);
+  const openRunId = chosenRunId ?? runs.data?.[0]?.id ?? null;
 
   const backToBoard = (
     <Link
@@ -99,23 +105,55 @@ export function TaskPage() {
             </p>
           )}
 
-          {teamId && run ? (
-            <>
-              <p className="shrink-0 text-xs text-neutral-500">
-                {RUN_STATUS_ICON[run.status]} {run.agentTitle ?? "Unknown agent"} ·{" "}
-                {run.status.replace("_", " ")} ·{" "}
-                {new Date(run.createdAt).toLocaleString()}
-                {run.durationMs != null &&
-                  ` · ${(run.durationMs / 1000).toFixed(1)}s`}
-                {` · ${formatRunCost(run.costUsd)}`}
-              </p>
-              <RunTranscript
-                teamId={teamId}
-                taskId={task.id}
-                runId={run.id}
-                className="min-h-0 flex-1"
-              />
-            </>
+          {teamId && runs.data && runs.data.length > 0 ? (
+            // The list scrolls, not the transcript's container — with one row
+            // per run the headers alone can outgrow the viewport, so a
+            // flex-1 transcript would squeeze them out. The open transcript
+            // gets a bounded height and scrolls internally instead.
+            <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
+              {runs.data.map((r) => {
+                const isOpen = r.id === openRunId;
+                return (
+                  <div
+                    key={r.id}
+                    className="shrink-0 overflow-hidden rounded border border-neutral-200"
+                  >
+                    <button
+                      type="button"
+                      aria-expanded={isOpen}
+                      onClick={() => setChosenRunId(r.id)}
+                      className={`flex w-full flex-wrap items-center gap-x-2 px-3 py-2 text-left text-xs ${
+                        isOpen
+                          ? "bg-neutral-100 text-neutral-700"
+                          : "text-neutral-500 hover:bg-neutral-50"
+                      }`}
+                    >
+                      <span className="font-medium text-neutral-700">
+                        {RUN_STATUS_ICON[r.status]} {r.agentTitle ?? "Unknown agent"}
+                      </span>
+                      <span>· {r.status.replace("_", " ")}</span>
+                      <span>· {new Date(r.createdAt).toLocaleString()}</span>
+                      {r.durationMs != null && (
+                        <span>· {(r.durationMs / 1000).toFixed(1)}s</span>
+                      )}
+                      <span>· {formatRunCost(r.costUsd)}</span>
+                    </button>
+
+                    {/* Only the open run is mounted: every RunTranscript opens
+                        its own EventSource, so rendering them all would hold
+                        one live SSE connection per run on the task. */}
+                    {isOpen && (
+                      <RunTranscript
+                        teamId={teamId}
+                        taskId={task.id}
+                        runId={r.id}
+                        className="max-h-[55vh] rounded-none"
+                      />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           ) : (
             runs.data && (
               <p className="text-sm text-neutral-400">This task has not been run yet.</p>
