@@ -235,13 +235,21 @@ function EditTaskPage({
     <div className="max-w-2xl space-y-4">
       <BackToBoardButton onBack={onBack} />
       <h2 className="text-lg font-semibold">Edit Task</h2>
-      <EditTaskForm
-        teamId={teamId}
-        task={task}
-        repositories={repositories}
-        allRepositories={allRepositories}
-        onDone={onBack}
-      />
+      {/* Also guards the case where a run starts while this page is open —
+          the board polls, so the form swaps out on the next tick. */}
+      {task.runningSince ? (
+        <p className="text-sm text-amber-700">
+          This task is running — it can't be edited until the run finishes.
+        </p>
+      ) : (
+        <EditTaskForm
+          teamId={teamId}
+          task={task}
+          repositories={repositories}
+          allRepositories={allRepositories}
+          onDone={onBack}
+        />
+      )}
     </div>
   );
 }
@@ -335,7 +343,9 @@ function TaskCard({
             Expand
           </button>
           <button
-            className="text-xs text-neutral-400 hover:text-neutral-700"
+            className="text-xs text-neutral-400 hover:text-neutral-700 disabled:cursor-not-allowed disabled:text-neutral-300 disabled:hover:text-neutral-300"
+            disabled={isRunning}
+            title={isRunning ? "Task is running — edits are locked" : undefined}
             onClick={onEdit}
           >
             Edit
@@ -351,8 +361,10 @@ function TaskCard({
       )}
 
       <select
-        className="w-full rounded border border-neutral-200 px-2 py-1 text-xs"
+        className="w-full rounded border border-neutral-200 px-2 py-1 text-xs disabled:cursor-not-allowed disabled:bg-neutral-50 disabled:text-neutral-400"
         value={task.agentId ?? ""}
+        disabled={isRunning}
+        title={isRunning ? "Task is running — assignment is locked" : undefined}
         onChange={(e) => onAgentChange(e.target.value || null)}
       >
         <option value="">Unassigned</option>

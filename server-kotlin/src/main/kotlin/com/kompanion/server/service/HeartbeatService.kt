@@ -37,6 +37,9 @@ class HeartbeatService(
     private fun findEligibleTask(): Pair<Task, com.kompanion.server.entity.Agent>? {
         val candidates = taskRepository.findByStatusOrderByCreatedAt(TaskStatus.backlog)
         for (task in candidates) {
+            // Skip anything with a live run — the run itself owns that task
+            // until it finishes.
+            if (task.runningSince != null) continue
             val agentId = task.agentId ?: continue
             val agent = agentRepository.findById(agentId).orElse(null) ?: continue
             if (claudeHarnessService.resolveHarnessDir(agent) != null) {

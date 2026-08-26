@@ -11,6 +11,7 @@ import com.kompanion.server.repository.TaskRepository
 import com.kompanion.server.service.NoHarnessException
 import com.kompanion.server.service.OverBudgetException
 import com.kompanion.server.service.RunTaskService
+import com.kompanion.server.service.TaskAlreadyRunningException
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.jdbc.core.JdbcTemplate
@@ -166,6 +167,8 @@ class TaskCommentController(
             "Couldn't run — no harness directory found at agent's harnessPath \"${agent.harnessPath}\"."
         } catch (e: OverBudgetException) {
             "Couldn't run — the team is over its monthly budget."
+        } catch (e: TaskAlreadyRunningException) {
+            "Couldn't run — this task already has a run in flight."
         }
 
         val savedReply = comments.save(TaskComment(taskId = taskId, agentId = agent.id, body = replyBody))
