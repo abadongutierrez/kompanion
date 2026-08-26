@@ -6,6 +6,8 @@
 // loosely typed: this is Anthropic's streaming Messages format, not a shape
 // we own, and pinning it down with strict zod would break on any upstream
 // field addition.
+import { estimateMessageCostUsd } from "./runCost.js";
+
 export type RunEventRaw = { type: string; [key: string]: unknown };
 
 export type TranscriptBlock =
@@ -27,15 +29,35 @@ export type TranscriptBlock =
 export type TranscriptState = {
   blocks: TranscriptBlock[];
   finished: boolean;
+  // Spend so far. While the run is in flight this is priced client-side
+  // from the per-message `usage` blocks (`costIsEstimate: true`); once the
+  // final `result` line lands it's replaced by Claude's own
+  // `total_cost_usd` (`costIsEstimate: false`). null before any usage has
+  // been seen.
+  costUsd: number | null;
+  costIsEstimate: boolean;
   // Which list-index in `blocks` a currently-open content_block (keyed by
   // its stream `index`) landed at — cleared once that block's
   // content_block_stop arrives. Internal bookkeeping, not meant to be read
   // by consumers; only `.blocks`/`.finished` are the public surface.
   openBlocksByStreamIndex: Record<number, number>;
+  // Estimated cost keyed by assistant message id. Claude Code can emit
+  // several `assistant` lines for one message (one per content block),
+  // each carrying that message's cumulative usage — keying by id and
+  // summing the values keeps a repeat from double-counting. Internal
+  // bookkeeping; read `.costUsd` instead.
+  costByMessageId: Record<string, number>;
 };
 
 export function createTranscriptState(): TranscriptState {
-  return { blocks: [], finished: false, openBlocksByStreamIndex: {} };
+  return {
+    blocks: [],
+    finished: false,
+    costUsd: null,
+    costIsEstimate: false,
+    openBlocksByStreamIndex: {},
+    costByMessageId: {},
+  };
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -49,7 +71,10 @@ function asString(value: unknown): string {
 export function applyRunEvent(state: TranscriptState, raw: RunEventRaw): TranscriptState {
   const blocks = state.blocks.slice();
   const open = { ...state.openBlocksByStreamIndex };
+  const costByMessageId = { ...state.costByMessageId };
   let finished = state.finished;
+  let costUsd = state.costUsd;
+  let costIsEstimate = state.costIsEstimate;
 
   function pushBlock(block: TranscriptBlock): number {
     blocks.push(block);
@@ -149,6 +174,21 @@ export function applyRunEvent(state: TranscriptState, raw: RunEventRaw): Transcr
     // handling "assistant" here would duplicate every block. Only "user"
     // (tool_result) is unique information: results are never streamed as
     // deltas, only ever delivered as this one complete message.
+    // Handled for its `usage` only — the blocks it describes were already
+    // built incrementally from the stream_event deltas (see the note
+    // above), so nothing is pushed here.
+    case "assistant": {
+      const message = asRecord(raw.message);
+      const usage = asRecord(message.usage);
+      const id = asString(message.id);
+      if (id && Object.keys(usage).length > 0) {
+        costByMessageId[id] = estimateMessageCostUsd(asString(message.model), usage);
+        costUsd = Object.values(costByMessageId).reduce((sum, c) => sum + c, 0);
+        costIsEstimate = true;
+      }
+      break;
+    }
+
     case "user": {
       const content = asRecord(raw.message).content;
       if (Array.isArray(content)) {
@@ -172,8 +212,14 @@ export function applyRunEvent(state: TranscriptState, raw: RunEventRaw): Transcr
 
     case "result": {
       const summary = typeof raw.result === "string" ? raw.result : null;
-      const costUsd = typeof raw.total_cost_usd === "number" ? raw.total_cost_usd : null;
-      pushBlock({ kind: "result", ok: raw.subtype === "success", summary, costUsd });
+      const reported = typeof raw.total_cost_usd === "number" ? raw.total_cost_usd : null;
+      pushBlock({ kind: "result", ok: raw.subtype === "success", summary, costUsd: reported });
+      // Claude's own number is authoritative — it supersedes whatever we
+      // estimated on the way here.
+      if (reported !== null) {
+        costUsd = reported;
+        costIsEstimate = false;
+      }
       finished = true;
       break;
     }
@@ -182,5 +228,12 @@ export function applyRunEvent(state: TranscriptState, raw: RunEventRaw): Transcr
       break;
   }
 
-  return { blocks, finished, openBlocksByStreamIndex: open };
+  return {
+    blocks,
+    finished,
+    costUsd,
+    costIsEstimate,
+    openBlocksByStreamIndex: open,
+    costByMessageId,
+  };
 }

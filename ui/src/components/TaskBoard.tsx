@@ -326,6 +326,10 @@ function TaskCard({
     (sum, r) => sum + (r.costUsd ?? 0),
     0,
   );
+  // The in-flight run contributes nothing to the sum above (its cost_usd is
+  // still null), so the transcript hands us its live estimate to add on.
+  const [liveCostUsd, setLiveCostUsd] = useState<number | null>(null);
+  const displayedCostUsd = totalCostUsd + (liveCostUsd ?? 0);
 
   return (
     <div className="space-y-2 rounded border border-neutral-200 bg-white p-3 text-sm shadow-sm">
@@ -383,9 +387,10 @@ function TaskCard({
           {task.branchOrPrLink && ` @ ${task.branchOrPrLink}`}
         </p>
       )}
-      {totalCostUsd > 0 && (
+      {displayedCostUsd > 0 && (
         <p className="text-xs text-neutral-400">
-          💰 ${totalCostUsd.toFixed(4)} spent
+          💰 {liveCostUsd !== null && "≈"}${displayedCostUsd.toFixed(4)} spent
+          {liveCostUsd !== null && " (running)"}
         </p>
       )}
 
@@ -428,7 +433,12 @@ function TaskCard({
           )}
 
           {latestRun && isRunning && latestRun.status === "running" && (
-            <RunTranscript teamId={teamId} taskId={task.id} runId={latestRun.id} />
+            <RunTranscript
+              teamId={teamId}
+              taskId={task.id}
+              runId={latestRun.id}
+              onCostChange={setLiveCostUsd}
+            />
           )}
 
           {latestRun && !isRunning && latestRun.status === "over_budget" && (
