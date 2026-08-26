@@ -2,9 +2,8 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api.js";
-import { RunTranscript } from "./RunTranscript.js";
-import { RUN_STATUS_ICON, formatRunCost } from "./runStatus.js";
 import { ProjectChrome } from "./ProjectChrome.js";
+import { RunRow } from "./RunRow.js";
 
 // The board card's "Expand" used to open a modal; it now links here, so this
 // is a real route with its own URL — shareable, reloadable, and back-button
@@ -38,12 +37,27 @@ export function TaskPage() {
     enabled: !!teamId && !!taskId,
     refetchInterval: isRunning ? 3000 : false,
   });
-  // Accordion state: exactly one run's transcript is open at a time. null
-  // means "nothing picked yet", which resolves to the newest run — so the
-  // page opens on the latest run, and keeps following it across refetches
-  // until the reader picks a different one.
-  const [chosenRunId, setChosenRunId] = useState<string | null>(null);
-  const openRunId = chosenRunId ?? runs.data?.[0]?.id ?? null;
+  // Accordion state: at most one run's transcript is open at a time.
+  // "auto" is the untouched state — it resolves to the newest run, so the
+  // page opens on the latest and keeps following it across refetches until
+  // the reader picks one. Collapsing needs its own state rather than a null
+  // runId, or "closed" would be indistinguishable from "auto" and the newest
+  // run would spring straight back open.
+  type OpenChoice =
+    | { kind: "auto" }
+    | { kind: "open"; runId: string }
+    | { kind: "closed" };
+  const [choice, setChoice] = useState<OpenChoice>({ kind: "auto" });
+
+  const openRunId =
+    choice.kind === "open"
+      ? choice.runId
+      : choice.kind === "auto"
+        ? (runs.data?.[0]?.id ?? null)
+        : null;
+
+  const toggleRun = (runId: string) =>
+    setChoice(runId === openRunId ? { kind: "closed" } : { kind: "open", runId });
 
   const backToBoard = (
     <Link
@@ -111,48 +125,16 @@ export function TaskPage() {
             // flex-1 transcript would squeeze them out. The open transcript
             // gets a bounded height and scrolls internally instead.
             <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
-              {runs.data.map((r) => {
-                const isOpen = r.id === openRunId;
-                return (
-                  <div
-                    key={r.id}
-                    className="shrink-0 overflow-hidden rounded border border-neutral-200"
-                  >
-                    <button
-                      type="button"
-                      aria-expanded={isOpen}
-                      onClick={() => setChosenRunId(r.id)}
-                      className={`flex w-full flex-wrap items-center gap-x-2 px-3 py-2 text-left text-xs ${
-                        isOpen
-                          ? "bg-neutral-100 text-neutral-700"
-                          : "text-neutral-500 hover:bg-neutral-50"
-                      }`}
-                    >
-                      <span className="font-medium text-neutral-700">
-                        {RUN_STATUS_ICON[r.status]} {r.agentTitle ?? "Unknown agent"}
-                      </span>
-                      <span>· {r.status.replace("_", " ")}</span>
-                      <span>· {new Date(r.createdAt).toLocaleString()}</span>
-                      {r.durationMs != null && (
-                        <span>· {(r.durationMs / 1000).toFixed(1)}s</span>
-                      )}
-                      <span>· {formatRunCost(r.costUsd)}</span>
-                    </button>
-
-                    {/* Only the open run is mounted: every RunTranscript opens
-                        its own EventSource, so rendering them all would hold
-                        one live SSE connection per run on the task. */}
-                    {isOpen && (
-                      <RunTranscript
-                        teamId={teamId}
-                        taskId={task.id}
-                        runId={r.id}
-                        className="max-h-[55vh] rounded-none"
-                      />
-                    )}
-                  </div>
-                );
-              })}
+              {runs.data.map((r) => (
+                <RunRow
+                  key={r.id}
+                  run={r}
+                  teamId={teamId}
+                  taskId={task.id}
+                  isOpen={r.id === openRunId}
+                  onToggle={() => toggleRun(r.id)}
+                />
+              ))}
             </div>
           ) : (
             runs.data && (

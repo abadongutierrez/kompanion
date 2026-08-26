@@ -86,6 +86,14 @@ test.describe("task page", () => {
     await expect(rows.nth(2)).toHaveAttribute("aria-expanded", "true");
     await expect(rows.nth(0)).toHaveAttribute("aria-expanded", "false");
     await expect(rows.nth(1)).toHaveAttribute("aria-expanded", "false");
+
+    // A row toggles: clicking the open one collapses it, leaving none open.
+    // The newest must not spring back open here — "collapsed" is a real
+    // state, not the absence of a choice.
+    await rows.nth(2).click();
+    for (const i of [0, 1, 2]) {
+      await expect(rows.nth(i)).toHaveAttribute("aria-expanded", "false");
+    }
   });
 
   test("browser back returns to the board (the modal used to leave the app)", async ({
