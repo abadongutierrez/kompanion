@@ -95,21 +95,12 @@ export function RunTranscript({
     <div
       ref={containerRef}
       onScroll={handleScroll}
-className={`${className} relative space-y-1.5 overflow-y-auto rounded bg-neutral-50 p-2 text-xs`}
+      // No sticky overlay here any more: a cost banner pinned to top-0 sat on
+      // top of the first lines of the log and there was no way to scroll them
+      // out from under it. Cost is reported upward via onCostChange and shown
+      // by the card, the Runs section, and the task page's status line.
+      className={`${className} space-y-1.5 overflow-y-auto rounded bg-neutral-50 p-2 text-xs`}
     >
-      {state.costUsd !== null && (
-        <p
-          className="sticky top-0 z-10 -m-2 mb-0 bg-neutral-50/95 px-2 py-1 text-right text-neutral-500"
-          title={
-            state.costIsEstimate
-              ? "Estimated from token usage so far — replaced by the exact figure when the run finishes"
-              : "Final cost reported by Claude"
-          }
-        >
-          💰 {state.costIsEstimate ? "≈" : ""}${state.costUsd.toFixed(4)}
-          {state.costIsEstimate && !state.finished && " spent so far"}
-        </p>
-      )}
       {renderable.length === 0 && (
         <p className="text-neutral-400">Waiting for the agent to start…</p>
       )}
