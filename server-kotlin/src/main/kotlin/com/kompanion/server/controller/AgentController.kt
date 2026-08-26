@@ -8,6 +8,7 @@ import com.kompanion.server.dto.UpdateAgentRequest
 import com.kompanion.server.entity.Agent
 import com.kompanion.server.repository.AgentRepository
 import com.kompanion.server.repository.TeamRepository
+import com.kompanion.server.service.ClaudeHarnessService
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.jdbc.core.JdbcTemplate
@@ -20,27 +21,31 @@ private fun slugify(title: String): String =
         .replace(Regex("[^a-z0-9]+"), "-")
         .replace(Regex("(^-|-$)"), "")
 
-// No scaffolding happens here — the operator is expected to have already
-// created the harness directory (with its own .claude/ config) at
-// harnessPath. We only validate it's really there, same as Repositories.
-private fun validateHarnessPath(harnessPath: String): String? {
-    val dir = File(harnessPath)
-    if (!dir.exists()) {
-        return "no directory at \"$harnessPath\" — create the harness there first (with a .claude/ config), then register it"
-    }
-    if (!File(dir, ".claude").exists()) {
-        return "\"$harnessPath\" exists but has no .claude/ config — it isn't a valid harness directory"
-    }
-    return null
-}
-
 // The app-wide Agent library: create, edit, and the shared CLAUDE.md
 // template all operate on the Agent itself here, regardless of which
 // Team(s) currently have it assigned — Agents are fully independent, the
 // same level as Project itself, with no project/team ownership at all.
 @RestController
 @RequestMapping("/api/agents")
-class GlobalAgentsController(private val agents: AgentRepository) {
+class GlobalAgentsController(
+    private val agents: AgentRepository,
+    private val claudeHarnessService: ClaudeHarnessService,
+) {
+
+    // No scaffolding happens here — the operator is expected to have already
+    // created the harness directory (with its own .claude/ config) at
+    // harnessPath. We only validate it's really there, same as Repositories.
+    // Accepts either an absolute path or one relative to WORKSPACE_ROOT.
+    private fun validateHarnessPath(harnessPath: String): String? {
+        val dir = claudeHarnessService.resolveHarnessPath(harnessPath)
+        if (!dir.exists()) {
+            return "no directory at \"${dir.path}\" — create the harness there first (with a .claude/ config), then register it"
+        }
+        if (!File(dir, ".claude").exists()) {
+            return "\"${dir.path}\" exists but has no .claude/ config — it isn't a valid harness directory"
+        }
+        return null
+    }
 
     // An Agent's slug is its only stable, machine-usable identifier (e.g.
     // the Project Manager team-snapshot gate keys off slug ==
@@ -74,7 +79,13 @@ class GlobalAgentsController(private val agents: AgentRepository) {
         val slug = uniqueSlug(body.title)
         // createdAt is @ReadOnlyProperty (DB default now()) — re-fetch to
         // return the fully populated row, matching `returning *`.
-        val saved = agents.save(Agent(title = body.title, slug = slug, harnessPath = body.harnessPath))
+        val saved = agents.save(
+            Agent(
+                title = body.title,
+                slug = slug,
+                harnessPath = claudeHarnessService.toStoredHarnessPath(body.harnessPath),
+            ),
+        )
         val reloaded = agents.findById(saved.id!!).orElse(saved)
         return ResponseEntity.status(HttpStatus.CREATED).body(reloaded)
     }
@@ -100,7 +111,8 @@ class GlobalAgentsController(private val agents: AgentRepository) {
         val updated = existing.copy(
             title = body.title ?: existing.title,
             slug = body.slug ?: existing.slug,
-            harnessPath = body.harnessPath ?: existing.harnessPath,
+            harnessPath = body.harnessPath?.let { claudeHarnessService.toStoredHarnessPath(it) }
+                ?: existing.harnessPath,
         )
         return ResponseEntity.ok(agents.save(updated))
     }
@@ -109,7 +121,7 @@ class GlobalAgentsController(private val agents: AgentRepository) {
     fun getHarnessTemplate(@PathVariable agentId: UUID): ResponseEntity<Any> {
         val agent = agents.findById(agentId).orElse(null)
             ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ErrorResponse("agent not found"))
-        val claudeMd = File(agent.harnessPath, "CLAUDE.md")
+        val claudeMd = File(claudeHarnessService.resolveHarnessPath(agent.harnessPath), "CLAUDE.md")
         val content = if (claudeMd.exists()) claudeMd.readText() else ""
         return ResponseEntity.ok(HarnessTemplateRequest(content))
     }
@@ -121,7 +133,7 @@ class GlobalAgentsController(private val agents: AgentRepository) {
     ): ResponseEntity<Any> {
         val agent = agents.findById(agentId).orElse(null)
             ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ErrorResponse("agent not found"))
-        File(agent.harnessPath, "CLAUDE.md").writeText(body.content)
+        File(claudeHarnessService.resolveHarnessPath(agent.harnessPath), "CLAUDE.md").writeText(body.content)
         return ResponseEntity.ok(HarnessTemplateRequest(body.content))
     }
 }

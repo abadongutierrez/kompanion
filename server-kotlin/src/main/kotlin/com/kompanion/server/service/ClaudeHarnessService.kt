@@ -38,9 +38,34 @@ class ClaudeHarnessService {
     private val harnessesRoot = File(workspaceRoot, "harnesses")
     val workspacesRoot: File = File(workspaceRoot, "tasks")
 
+    // A stored harnessPath is either absolute (a harness anywhere on disk)
+    // or relative to workspaceRoot (the normal case — "harnesses/engineer").
+    // Relative is what gets stored for anything under workspace/, so the
+    // database stays portable across machines and checkouts; see V16.
+    fun resolveHarnessPath(harnessPath: String): File {
+        val asGiven = File(harnessPath)
+        return if (asGiven.isAbsolute) asGiven else File(workspaceRoot, harnessPath)
+    }
+
+    // The inverse, applied on the way in: an absolute path pointing inside
+    // workspaceRoot is stored relative to it. Anything else is stored
+    // verbatim — there's nothing to relativize a path outside workspace/
+    // against.
+    fun toStoredHarnessPath(harnessPath: String): String {
+        val file = File(harnessPath)
+        if (!file.isAbsolute) return harnessPath
+        val canonical = file.canonicalFile
+        val root = workspaceRoot.canonicalFile
+        return if (canonical.path.startsWith(root.path + File.separator)) {
+            canonical.path.removePrefix(root.path + File.separator)
+        } else {
+            harnessPath
+        }
+    }
+
     // harnessPath is the sole source of an Agent's harness — no fallback.
     fun resolveHarnessDir(agent: Agent): File? {
-        val dir = File(agent.harnessPath)
+        val dir = resolveHarnessPath(agent.harnessPath)
         return if (dir.exists()) dir else null
     }
 
@@ -56,7 +81,9 @@ class ClaudeHarnessService {
                 val title = dir.name.split("_").joinToString(" ") { word ->
                     if (word in knownAcronyms) word.uppercase() else word.replaceFirstChar { it.uppercase() }
                 }
-                BuiltinHarnessResponse(slug = dir.name, title = title, path = dir.path)
+                // Relative, so the UI can hand it straight back to
+                // POST /api/agents and have it stored as-is.
+                BuiltinHarnessResponse(slug = dir.name, title = title, path = toStoredHarnessPath(dir.path))
             }
             ?: emptyList()
     }
