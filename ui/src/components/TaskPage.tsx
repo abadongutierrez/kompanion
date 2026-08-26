@@ -59,6 +59,17 @@ export function TaskPage() {
   // never runs — without this the page would sit on "Loading…" indefinitely.
   const noTeam = !!teams.data && teams.data.length === 0;
 
+  // The same dead end reached a different way: a failed request leaves its
+  // `data` undefined for good, so neither the task nor the not-found branch
+  // below can ever resolve and the page would sit on "Loading…" forever.
+  if (teams.isError || tasks.isError) {
+    return (
+      <main className="mx-auto max-w-xl px-6 py-8">
+        <p className="text-sm text-neutral-600">Could not load this task. {backToBoard}</p>
+      </main>
+    );
+  }
+
   if (noTeam || (tasks.data && !task)) {
     return (
       <main className="mx-auto max-w-xl px-6 py-8">
