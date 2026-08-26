@@ -63,6 +63,8 @@ data class TaskDependencyResponse(
 
 data class CreateTaskCommentRequest(val agentId: UUID? = null, val body: String)
 
+data class UpdateTaskCommentRequest(val body: String)
+
 data class MentionedAgentResponse(val id: UUID, val title: String, val slug: String)
 
 data class TaskCommentResponse(
@@ -73,4 +75,5 @@ data class TaskCommentResponse(
     val body: String,
     val mentionedAgents: List<MentionedAgentResponse>,
     val createdAt: OffsetDateTime?,
+    val updatedAt: OffsetDateTime?,
 )

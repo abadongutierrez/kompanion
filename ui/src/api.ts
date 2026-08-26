@@ -21,6 +21,7 @@ import type {
   TeamSpend,
   UpdateRepositoryInput,
   UpdateAgentInput,
+  UpdateTaskCommentInput,
   UpdateTaskInput,
   UpdateTeamBudgetInput,
 } from "@kompanion/shared";
@@ -187,6 +188,16 @@ export const api = {
       method: "POST",
       body: JSON.stringify(input),
     }),
+  updateTaskComment: (
+    teamId: string,
+    taskId: string,
+    commentId: string,
+    input: UpdateTaskCommentInput,
+  ) =>
+    request<TaskComment>(
+      `${base}/teams/${teamId}/tasks/${taskId}/comments/${commentId}`,
+      { method: "PATCH", body: JSON.stringify(input) },
+    ),
   replyAsAgent: (teamId: string, taskId: string, commentId: string, agentId: string) =>
     request<TaskComment>(
       `${base}/teams/${teamId}/tasks/${taskId}/comments/${commentId}/reply-as/${agentId}`,

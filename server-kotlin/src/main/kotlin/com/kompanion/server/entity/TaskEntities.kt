@@ -54,4 +54,6 @@ data class TaskComment(
     val agentId: UUID? = null,
     val body: String,
     @ReadOnlyProperty val createdAt: OffsetDateTime? = null,
+    // Null until an operator edits the comment.
+    val updatedAt: OffsetDateTime? = null,
 )

@@ -696,6 +696,9 @@ function CommentsSection({
   const queryClient = useQueryClient();
   const [body, setBody] = useState("");
   const [asAgentId, setAsAgentId] = useState("");
+  // Which Operator comment is open for editing, and its draft body.
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editBody, setEditBody] = useState("");
 
   const comments = useQuery({
     queryKey: ["taskComments", task.id],
@@ -720,6 +723,15 @@ function CommentsSection({
     onSuccess: invalidate,
   });
 
+  const editComment = useMutation({
+    mutationFn: ({ commentId, body }: { commentId: string; body: string }) =>
+      api.updateTaskComment(teamId, task.id, commentId, { body }),
+    onSuccess: () => {
+      invalidate();
+      setEditingId(null);
+    },
+  });
+
   const count = comments.data?.length ?? 0;
 
   return (
@@ -734,9 +746,61 @@ function CommentsSection({
             <span className="font-medium text-neutral-600">
               {comment.authorTitle ?? "Operator"}
             </span>
-            <span>{new Date(comment.createdAt).toLocaleTimeString()}</span>
+            <span>
+              {new Date(comment.createdAt).toLocaleTimeString()}
+              {comment.updatedAt && " (edited)"}
+            </span>
           </div>
-          <p className="whitespace-pre-wrap text-neutral-700">{comment.body}</p>
+          {editingId === comment.id ? (
+            <form
+              className="flex flex-col gap-1"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (editBody.trim())
+                  editComment.mutate({ commentId: comment.id, body: editBody });
+              }}
+            >
+              <textarea
+                className="w-full rounded border border-neutral-200 px-2 py-1"
+                rows={2}
+                value={editBody}
+                onChange={(e) => setEditBody(e.target.value)}
+              />
+              <div className="flex items-center gap-1">
+                <button
+                  type="submit"
+                  className="rounded border border-neutral-300 bg-white px-2 py-0.5 hover:bg-neutral-100 disabled:opacity-50"
+                  disabled={editComment.isPending || !editBody.trim()}
+                >
+                  Save
+                </button>
+                <button
+                  type="button"
+                  className="rounded border border-neutral-300 bg-white px-2 py-0.5 hover:bg-neutral-100"
+                  onClick={() => setEditingId(null)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          ) : (
+            <>
+              <p className="whitespace-pre-wrap text-neutral-700">{comment.body}</p>
+              {/* Only Operator comments are editable — an agent's comment is
+                  the record of what its run reported. */}
+              {comment.agentId === null && (
+                <button
+                  className="text-neutral-400 underline hover:text-neutral-600"
+                  onClick={() => {
+                    setEditingId(comment.id);
+                    setEditBody(comment.body);
+                  }}
+                >
+                  Edit
+                </button>
+              )}
+            </>
+          )}
           {comment.mentionedAgents.length > 0 && (
             <div className="flex flex-wrap gap-1 pt-1">
               {comment.mentionedAgents.map((agent) => (
