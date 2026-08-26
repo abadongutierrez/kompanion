@@ -1,6 +1,6 @@
 package com.kompanion.server.controller
 
-import com.kompanion.server.dto.AssignRoleRequest
+import com.kompanion.server.dto.AssignAgentRequest
 import com.kompanion.server.dto.CreateTaskRequest
 import com.kompanion.server.dto.ErrorResponse
 import com.kompanion.server.dto.LinkRepositoryRequest
@@ -11,7 +11,7 @@ import com.kompanion.server.entity.Task
 import com.kompanion.server.entity.TaskStatus
 import com.kompanion.server.entity.TaskType
 import com.kompanion.server.entity.isValidTaskTransition
-import com.kompanion.server.repository.RoleRepository
+import com.kompanion.server.repository.AgentRepository
 import com.kompanion.server.repository.TaskRepository
 import com.kompanion.server.service.NoHarnessException
 import com.kompanion.server.service.OverBudgetException
@@ -27,7 +27,7 @@ import java.util.UUID
 @RequestMapping("/api/teams/{teamId}/tasks")
 class TaskController(
     private val tasks: TaskRepository,
-    private val roles: RoleRepository,
+    private val agents: AgentRepository,
     private val jdbc: JdbcTemplate,
     private val runTaskService: RunTaskService,
 ) {
@@ -44,7 +44,7 @@ class TaskController(
         return TaskWithRepositoriesResponse(
             id = UUID.fromString(rs.getString("id")),
             teamId = UUID.fromString(rs.getString("team_id")),
-            roleId = rs.getString("role_id")?.let { UUID.fromString(it) },
+            agentId = rs.getString("agent_id")?.let { UUID.fromString(it) },
             title = rs.getString("title"),
             description = rs.getString("description"),
             type = TaskType.valueOf(rs.getString("type")),
@@ -104,7 +104,7 @@ class TaskController(
         val saved = tasks.save(
             Task(
                 teamId = teamId,
-                roleId = body.roleId,
+                agentId = body.agentId,
                 title = body.title,
                 description = body.description,
                 type = body.type,
@@ -206,15 +206,15 @@ class TaskController(
         return ResponseEntity.noContent().build()
     }
 
-    @PatchMapping("/{taskId}/role")
-    fun assignRole(
+    @PatchMapping("/{taskId}/agent")
+    fun assignAgent(
         @PathVariable teamId: UUID,
         @PathVariable taskId: UUID,
-        @RequestBody body: AssignRoleRequest,
+        @RequestBody body: AssignAgentRequest,
     ): ResponseEntity<Any> {
         val existing = tasks.findById(taskId).orElse(null)
             ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ErrorResponse("task not found"))
-        tasks.save(existing.copy(roleId = body.roleId, updatedAt = OffsetDateTime.now()))
+        tasks.save(existing.copy(agentId = body.agentId, updatedAt = OffsetDateTime.now()))
         return ResponseEntity.ok(findOneWithRepositories(taskId))
     }
 
@@ -222,16 +222,16 @@ class TaskController(
     fun run(@PathVariable teamId: UUID, @PathVariable taskId: UUID): ResponseEntity<Any> {
         val task = tasks.findById(taskId).orElse(null)
             ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ErrorResponse("task not found"))
-        val roleId = task.roleId
-            ?: return ResponseEntity.badRequest().body(ErrorResponse("task has no role assigned"))
-        val role = roles.findById(roleId).orElse(null)
-            ?: return ResponseEntity.badRequest().body(ErrorResponse("assigned role not found"))
+        val agentId = task.agentId
+            ?: return ResponseEntity.badRequest().body(ErrorResponse("task has no agent assigned"))
+        val agent = agents.findById(agentId).orElse(null)
+            ?: return ResponseEntity.badRequest().body(ErrorResponse("assigned agent not found"))
 
         return try {
-            ResponseEntity.status(HttpStatus.CREATED).body(runTaskService.runTaskWithClaude(task, role))
+            ResponseEntity.status(HttpStatus.CREATED).body(runTaskService.runTaskWithClaude(task, agent))
         } catch (e: NoHarnessException) {
             ResponseEntity.badRequest()
-                .body(ErrorResponse("no harness directory found at role's harnessPath \"${role.harnessPath}\""))
+                .body(ErrorResponse("no harness directory found at agent's harnessPath \"${agent.harnessPath}\""))
         } catch (e: OverBudgetException) {
             // Still a 201: a task_runs record was created (status
             // "over_budget"), just refused before spending anything —

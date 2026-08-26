@@ -3,7 +3,7 @@ package com.kompanion.server.service
 import com.kompanion.server.dto.HeartbeatStatusResponse
 import com.kompanion.server.entity.Task
 import com.kompanion.server.entity.TaskStatus
-import com.kompanion.server.repository.RoleRepository
+import com.kompanion.server.repository.AgentRepository
 import com.kompanion.server.repository.TaskRepository
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.scheduling.annotation.Scheduled
@@ -15,7 +15,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 @Service
 class HeartbeatService(
     private val taskRepository: TaskRepository,
-    private val roleRepository: RoleRepository,
+    private val agentRepository: AgentRepository,
     private val claudeHarnessService: ClaudeHarnessService,
     private val runTaskService: RunTaskService,
     @Value("\${heartbeat.enabled:false}") private val enabled: Boolean,
@@ -34,13 +34,13 @@ class HeartbeatService(
         }
     }
 
-    private fun findEligibleTask(): Pair<Task, com.kompanion.server.entity.Role>? {
+    private fun findEligibleTask(): Pair<Task, com.kompanion.server.entity.Agent>? {
         val candidates = taskRepository.findByStatusOrderByCreatedAt(TaskStatus.backlog)
         for (task in candidates) {
-            val roleId = task.roleId ?: continue
-            val role = roleRepository.findById(roleId).orElse(null) ?: continue
-            if (claudeHarnessService.resolveHarnessDir(role) != null) {
-                return task to role
+            val agentId = task.agentId ?: continue
+            val agent = agentRepository.findById(agentId).orElse(null) ?: continue
+            if (claudeHarnessService.resolveHarnessDir(agent) != null) {
+                return task to agent
             }
         }
         return null
@@ -59,9 +59,9 @@ class HeartbeatService(
         try {
             val found = findEligibleTask()
             if (found != null) {
-                val (task, role) = found
+                val (task, agent) = found
                 lastRunTaskId = task.id
-                runTaskService.runTaskWithClaude(task, role)
+                runTaskService.runTaskWithClaude(task, agent)
                 lastError = null
             }
         } catch (e: Exception) {

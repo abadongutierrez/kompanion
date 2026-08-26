@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   TASK_STATUS_TRANSITIONS,
   type Repository,
-  type Role,
+  type Agent,
   type TaskDependencyType,
   type TaskStatus,
   type TaskType,
@@ -38,9 +38,9 @@ export function TaskBoard({
   const queryClient = useQueryClient();
   const [view, setView] = useState<BoardView>({ type: "list" });
 
-  const roles = useQuery({
-    queryKey: ["roles", teamId],
-    queryFn: () => api.listRoles(teamId),
+  const agents = useQuery({
+    queryKey: ["agents", teamId],
+    queryFn: () => api.listAgents(teamId),
   });
 
   const repositories = useQuery({
@@ -64,13 +64,13 @@ export function TaskBoard({
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["tasks", teamId] }),
   });
 
-  const assignRole = useMutation({
-    mutationFn: ({ taskId, roleId }: { taskId: string; roleId: string | null }) =>
-      api.assignTaskRole(teamId, taskId, roleId),
+  const assignAgent = useMutation({
+    mutationFn: ({ taskId, agentId }: { taskId: string; agentId: string | null }) =>
+      api.assignTaskAgent(teamId, taskId, agentId),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["tasks", teamId] }),
   });
 
-  if (roles.isLoading || tasks.isLoading) {
+  if (agents.isLoading || tasks.isLoading) {
     return <p className="text-sm text-neutral-500">Loading…</p>;
   }
 
@@ -78,7 +78,7 @@ export function TaskBoard({
     return (
       <NewTaskPage
         teamId={teamId}
-        roles={roles.data ?? []}
+        agents={agents.data ?? []}
         repositories={repositories.data ?? []}
         onBack={() => setView({ type: "list" })}
       />
@@ -111,15 +111,15 @@ export function TaskBoard({
     );
   }
 
-  const rolesById = new Map((roles.data ?? []).map((r) => [r.id, r]));
+  const agentsById = new Map((agents.data ?? []).map((r) => [r.id, r]));
   const reposById = new Map((repositories.data ?? []).map((r) => [r.id, r]));
   const runningTasks = (tasks.data ?? []).filter((t) => t.runningSince);
 
   return (
     <div className="space-y-6">
-      {(roles.data ?? []).length === 0 && (
+      {(agents.data ?? []).length === 0 && (
         <p className="text-sm text-neutral-500">
-          No roles yet on this team — add some in the Roles section before assigning
+          No agents yet on this team — add some in the Agents section before assigning
           tasks.
         </p>
       )}
@@ -156,17 +156,17 @@ export function TaskBoard({
                     key={task.id}
                     teamId={teamId}
                     task={task}
-                    roles={roles.data ?? []}
+                    agents={agents.data ?? []}
                     allTasks={tasks.data ?? []}
-                    assignedRole={task.roleId ? rolesById.get(task.roleId) : undefined}
+                    assignedAgent={task.agentId ? agentsById.get(task.agentId) : undefined}
                     repositories={task.repositoryIds
                       .map((id) => reposById.get(id))
                       .filter((r): r is Repository => !!r)}
                     onStatusChange={(status) =>
                       updateStatus.mutate({ taskId: task.id, status })
                     }
-                    onRoleChange={(roleId) =>
-                      assignRole.mutate({ taskId: task.id, roleId })
+                    onAgentChange={(agentId) =>
+                      assignAgent.mutate({ taskId: task.id, agentId })
                     }
                     onEdit={() => setView({ type: "edit", taskId: task.id })}
                   />
@@ -193,12 +193,12 @@ function BackToBoardButton({ onBack }: { onBack: () => void }) {
 
 function NewTaskPage({
   teamId,
-  roles,
+  agents,
   repositories,
   onBack,
 }: {
   teamId: string;
-  roles: Role[];
+  agents: Agent[];
   repositories: Repository[];
   onBack: () => void;
 }) {
@@ -208,7 +208,7 @@ function NewTaskPage({
       <h2 className="text-lg font-semibold">New Task</h2>
       <CreateTaskForm
         teamId={teamId}
-        roles={roles}
+        agents={agents}
         repositories={repositories}
         onCreated={onBack}
         onCancel={onBack}
@@ -248,29 +248,29 @@ function EditTaskPage({
 function TaskCard({
   teamId,
   task,
-  roles,
+  agents,
   allTasks,
-  assignedRole,
+  assignedAgent,
   repositories,
   onStatusChange,
-  onRoleChange,
+  onAgentChange,
   onEdit,
 }: {
   teamId: string;
   task: TaskWithRepositories;
-  roles: Role[];
+  agents: Agent[];
   allTasks: TaskWithRepositories[];
-  assignedRole?: Role;
+  assignedAgent?: Agent;
   repositories: Repository[];
   onStatusChange: (status: TaskStatus) => void;
-  onRoleChange: (roleId: string | null) => void;
+  onAgentChange: (agentId: string | null) => void;
   onEdit: () => void;
 }) {
   const nextStatuses = TASK_STATUS_TRANSITIONS[task.status];
-  // Every Role has a harnessPath now (it's one of the only three fields a
-  // Role has) — the client can't check the filesystem, so this is an
+  // Every Agent has a harnessPath now (it's one of the only three fields a
+  // Agent has) — the client can't check the filesystem, so this is an
   // optimistic guess for the "Run" affordance; the server is the real gate.
-  const hasHarness = !!assignedRole?.harnessPath;
+  const hasHarness = !!assignedAgent?.harnessPath;
   const queryClient = useQueryClient();
 
   const spend = useQuery({
@@ -341,18 +341,18 @@ function TaskCard({
 
       <select
         className="w-full rounded border border-neutral-200 px-2 py-1 text-xs"
-        value={task.roleId ?? ""}
-        onChange={(e) => onRoleChange(e.target.value || null)}
+        value={task.agentId ?? ""}
+        onChange={(e) => onAgentChange(e.target.value || null)}
       >
         <option value="">Unassigned</option>
-        {roles.map((role) => (
-          <option key={role.id} value={role.id}>
-            {role.title}
+        {agents.map((agent) => (
+          <option key={agent.id} value={agent.id}>
+            {agent.title}
           </option>
         ))}
       </select>
-      {assignedRole && (
-        <p className="text-xs text-neutral-400">Assigned: {assignedRole.title}</p>
+      {assignedAgent && (
+        <p className="text-xs text-neutral-400">Assigned: {assignedAgent.title}</p>
       )}
       {repositories.length > 0 && (
         <p className="text-xs text-neutral-400">
@@ -368,7 +368,7 @@ function TaskCard({
 
       <DependenciesSection teamId={teamId} task={task} allTasks={allTasks} />
 
-      <CommentsSection teamId={teamId} task={task} roles={roles} />
+      <CommentsSection teamId={teamId} task={task} agents={agents} />
 
       {nextStatuses.length > 0 && (
         <div className="flex flex-wrap gap-1">
@@ -687,15 +687,15 @@ function DependenciesSection({
 function CommentsSection({
   teamId,
   task,
-  roles,
+  agents,
 }: {
   teamId: string;
   task: TaskWithRepositories;
-  roles: Role[];
+  agents: Agent[];
 }) {
   const queryClient = useQueryClient();
   const [body, setBody] = useState("");
-  const [asRoleId, setAsRoleId] = useState("");
+  const [asAgentId, setAsAgentId] = useState("");
 
   const comments = useQuery({
     queryKey: ["taskComments", task.id],
@@ -707,16 +707,16 @@ function CommentsSection({
 
   const addComment = useMutation({
     mutationFn: () =>
-      api.addTaskComment(teamId, task.id, { roleId: asRoleId || null, body }),
+      api.addTaskComment(teamId, task.id, { agentId: asAgentId || null, body }),
     onSuccess: () => {
       invalidate();
       setBody("");
     },
   });
 
-  const replyAsRole = useMutation({
-    mutationFn: ({ commentId, roleId }: { commentId: string; roleId: string }) =>
-      api.replyAsRole(teamId, task.id, commentId, roleId),
+  const replyAsAgent = useMutation({
+    mutationFn: ({ commentId, agentId }: { commentId: string; agentId: string }) =>
+      api.replyAsAgent(teamId, task.id, commentId, agentId),
     onSuccess: invalidate,
   });
 
@@ -737,26 +737,26 @@ function CommentsSection({
             <span>{new Date(comment.createdAt).toLocaleTimeString()}</span>
           </div>
           <p className="whitespace-pre-wrap text-neutral-700">{comment.body}</p>
-          {comment.mentionedRoles.length > 0 && (
+          {comment.mentionedAgents.length > 0 && (
             <div className="flex flex-wrap gap-1 pt-1">
-              {comment.mentionedRoles.map((role) => (
+              {comment.mentionedAgents.map((agent) => (
                 <button
-                  key={role.id}
+                  key={agent.id}
                   className="rounded border border-neutral-300 bg-white px-1.5 py-0.5 text-neutral-600 hover:bg-neutral-100 disabled:opacity-50"
                   disabled={
-                    replyAsRole.isPending &&
-                    replyAsRole.variables?.commentId === comment.id &&
-                    replyAsRole.variables?.roleId === role.id
+                    replyAsAgent.isPending &&
+                    replyAsAgent.variables?.commentId === comment.id &&
+                    replyAsAgent.variables?.agentId === agent.id
                   }
                   onClick={() =>
-                    replyAsRole.mutate({ commentId: comment.id, roleId: role.id })
+                    replyAsAgent.mutate({ commentId: comment.id, agentId: agent.id })
                   }
                 >
-                  {replyAsRole.isPending &&
-                  replyAsRole.variables?.commentId === comment.id &&
-                  replyAsRole.variables?.roleId === role.id
-                    ? `Running ${role.title}…`
-                    : `Run as ${role.title}`}
+                  {replyAsAgent.isPending &&
+                  replyAsAgent.variables?.commentId === comment.id &&
+                  replyAsAgent.variables?.agentId === agent.id
+                    ? `Running ${agent.title}…`
+                    : `Run as ${agent.title}`}
                 </button>
               ))}
             </div>
@@ -773,7 +773,7 @@ function CommentsSection({
       >
         <textarea
           className="w-full rounded border border-neutral-200 px-2 py-1"
-          placeholder="Add a comment… mention a role with @slug"
+          placeholder="Add a comment… mention an agent with @slug"
           rows={2}
           value={body}
           onChange={(e) => setBody(e.target.value)}
@@ -781,13 +781,13 @@ function CommentsSection({
         <div className="flex items-center gap-1">
           <select
             className="rounded border border-neutral-200 px-1 py-0.5"
-            value={asRoleId}
-            onChange={(e) => setAsRoleId(e.target.value)}
+            value={asAgentId}
+            onChange={(e) => setAsAgentId(e.target.value)}
           >
             <option value="">as Operator</option>
-            {roles.map((role) => (
-              <option key={role.id} value={role.id}>
-                as {role.title}
+            {agents.map((agent) => (
+              <option key={agent.id} value={agent.id}>
+                as {agent.title}
               </option>
             ))}
           </select>
@@ -806,13 +806,13 @@ function CommentsSection({
 
 function CreateTaskForm({
   teamId,
-  roles,
+  agents,
   repositories,
   onCreated,
   onCancel,
 }: {
   teamId: string;
-  roles: Role[];
+  agents: Agent[];
   repositories: Repository[];
   onCreated: () => void;
   onCancel: () => void;
@@ -821,7 +821,7 @@ function CreateTaskForm({
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [type, setType] = useState<TaskType>("story");
-  const [roleId, setRoleId] = useState("");
+  const [agentId, setAgentId] = useState("");
   const [repositoryIds, setRepositoryIds] = useState<string[]>([]);
 
   const mutation = useMutation({
@@ -831,7 +831,7 @@ function CreateTaskForm({
         title,
         type,
         description: description || null,
-        roleId: roleId || null,
+        agentId: agentId || null,
         repositoryIds,
       }),
     onSuccess: () => {
@@ -874,13 +874,13 @@ function CreateTaskForm({
       </select>
       <select
         className="rounded border border-neutral-300 px-2 py-1 text-xs"
-        value={roleId}
-        onChange={(e) => setRoleId(e.target.value)}
+        value={agentId}
+        onChange={(e) => setAgentId(e.target.value)}
       >
         <option value="">Unassigned</option>
-        {roles.map((role) => (
-          <option key={role.id} value={role.id}>
-            {role.title}
+        {agents.map((agent) => (
+          <option key={agent.id} value={agent.id}>
+            {agent.title}
           </option>
         ))}
       </select>

@@ -40,36 +40,36 @@ export async function ensureProjectAndTeam(request: APIRequestContext): Promise<
   return { projectId: project.id, teamId: team.id };
 }
 
-// Seeds the team's roles from the server's built-in harnesses if it has
-// none yet — direct port of RolesPanel.tsx's "Seed from built-ins" button:
-// find-or-create in the app-wide role library (GET/POST /api/roles), then
-// assign (POST /api/teams/:teamId/roles with { roleId }) — roles are
+// Seeds the team's agents from the server's built-in harnesses if it has
+// none yet — direct port of AgentsPanel.tsx's "Seed from built-ins" button:
+// find-or-create in the app-wide agent library (GET/POST /api/agents), then
+// assign (POST /api/teams/:teamId/agents with { agentId }) — agents are
 // fully independent of any project/team, only assignment is team-scoped.
-export async function ensureRoles(request: APIRequestContext, teamId: string) {
-  const roles = await json<{ id: string; title: string }[]>(
-    await request.get(`/api/teams/${teamId}/roles`),
+export async function ensureAgents(request: APIRequestContext, teamId: string) {
+  const agents = await json<{ id: string; title: string }[]>(
+    await request.get(`/api/teams/${teamId}/agents`),
   );
-  if (roles.length > 0) return roles;
+  if (agents.length > 0) return agents;
 
   const harnesses = await json<{ title: string; path: string }[]>(
     await request.get("/api/harnesses"),
   );
-  const allRoles = await json<{ id: string; harnessPath: string }[]>(
-    await request.get("/api/roles"),
+  const allAgents = await json<{ id: string; harnessPath: string }[]>(
+    await request.get("/api/agents"),
   );
   for (const harness of harnesses) {
-    const existing = allRoles.find((r) => r.harnessPath === harness.path);
-    const role =
+    const existing = allAgents.find((r) => r.harnessPath === harness.path);
+    const agent =
       existing ??
       (await json<{ id: string }>(
-        await request.post("/api/roles", {
+        await request.post("/api/agents", {
           data: { title: harness.title, harnessPath: harness.path },
         }),
       ));
-    await request.post(`/api/teams/${teamId}/roles`, { data: { roleId: role.id } });
+    await request.post(`/api/teams/${teamId}/agents`, { data: { agentId: agent.id } });
   }
   return json<{ id: string; title: string }[]>(
-    await request.get(`/api/teams/${teamId}/roles`),
+    await request.get(`/api/teams/${teamId}/agents`),
   );
 }
 

@@ -1,9 +1,9 @@
 import type {
-  AssignRoleInput,
+  AssignAgentInput,
   BuiltinHarness,
   CreateProjectInput,
   CreateRepositoryInput,
-  CreateRoleInput,
+  CreateAgentInput,
   CreateTaskCommentInput,
   CreateTaskDependencyInput,
   CreateTaskInput,
@@ -11,7 +11,7 @@ import type {
   HarnessTemplate,
   Project,
   Repository,
-  Role,
+  Agent,
   TaskComment,
   TaskDependency,
   TaskRun,
@@ -20,7 +20,7 @@ import type {
   Team,
   TeamSpend,
   UpdateRepositoryInput,
-  UpdateRoleInput,
+  UpdateAgentInput,
   UpdateTaskInput,
   UpdateTeamBudgetInput,
 } from "@kompanion/shared";
@@ -65,34 +65,34 @@ export const api = {
       body: JSON.stringify({ name: input.name }),
     }),
 
-  // Roles assigned to a team (join over team_roles server-side).
-  listRoles: (teamId: string) => request<Role[]>(`${base}/teams/${teamId}/roles`),
-  assignRole: (teamId: string, input: AssignRoleInput) =>
-    request<Role>(`${base}/teams/${teamId}/roles`, {
+  // Agents assigned to a team (join over team_agents server-side).
+  listAgents: (teamId: string) => request<Agent[]>(`${base}/teams/${teamId}/agents`),
+  assignAgent: (teamId: string, input: AssignAgentInput) =>
+    request<Agent>(`${base}/teams/${teamId}/agents`, {
       method: "POST",
       body: JSON.stringify(input),
     }),
-  unassignRole: (teamId: string, roleId: string) =>
-    fetch(`${base}/teams/${teamId}/roles/${roleId}`, { method: "DELETE" }),
+  unassignAgent: (teamId: string, agentId: string) =>
+    fetch(`${base}/teams/${teamId}/agents/${agentId}`, { method: "DELETE" }),
 
-  // The app-wide Role library — create/edit/the shared CLAUDE.md template
-  // all operate here, affecting every team the role is assigned to,
+  // The app-wide Agent library — create/edit/the shared CLAUDE.md template
+  // all operate here, affecting every team the agent is assigned to,
   // regardless of which project that team belongs to.
-  listAllRoles: () => request<Role[]>(`${base}/roles`),
-  createRole: (input: CreateRoleInput) =>
-    request<Role>(`${base}/roles`, {
+  listAllAgents: () => request<Agent[]>(`${base}/agents`),
+  createAgent: (input: CreateAgentInput) =>
+    request<Agent>(`${base}/agents`, {
       method: "POST",
       body: JSON.stringify(input),
     }),
-  updateRole: (roleId: string, input: UpdateRoleInput) =>
-    request<Role>(`${base}/roles/${roleId}`, {
+  updateAgent: (agentId: string, input: UpdateAgentInput) =>
+    request<Agent>(`${base}/agents/${agentId}`, {
       method: "PATCH",
       body: JSON.stringify(input),
     }),
-  getHarnessTemplate: (roleId: string) =>
-    request<HarnessTemplate>(`${base}/roles/${roleId}/harness-template`),
-  updateHarnessTemplate: (roleId: string, content: string) =>
-    request<HarnessTemplate>(`${base}/roles/${roleId}/harness-template`, {
+  getHarnessTemplate: (agentId: string) =>
+    request<HarnessTemplate>(`${base}/agents/${agentId}/harness-template`),
+  updateHarnessTemplate: (agentId: string, content: string) =>
+    request<HarnessTemplate>(`${base}/agents/${agentId}/harness-template`, {
       method: "PATCH",
       body: JSON.stringify({ content }),
     }),
@@ -111,10 +111,10 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify({ status }),
     }),
-  assignTaskRole: (teamId: string, taskId: string, roleId: string | null) =>
-    request<TaskWithRepositories>(`${base}/teams/${teamId}/tasks/${taskId}/role`, {
+  assignTaskAgent: (teamId: string, taskId: string, agentId: string | null) =>
+    request<TaskWithRepositories>(`${base}/teams/${teamId}/tasks/${taskId}/agent`, {
       method: "PATCH",
-      body: JSON.stringify({ roleId }),
+      body: JSON.stringify({ agentId }),
     }),
   updateTask: (teamId: string, taskId: string, input: UpdateTaskInput) =>
     request<TaskWithRepositories>(`${base}/teams/${teamId}/tasks/${taskId}`, {
@@ -187,9 +187,9 @@ export const api = {
       method: "POST",
       body: JSON.stringify(input),
     }),
-  replyAsRole: (teamId: string, taskId: string, commentId: string, roleId: string) =>
+  replyAsAgent: (teamId: string, taskId: string, commentId: string, agentId: string) =>
     request<TaskComment>(
-      `${base}/teams/${teamId}/tasks/${taskId}/comments/${commentId}/reply-as/${roleId}`,
+      `${base}/teams/${teamId}/tasks/${taskId}/comments/${commentId}/reply-as/${agentId}`,
       { method: "POST" },
     ),
 

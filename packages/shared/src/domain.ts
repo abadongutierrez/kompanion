@@ -46,25 +46,27 @@ export const Team = z.object({
 });
 export type Team = z.infer<typeof Team>;
 
-// A Role is deliberately minimal: a name, a stable identifier, and the
-// local folder its harness (.claude/ skills, agents, hooks) lives in.
-// harnessPath is the sole source of a Role's harness — there's no
-// discipline-keyed fallback convention.
+// An Agent is deliberately minimal: a name, a stable identifier, and the
+// local folder its harness (.claude/ skills, subagents, hooks) lives in.
+// harnessPath is the sole source of an Agent's harness — there's no
+// discipline-keyed fallback convention. Note the level difference the
+// shared word hides: the .claude/agents/*.md inside a harness are Claude
+// Code subagents spawned *within* one of our Agents' runs.
 //
-// Roles are fully app-wide — the same level as Project itself, with no
+// Agents are fully app-wide — the same level as Project itself, with no
 // project (or team) association at all. Create one once in the global
-// Role library, then assign it to whichever Teams in whichever Projects
-// want it (see team_roles). This makes sharing a harnessPath/CLAUDE.md an
+// Agent library, then assign it to whichever Teams in whichever Projects
+// want it (see team_agents). This makes sharing a harnessPath/CLAUDE.md an
 // intentional, visible action instead of an accident of two Teams
 // pointing at the same directory.
-export const Role = z.object({
+export const Agent = z.object({
   id: z.string(),
   title: z.string(),
   slug: z.string(),
   harnessPath: z.string(),
   createdAt: z.string(),
 });
-export type Role = z.infer<typeof Role>;
+export type Agent = z.infer<typeof Agent>;
 
 export const Repository = z.object({
   id: z.string(),
@@ -80,7 +82,7 @@ export type Repository = z.infer<typeof Repository>;
 export const Task = z.object({
   id: z.string(),
   teamId: z.string(),
-  roleId: z.string().nullable(),
+  agentId: z.string().nullable(),
   title: z.string(),
   description: z.string().nullable(),
   type: TaskType,
@@ -138,32 +140,32 @@ export const CreateTeamInput = Team.pick({ name: true }).extend({
 });
 export type CreateTeamInput = z.infer<typeof CreateTeamInput>;
 
-// Creates a Role in the app-wide role library — POST /api/roles.
-export const CreateRoleInput = Role.pick({
+// Creates an Agent in the app-wide agent library — POST /api/agents.
+export const CreateAgentInput = Agent.pick({
   title: true,
   harnessPath: true,
 });
-export type CreateRoleInput = z.infer<typeof CreateRoleInput>;
+export type CreateAgentInput = z.infer<typeof CreateAgentInput>;
 
-// POST /api/teams/:teamId/roles — assign an existing Role to this team.
-// Roles are only ever created via the global /api/roles library; within a
+// POST /api/teams/:teamId/agents — assign an existing Agent to this team.
+// Agents are only ever created via the global /api/agents library; within a
 // team's context it's assignment-only.
-export const AssignRoleInput = z.object({
-  roleId: z.string(),
+export const AssignAgentInput = z.object({
+  agentId: z.string(),
 });
-export type AssignRoleInput = z.infer<typeof AssignRoleInput>;
+export type AssignAgentInput = z.infer<typeof AssignAgentInput>;
 
-// PATCH /api/roles/:roleId — edits the shared Role itself (affects every
+// PATCH /api/agents/:agentId — edits the shared Agent itself (affects every
 // Team it's assigned to). slug is only touched when explicitly provided —
 // unlike creation, editing never silently re-derives it from a title change.
-export const UpdateRoleInput = Role.pick({
+export const UpdateAgentInput = Agent.pick({
   title: true,
   slug: true,
   harnessPath: true,
 }).partial();
-export type UpdateRoleInput = z.infer<typeof UpdateRoleInput>;
+export type UpdateAgentInput = z.infer<typeof UpdateAgentInput>;
 
-// GET/PATCH .../roles/:roleId/harness-template — the role's CLAUDE.md
+// GET/PATCH .../agents/:agentId/harness-template — the agent's CLAUDE.md
 // content, read/written as plain text (never parsed).
 export const HarnessTemplate = z.object({
   content: z.string(),
@@ -182,7 +184,7 @@ export const CreateTaskInput = Task.pick({
   type: true,
 }).extend({
   teamId: z.string(),
-  roleId: z.string().nullable().optional(),
+  agentId: z.string().nullable().optional(),
   repositoryIds: z.array(z.string()).optional(),
   description: z.string().nullable().optional(),
   storyPoints: z.number().int().nullable().optional(),
@@ -246,7 +248,7 @@ export type TaskRunStatus = z.infer<typeof TaskRunStatus>;
 export const TaskRun = z.object({
   id: z.string(),
   taskId: z.string(),
-  roleId: z.string(),
+  agentId: z.string(),
   status: TaskRunStatus,
   summary: z.string().nullable(),
   rawOutput: z.unknown().nullable(),
@@ -270,28 +272,28 @@ export const TeamSpend = z.object({
 export type TeamSpend = z.infer<typeof TeamSpend>;
 
 // A comment's @mentions are resolved on read against the team's current
-// Role slugs rather than stored — so a role rename doesn't strand old
+// Agent slugs rather than stored — so an agent rename doesn't strand old
 // mentions pointing at a stale identifier.
-export const MentionedRole = z.object({
+export const MentionedAgent = z.object({
   id: z.string(),
   title: z.string(),
   slug: z.string(),
 });
-export type MentionedRole = z.infer<typeof MentionedRole>;
+export type MentionedAgent = z.infer<typeof MentionedAgent>;
 
 export const TaskComment = z.object({
   id: z.string(),
   taskId: z.string(),
-  roleId: z.string().nullable(),
+  agentId: z.string().nullable(),
   authorTitle: z.string().nullable(),
   body: z.string(),
-  mentionedRoles: z.array(MentionedRole),
+  mentionedAgents: z.array(MentionedAgent),
   createdAt: z.string(),
 });
 export type TaskComment = z.infer<typeof TaskComment>;
 
 export const CreateTaskCommentInput = z.object({
-  roleId: z.string().nullable().optional(),
+  agentId: z.string().nullable().optional(),
   body: z.string().min(1),
 });
 export type CreateTaskCommentInput = z.infer<typeof CreateTaskCommentInput>;

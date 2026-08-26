@@ -3,7 +3,7 @@ import { Navigate, NavLink, Route, Routes } from "react-router-dom";
 import { api } from "./api.js";
 import { ProjectsPage } from "./components/ProjectsPage.js";
 import { ProjectShell } from "./components/ProjectShell.js";
-import { RolesLibraryPage } from "./components/RolesLibraryPage.js";
+import { AgentsLibraryPage } from "./components/AgentsLibraryPage.js";
 
 export function App() {
   return (
@@ -22,12 +22,12 @@ export function App() {
               Projects
             </NavLink>
             <NavLink
-              to="/roles"
+              to="/agents"
               className={({ isActive }) =>
                 isActive ? "font-medium text-neutral-900" : "text-neutral-500 hover:text-neutral-700"
               }
             >
-              Roles
+              Agents
             </NavLink>
           </nav>
         </div>
@@ -36,7 +36,7 @@ export function App() {
 
       <Routes>
         <Route path="/" element={<ProjectsPage />} />
-        <Route path="/roles" element={<RolesLibraryPage />} />
+        <Route path="/agents" element={<AgentsLibraryPage />} />
         <Route path="/projects/:projectId/:section?" element={<ProjectShell />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

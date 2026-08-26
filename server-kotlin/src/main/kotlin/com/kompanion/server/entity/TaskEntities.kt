@@ -25,7 +25,7 @@ enum class TaskDependencyType { blocked_by, depends_on, relates_to }
 data class Task(
     @Id val id: UUID? = null,
     val teamId: UUID,
-    val roleId: UUID? = null,
+    val agentId: UUID? = null,
     val title: String,
     val description: String? = null,
     val type: TaskType,
@@ -51,7 +51,7 @@ data class TaskDependency(
 data class TaskComment(
     @Id val id: UUID? = null,
     val taskId: UUID,
-    val roleId: UUID? = null,
+    val agentId: UUID? = null,
     val body: String,
     @ReadOnlyProperty val createdAt: OffsetDateTime? = null,
 )

@@ -9,7 +9,7 @@ import java.util.UUID
 data class CreateTaskRequest(
     val title: String,
     val type: TaskType,
-    val roleId: UUID? = null,
+    val agentId: UUID? = null,
     val repositoryIds: List<UUID>? = null,
     val description: String? = null,
     val storyPoints: Int? = null,
@@ -26,7 +26,7 @@ data class UpdateTaskRequest(
     val acceptanceCriteria: String? = null,
 )
 
-data class AssignRoleRequest(val roleId: UUID? = null)
+data class AssignAgentRequest(val agentId: UUID? = null)
 
 data class LinkRepositoryRequest(val repositoryId: UUID)
 
@@ -36,7 +36,7 @@ data class LinkRepositoryRequest(val repositoryId: UUID)
 data class TaskWithRepositoriesResponse(
     val id: UUID,
     val teamId: UUID,
-    val roleId: UUID?,
+    val agentId: UUID?,
     val title: String,
     val description: String?,
     val type: TaskType,
@@ -61,16 +61,16 @@ data class TaskDependencyResponse(
     val createdAt: OffsetDateTime?,
 )
 
-data class CreateTaskCommentRequest(val roleId: UUID? = null, val body: String)
+data class CreateTaskCommentRequest(val agentId: UUID? = null, val body: String)
 
-data class MentionedRoleResponse(val id: UUID, val title: String, val slug: String)
+data class MentionedAgentResponse(val id: UUID, val title: String, val slug: String)
 
 data class TaskCommentResponse(
     val id: UUID,
     val taskId: UUID,
-    val roleId: UUID?,
+    val agentId: UUID?,
     val authorTitle: String?,
     val body: String,
-    val mentionedRoles: List<MentionedRoleResponse>,
+    val mentionedAgents: List<MentionedAgentResponse>,
     val createdAt: OffsetDateTime?,
 )

@@ -78,7 +78,7 @@ Herdr is not an orchestrator with a task queue, DB, or web UI — it's
 infrastructure for *keeping agent processes alive and observable*. It maps
 onto the **execution layer** of this project (the part that currently is
 `spawn(bin, args, {cwd, env})` inside `runClaudeStreaming`), not onto the
-task/role/workspace domain model, which stays exactly as-is.
+task/agent/workspace domain model, which stays exactly as-is.
 
 ### Option A — Replace direct `spawn` with Herdr-managed panes (biggest lift, biggest payoff)
 
@@ -126,9 +126,9 @@ gaps, since the app's own supervision loop is untouched.
 
 Herdr's plugin/marketplace and multi-agent peer-prompting features
 (agents coordinating each other inside Herdr) overlap with what this
-project's own Role harness + shared-workspace mechanism already does
+project's own Agent harness + shared-workspace mechanism already does
 deliberately at the *domain* level (Engineer → QA → PM handoff via a
-shared task workspace, see `DESIGN.md`'s Role harness section) — adopting
+shared task workspace, see `DESIGN.md`'s Agent harness section) — adopting
 Herdr's peer-coordination on top would be two competing coordination
 models for the same problem, not additive.
 

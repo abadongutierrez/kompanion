@@ -3,12 +3,12 @@ import { Link, useParams } from "react-router-dom";
 import { api } from "../api.js";
 import { CreateTeamForm } from "./CreateTeamForm.js";
 import { TaskBoard } from "./TaskBoard.js";
-import { RolesPanel } from "./RolesPanel.js";
+import { AgentsPanel } from "./AgentsPanel.js";
 import { RepositoriesPanel } from "./RepositoriesPanel.js";
 import { BudgetPanel } from "./BudgetPanel.js";
 import { Sidebar, type Section } from "./Sidebar.js";
 
-const VALID_SECTIONS: Section[] = ["board", "roles", "repositories", "budget"];
+const VALID_SECTIONS: Section[] = ["board", "agents", "repositories", "budget"];
 
 // The per-project app shell: everything App.tsx used to render once it had
 // silently picked a project. Team selection is unchanged from before
@@ -67,7 +67,7 @@ export function ProjectShell() {
           <Sidebar projectId={projectId} />
           <main className="min-w-0 flex-1 px-6 py-8">
             {section === "board" && <TaskBoard teamId={teamId} projectId={projectId} />}
-            {section === "roles" && <RolesPanel teamId={teamId} />}
+            {section === "agents" && <AgentsPanel teamId={teamId} />}
             {section === "repositories" && <RepositoriesPanel projectId={projectId} />}
             {section === "budget" && <BudgetPanel teamId={teamId} />}
           </main>

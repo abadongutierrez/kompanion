@@ -1,12 +1,12 @@
 package com.kompanion.server.controller
 
-import com.kompanion.server.dto.AssignRoleToTeamRequest
-import com.kompanion.server.dto.CreateRoleRequest
+import com.kompanion.server.dto.AssignAgentToTeamRequest
+import com.kompanion.server.dto.CreateAgentRequest
 import com.kompanion.server.dto.ErrorResponse
 import com.kompanion.server.dto.HarnessTemplateRequest
-import com.kompanion.server.dto.UpdateRoleRequest
-import com.kompanion.server.entity.Role
-import com.kompanion.server.repository.RoleRepository
+import com.kompanion.server.dto.UpdateAgentRequest
+import com.kompanion.server.entity.Agent
+import com.kompanion.server.repository.AgentRepository
 import com.kompanion.server.repository.TeamRepository
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -34,28 +34,28 @@ private fun validateHarnessPath(harnessPath: String): String? {
     return null
 }
 
-// The app-wide Role library: create, edit, and the shared CLAUDE.md
-// template all operate on the Role itself here, regardless of which
-// Team(s) currently have it assigned — Roles are fully independent, the
+// The app-wide Agent library: create, edit, and the shared CLAUDE.md
+// template all operate on the Agent itself here, regardless of which
+// Team(s) currently have it assigned — Agents are fully independent, the
 // same level as Project itself, with no project/team ownership at all.
 @RestController
-@RequestMapping("/api/roles")
-class GlobalRolesController(private val roles: RoleRepository) {
+@RequestMapping("/api/agents")
+class GlobalAgentsController(private val agents: AgentRepository) {
 
-    // A Role's slug is its only stable, machine-usable identifier (e.g.
+    // An Agent's slug is its only stable, machine-usable identifier (e.g.
     // the Project Manager team-snapshot gate keys off slug ==
     // "project-manager"). Unique app-wide — on collision, append -2, -3,
-    // ... rather than fail. excludeRoleId lets an update keep its own
+    // ... rather than fail. excludeAgentId lets an update keep its own
     // slug when it didn't change.
-    private fun uniqueSlug(title: String, excludeRoleId: UUID? = null): String {
-        val base = slugify(title).ifEmpty { "role" }
+    private fun uniqueSlug(title: String, excludeAgentId: UUID? = null): String {
+        val base = slugify(title).ifEmpty { "agent" }
         var candidate = base
         var suffix = 2
         while (true) {
-            val existing = if (excludeRoleId != null) {
-                roles.findBySlugAndIdNot(candidate, excludeRoleId)
+            val existing = if (excludeAgentId != null) {
+                agents.findBySlugAndIdNot(candidate, excludeAgentId)
             } else {
-                roles.findBySlug(candidate)
+                agents.findBySlug(candidate)
             }
             if (existing == null) return candidate
             candidate = "$base-$suffix"
@@ -64,36 +64,36 @@ class GlobalRolesController(private val roles: RoleRepository) {
     }
 
     @GetMapping
-    fun list(): List<Role> = roles.findAllByOrderByCreatedAt()
+    fun list(): List<Agent> = agents.findAllByOrderByCreatedAt()
 
     @PostMapping
-    fun create(@RequestBody body: CreateRoleRequest): ResponseEntity<Any> {
+    fun create(@RequestBody body: CreateAgentRequest): ResponseEntity<Any> {
         validateHarnessPath(body.harnessPath)?.let {
             return ResponseEntity.badRequest().body(ErrorResponse(it))
         }
         val slug = uniqueSlug(body.title)
         // createdAt is @ReadOnlyProperty (DB default now()) — re-fetch to
         // return the fully populated row, matching `returning *`.
-        val saved = roles.save(Role(title = body.title, slug = slug, harnessPath = body.harnessPath))
-        val reloaded = roles.findById(saved.id!!).orElse(saved)
+        val saved = agents.save(Agent(title = body.title, slug = slug, harnessPath = body.harnessPath))
+        val reloaded = agents.findById(saved.id!!).orElse(saved)
         return ResponseEntity.status(HttpStatus.CREATED).body(reloaded)
     }
 
-    @PatchMapping("/{roleId}")
-    fun update(@PathVariable roleId: UUID, @RequestBody body: UpdateRoleRequest): ResponseEntity<Any> {
+    @PatchMapping("/{agentId}")
+    fun update(@PathVariable agentId: UUID, @RequestBody body: UpdateAgentRequest): ResponseEntity<Any> {
         body.harnessPath?.let { path ->
             validateHarnessPath(path)?.let {
                 return ResponseEntity.badRequest().body(ErrorResponse(it))
             }
         }
-        val existing = roles.findById(roleId).orElse(null)
-            ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ErrorResponse("role not found"))
+        val existing = agents.findById(agentId).orElse(null)
+            ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ErrorResponse("agent not found"))
 
         body.slug?.let { slug ->
-            val collision = roles.findBySlugAndIdNot(slug, roleId)
+            val collision = agents.findBySlugAndIdNot(slug, agentId)
             if (collision != null) {
                 return ResponseEntity.status(HttpStatus.CONFLICT)
-                    .body(ErrorResponse("slug \"$slug\" is already used by another role"))
+                    .body(ErrorResponse("slug \"$slug\" is already used by another agent"))
             }
         }
 
@@ -102,53 +102,53 @@ class GlobalRolesController(private val roles: RoleRepository) {
             slug = body.slug ?: existing.slug,
             harnessPath = body.harnessPath ?: existing.harnessPath,
         )
-        return ResponseEntity.ok(roles.save(updated))
+        return ResponseEntity.ok(agents.save(updated))
     }
 
-    @GetMapping("/{roleId}/harness-template")
-    fun getHarnessTemplate(@PathVariable roleId: UUID): ResponseEntity<Any> {
-        val role = roles.findById(roleId).orElse(null)
-            ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ErrorResponse("role not found"))
-        val claudeMd = File(role.harnessPath, "CLAUDE.md")
+    @GetMapping("/{agentId}/harness-template")
+    fun getHarnessTemplate(@PathVariable agentId: UUID): ResponseEntity<Any> {
+        val agent = agents.findById(agentId).orElse(null)
+            ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ErrorResponse("agent not found"))
+        val claudeMd = File(agent.harnessPath, "CLAUDE.md")
         val content = if (claudeMd.exists()) claudeMd.readText() else ""
         return ResponseEntity.ok(HarnessTemplateRequest(content))
     }
 
-    @PatchMapping("/{roleId}/harness-template")
+    @PatchMapping("/{agentId}/harness-template")
     fun updateHarnessTemplate(
-        @PathVariable roleId: UUID,
+        @PathVariable agentId: UUID,
         @RequestBody body: HarnessTemplateRequest,
     ): ResponseEntity<Any> {
-        val role = roles.findById(roleId).orElse(null)
-            ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ErrorResponse("role not found"))
-        File(role.harnessPath, "CLAUDE.md").writeText(body.content)
+        val agent = agents.findById(agentId).orElse(null)
+            ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ErrorResponse("agent not found"))
+        File(agent.harnessPath, "CLAUDE.md").writeText(body.content)
         return ResponseEntity.ok(HarnessTemplateRequest(body.content))
     }
 }
 
-// Team-scoped: which Roles this Team currently has assigned (team_roles),
-// plus assign/unassign. Roles are only ever created via the global
-// /api/roles library above — this controller is assignment-only.
-// team_roles has no dedicated entity — handled directly via JdbcTemplate,
+// Team-scoped: which Agents this Team currently has assigned (team_agents),
+// plus assign/unassign. Agents are only ever created via the global
+// /api/agents library above — this controller is assignment-only.
+// team_agents has no dedicated entity — handled directly via JdbcTemplate,
 // same hybrid approach as task_repositories.
 @RestController
-@RequestMapping("/api/teams/{teamId}/roles")
-class TeamRolesController(
-    private val roles: RoleRepository,
+@RequestMapping("/api/teams/{teamId}/agents")
+class TeamAgentsController(
+    private val agents: AgentRepository,
     private val teams: TeamRepository,
     private val jdbc: JdbcTemplate,
 ) {
 
     @GetMapping
-    fun list(@PathVariable teamId: UUID): List<Role> = jdbc.query(
+    fun list(@PathVariable teamId: UUID): List<Agent> = jdbc.query(
         """
-        select r.* from roles r
-        join team_roles tr on tr.role_id = r.id
+        select r.* from agents r
+        join team_agents tr on tr.agent_id = r.id
         where tr.team_id = ?
         order by r.created_at
         """.trimIndent(),
         { rs, _ ->
-            Role(
+            Agent(
                 id = UUID.fromString(rs.getString("id")),
                 title = rs.getString("title"),
                 slug = rs.getString("slug"),
@@ -160,30 +160,30 @@ class TeamRolesController(
     )
 
     @PostMapping
-    fun assign(@PathVariable teamId: UUID, @RequestBody body: AssignRoleToTeamRequest): ResponseEntity<Any> {
+    fun assign(@PathVariable teamId: UUID, @RequestBody body: AssignAgentToTeamRequest): ResponseEntity<Any> {
         if (!teams.existsById(teamId)) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ErrorResponse("team not found"))
         }
-        val role = roles.findById(body.roleId).orElse(null)
-            ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ErrorResponse("role not found"))
+        val agent = agents.findById(body.agentId).orElse(null)
+            ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ErrorResponse("agent not found"))
 
         jdbc.update(
-            "insert into team_roles (team_id, role_id) values (?, ?) on conflict do nothing",
+            "insert into team_agents (team_id, agent_id) values (?, ?) on conflict do nothing",
             teamId,
-            role.id,
+            agent.id,
         )
-        return ResponseEntity.status(HttpStatus.CREATED).body(role)
+        return ResponseEntity.status(HttpStatus.CREATED).body(agent)
     }
 
-    @DeleteMapping("/{roleId}")
-    fun unassign(@PathVariable teamId: UUID, @PathVariable roleId: UUID): ResponseEntity<Any> {
+    @DeleteMapping("/{agentId}")
+    fun unassign(@PathVariable teamId: UUID, @PathVariable agentId: UUID): ResponseEntity<Any> {
         val deleted = jdbc.update(
-            "delete from team_roles where team_id = ? and role_id = ?",
+            "delete from team_agents where team_id = ? and agent_id = ?",
             teamId,
-            roleId,
+            agentId,
         )
         if (deleted == 0) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ErrorResponse("role is not assigned to this team"))
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ErrorResponse("agent is not assigned to this team"))
         }
         return ResponseEntity.noContent().build()
     }

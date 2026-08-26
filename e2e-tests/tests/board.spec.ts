@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { ensureProjectAndTeam, ensureRoles, deleteTask } from "./fixtures.js";
+import { ensureProjectAndTeam, ensureAgents, deleteTask } from "./fixtures.js";
 
 test.describe("task board", () => {
   let projectId: string;
@@ -10,7 +10,7 @@ test.describe("task board", () => {
     const seeded = await ensureProjectAndTeam(request);
     projectId = seeded.projectId;
     teamId = seeded.teamId;
-    await ensureRoles(request, teamId);
+    await ensureAgents(request, teamId);
   });
 
   test.afterEach(async ({ request }) => {
@@ -32,7 +32,7 @@ test.describe("task board", () => {
     await expect(page.getByText(/^done/i)).toBeVisible();
   });
 
-  test("creates a task, assigns a role, and moves it through valid transitions only", async ({ page }) => {
+  test("creates a task, assigns an agent, and moves it through valid transitions only", async ({ page }) => {
     await page.goto(`/projects/${projectId}/board`);
 
     const title = `E2E task ${Date.now()}`;
@@ -54,13 +54,13 @@ test.describe("task board", () => {
     await expect(card.getByRole("button", { name: "→ done" })).toHaveCount(0);
     await expect(card.getByRole("button", { name: "→ in review" })).toHaveCount(0);
 
-    // Assign a role via the card's select.
-    const roleSelect = card.locator("select").first();
-    const roleOptions = await roleSelect.locator("option").allTextContents();
-    const firstRealRole = roleOptions.find((o) => o !== "Unassigned");
-    expect(firstRealRole).toBeTruthy();
-    await roleSelect.selectOption({ label: firstRealRole! });
-    await expect(card.getByText(`Assigned: ${firstRealRole}`)).toBeVisible();
+    // Assign an agent via the card's select.
+    const agentSelect = card.locator("select").first();
+    const agentOptions = await agentSelect.locator("option").allTextContents();
+    const firstRealAgent = agentOptions.find((o) => o !== "Unassigned");
+    expect(firstRealAgent).toBeTruthy();
+    await agentSelect.selectOption({ label: firstRealAgent! });
+    await expect(card.getByText(`Assigned: ${firstRealAgent}`)).toBeVisible();
 
     // Backlog -> In Progress.
     await card.getByRole("button", { name: "→ in progress" }).click();

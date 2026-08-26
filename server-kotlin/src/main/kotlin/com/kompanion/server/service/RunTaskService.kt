@@ -4,7 +4,7 @@ import tools.jackson.databind.ObjectMapper
 import tools.jackson.module.kotlin.readValue
 import com.kompanion.server.dto.TaskRunResponse
 import com.kompanion.server.entity.Repository
-import com.kompanion.server.entity.Role
+import com.kompanion.server.entity.Agent
 import com.kompanion.server.entity.Task
 import com.kompanion.server.entity.TaskStatus
 import com.kompanion.server.entity.isValidTaskTransition
@@ -16,7 +16,7 @@ import java.sql.ResultSet
 import java.time.OffsetDateTime
 import java.util.UUID
 
-class NoHarnessException : RuntimeException("no harness for this role")
+class NoHarnessException : RuntimeException("no harness for this agent")
 class OverBudgetException(val run: TaskRunResponse) : RuntimeException("team is over its monthly budget")
 
 private data class ClaudeResult(
@@ -81,16 +81,16 @@ class RunTaskService(
         return lines.joinToString("\n")
     }
 
-    // Every other Role only ever sees the one Task it was handed. Project
-    // Manager (identified by slug, the only stable identifier a Role has)
+    // Every other Agent only ever sees the one Task it was handed. Project
+    // Manager (identified by slug, the only stable identifier an Agent has)
     // is structurally different — capacity/parallelization reasoning
     // requires seeing the whole team at once — so this is the one place a
     // team-wide query crosses into a single Task's prompt.
     private fun buildTeamSnapshot(teamId: UUID): String {
-        val roles = jdbc.query(
+        val agents = jdbc.query(
             """
-            select r.id, r.title from roles r
-            join team_roles tr on tr.role_id = r.id
+            select r.id, r.title from agents r
+            join team_agents tr on tr.agent_id = r.id
             where tr.team_id = ?
             """.trimIndent(),
             { rs, _ -> rs.getString("id") to rs.getString("title") },
@@ -98,16 +98,16 @@ class RunTaskService(
         )
         val activeCounts = jdbc.query(
             """
-            select role_id, count(*)::int as active_count
+            select agent_id, count(*)::int as active_count
             from tasks
-            where team_id = ? and status = 'in_progress' and role_id is not null
-            group by role_id
+            where team_id = ? and status = 'in_progress' and agent_id is not null
+            group by agent_id
             """.trimIndent(),
-            { rs, _ -> rs.getString("role_id") to rs.getInt("active_count") },
+            { rs, _ -> rs.getString("agent_id") to rs.getInt("active_count") },
             teamId,
         ).toMap()
 
-        val roleLines = roles.map { (id, title) ->
+        val agentLines = agents.map { (id, title) ->
             val count = activeCounts[id] ?: 0
             "- $title: $count active task${if (count == 1) "" else "s"}"
         }
@@ -116,7 +116,7 @@ class RunTaskService(
             val title: String,
             val type: String,
             val status: String,
-            val roleTitle: String?,
+            val agentTitle: String?,
             val blockerTitle: String?,
         )
 
@@ -124,10 +124,10 @@ class RunTaskService(
             """
             select
               t.title, t.type, t.status,
-              r.title as role_title,
+              r.title as agent_title,
               blocker.title as blocker_title
             from tasks t
-            left join roles r on r.id = t.role_id
+            left join agents r on r.id = t.agent_id
             left join task_dependencies dep on dep.task_id = t.id and dep.type = 'blocked_by'
             left join tasks blocker on blocker.id = dep.related_task_id
             where t.team_id = ?
@@ -138,7 +138,7 @@ class RunTaskService(
                     rs.getString("title"),
                     rs.getString("type"),
                     rs.getString("status"),
-                    rs.getString("role_title"),
+                    rs.getString("agent_title"),
                     rs.getString("blocker_title"),
                 )
             },
@@ -146,24 +146,24 @@ class RunTaskService(
         )
 
         val taskLines = tasks.map { t ->
-            val roleLabel = t.roleTitle ?: "Unassigned"
+            val agentLabel = t.agentTitle ?: "Unassigned"
             val blockerLabel = t.blockerTitle?.let { "\"$it\"" } ?: "none"
-            "- [${t.status}] \"${t.title}\" (${t.type}) — $roleLabel — blocked by: $blockerLabel"
+            "- [${t.status}] \"${t.title}\" (${t.type}) — $agentLabel — blocked by: $blockerLabel"
         }
 
         return (
-            listOf("Team snapshot:", "Roles:") +
-                roleLines.ifEmpty { listOf("(none)") } +
+            listOf("Team snapshot:", "Agents:") +
+                agentLines.ifEmpty { listOf("(none)") } +
                 listOf("Tasks:") +
                 taskLines.ifEmpty { listOf("(none)") }
             ).joinToString("\n")
     }
 
-    // Materializes the assigned role's .claude/ (skills/agents/hook
-    // settings) into the task's workspace, replacing any previous role's
-    // config wholesale (so skills/agents don't accumulate across roles) but
+    // Materializes the assigned agent's .claude/ (skills/agents/hook
+    // settings) into the task's workspace, replacing any previous agent's
+    // config wholesale (so skills/agents don't accumulate across agents) but
     // leaving everything else intact. CLAUDE.md is deliberately NOT copied
-    // here (see readRoleSystemPrompt) — could clobber a real repo's own
+    // here (see readAgentSystemPrompt) — could clobber a real repo's own
     // CLAUDE.md otherwise.
     private fun copyHarnessSkills(workspaceDir: File, harnessDir: File) {
         workspaceDir.mkdirs()
@@ -174,7 +174,7 @@ class RunTaskService(
     // Read once and passed via --append-system-prompt instead of being
     // copied as a file — works identically regardless of what cwd is, and
     // can never clobber a real project's own CLAUDE.md.
-    private fun readRoleSystemPrompt(harnessDir: File): String? {
+    private fun readAgentSystemPrompt(harnessDir: File): String? {
         val claudeMd = File(harnessDir, "CLAUDE.md")
         return if (claudeMd.exists()) claudeMd.readText() else null
     }
@@ -322,7 +322,7 @@ class RunTaskService(
         return TaskRunResponse(
             id = UUID.fromString(rs.getString("id")),
             taskId = UUID.fromString(rs.getString("task_id")),
-            roleId = UUID.fromString(rs.getString("role_id")),
+            agentId = UUID.fromString(rs.getString("agent_id")),
             status = rs.getString("status"),
             summary = rs.getString("summary"),
             rawOutput = rawOutput,
@@ -332,22 +332,22 @@ class RunTaskService(
         )
     }
 
-    private fun insertOverBudgetRun(taskId: UUID, roleId: UUID, summary: String): TaskRunResponse =
+    private fun insertOverBudgetRun(taskId: UUID, agentId: UUID, summary: String): TaskRunResponse =
         jdbc.query(
             """
-            insert into task_runs (task_id, role_id, status, summary, cost_usd, duration_ms)
+            insert into task_runs (task_id, agent_id, status, summary, cost_usd, duration_ms)
             values (?, ?, 'over_budget', ?, 0, 0)
             returning *
             """.trimIndent(),
             { rs, _ -> mapTaskRun(rs) },
-            taskId, roleId, summary,
+            taskId, agentId, summary,
         ).first()
 
-    private fun insertRunningRun(taskId: UUID, roleId: UUID): UUID =
+    private fun insertRunningRun(taskId: UUID, agentId: UUID): UUID =
         jdbc.query(
-            "insert into task_runs (task_id, role_id, status) values (?, ?, 'running') returning id",
+            "insert into task_runs (task_id, agent_id, status) values (?, ?, 'running') returning id",
             { rs, _ -> UUID.fromString(rs.getString("id")) },
-            taskId, roleId,
+            taskId, agentId,
         ).first()
 
     private fun updateRunToTerminal(
@@ -383,10 +383,10 @@ class RunTaskService(
         taskId,
     )
 
-    fun runTaskWithClaude(task: Task, role: Role, mentionContext: String? = null): TaskRunResponse {
+    fun runTaskWithClaude(task: Task, agent: Agent, mentionContext: String? = null): TaskRunResponse {
         val taskId = task.id!!
-        val roleId = role.id!!
-        val harnessDir = claudeHarnessService.resolveHarnessDir(role) ?: throw NoHarnessException()
+        val agentId = agent.id!!
+        val harnessDir = claudeHarnessService.resolveHarnessDir(agent) ?: throw NoHarnessException()
 
         // Checked before spending anything: once a team is over its monthly
         // budget, refuse the run outright. Recorded as its own task_runs
@@ -396,13 +396,13 @@ class RunTaskService(
         if (spend.monthlyBudgetUsd != null && spend.spendUsd >= spend.monthlyBudgetUsd) {
             val summary = "Team spend \$${spend.spendUsd.setScale(2, java.math.RoundingMode.HALF_UP)} has reached " +
                 "its \$${spend.monthlyBudgetUsd.setScale(2, java.math.RoundingMode.HALF_UP)} monthly budget — run refused before invoking Claude."
-            throw OverBudgetException(insertOverBudgetRun(taskId, roleId, summary))
+            throw OverBudgetException(insertOverBudgetRun(taskId, agentId, summary))
         }
 
         // The run row is created now, at status "running", rather than only
         // at the end — task_run_events needs a run_id to attach to from the
         // very first streamed line.
-        val runId = insertRunningRun(taskId, roleId)
+        val runId = insertRunningRun(taskId, agentId)
 
         // running_since is the one signal any client can poll to know a run
         // is actually in flight right now, independent of `status` —
@@ -413,7 +413,7 @@ class RunTaskService(
                 val taskWorkspaceDir = claudeHarnessService.resolveWorkspaceDir(taskId)
 
                 // Deterministic order so "primary" repo is stable across
-                // re-runs/role handoffs.
+                // re-runs/agent handoffs.
                 val linkedRepos: List<Repository> = jdbc.query(
                     """
                     select r.* from task_repositories tr
@@ -455,13 +455,13 @@ class RunTaskService(
 
                 copyHarnessSkills(workspaceDir, harnessDir)
                 workspaceEnforcementService.installCwdEnforcement(workspaceDir, taskWorkspaceDir, manifest)
-                val systemPromptAppend = readRoleSystemPrompt(harnessDir)
+                val systemPromptAppend = readAgentSystemPrompt(harnessDir)
 
                 // Starting a run means work is happening: move
                 // backlog -> in_progress before invoking Claude.
                 val startedStatus = transitionTaskStatus(taskId, task.status, TaskStatus.in_progress)
 
-                val teamSnapshot = if (role.slug == "project-manager") buildTeamSnapshot(task.teamId) else null
+                val teamSnapshot = if (agent.slug == "project-manager") buildTeamSnapshot(task.teamId) else null
                 val prompt = buildPrompt(task, manifest, teamSnapshot, mentionContext)
                 val result = runClaudeStreaming(prompt, workspaceDir, runId, systemPromptAppend, taskWorkspaceDir, taskId)
 

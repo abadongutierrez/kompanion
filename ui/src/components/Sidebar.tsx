@@ -1,10 +1,10 @@
 import { NavLink } from "react-router-dom";
 
-export type Section = "board" | "roles" | "repositories" | "budget";
+export type Section = "board" | "agents" | "repositories" | "budget";
 
 const NAV_ITEMS: { section: Section; label: string }[] = [
   { section: "board", label: "Board" },
-  { section: "roles", label: "Roles" },
+  { section: "agents", label: "Agents" },
   { section: "repositories", label: "Repositories" },
   { section: "budget", label: "Budget" },
 ];

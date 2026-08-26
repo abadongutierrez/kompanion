@@ -1,52 +1,52 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Role } from "@kompanion/shared";
+import type { Agent } from "@kompanion/shared";
 import { api } from "../api.js";
 
-// The app-wide Role library — a root-level page like Projects, reachable
+// The app-wide Agent library — a root-level page like Projects, reachable
 // from anywhere via the header nav, not nested inside any specific
-// project/team. Roles are created and edited here; a Team's own Roles
+// project/team. Agents are created and edited here; a Team's own Agents
 // page (inside a project) only handles assigning/unassigning them.
-export function RolesLibraryPage() {
+export function AgentsLibraryPage() {
   const queryClient = useQueryClient();
-  const [editingRoleId, setEditingRoleId] = useState<string | null>(null);
+  const [editingAgentId, setEditingAgentId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [slug, setSlug] = useState("");
   const [harnessPath, setHarnessPath] = useState("");
   const [harnessTemplate, setHarnessTemplate] = useState("");
 
-  const roles = useQuery({ queryKey: ["allRoles"], queryFn: api.listAllRoles });
+  const agents = useQuery({ queryKey: ["allAgents"], queryFn: api.listAllAgents });
 
   function resetForm() {
-    setEditingRoleId(null);
+    setEditingAgentId(null);
     setTitle("");
     setSlug("");
     setHarnessPath("");
     setHarnessTemplate("");
   }
 
-  async function startEditing(role: Role) {
-    setEditingRoleId(role.id);
-    setTitle(role.title);
-    setSlug(role.slug);
-    setHarnessPath(role.harnessPath);
-    const template = await api.getHarnessTemplate(role.id);
+  async function startEditing(agent: Agent) {
+    setEditingAgentId(agent.id);
+    setTitle(agent.title);
+    setSlug(agent.slug);
+    setHarnessPath(agent.harnessPath);
+    const template = await api.getHarnessTemplate(agent.id);
     setHarnessTemplate(template.content);
   }
 
-  const saveRole = useMutation({
+  const saveAgent = useMutation({
     mutationFn: async () => {
-      if (editingRoleId) {
-        const [role] = await Promise.all([
-          api.updateRole(editingRoleId, { title, slug, harnessPath }),
-          api.updateHarnessTemplate(editingRoleId, harnessTemplate),
+      if (editingAgentId) {
+        const [agent] = await Promise.all([
+          api.updateAgent(editingAgentId, { title, slug, harnessPath }),
+          api.updateHarnessTemplate(editingAgentId, harnessTemplate),
         ]);
-        return role;
+        return agent;
       }
-      return api.createRole({ title, harnessPath });
+      return api.createAgent({ title, harnessPath });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["allRoles"] });
+      queryClient.invalidateQueries({ queryKey: ["allAgents"] });
       resetForm();
     },
   });
@@ -54,36 +54,36 @@ export function RolesLibraryPage() {
   return (
     <main className="mx-auto max-w-3xl space-y-6 px-6 py-8">
       <div>
-        <h2 className="text-lg font-semibold">Roles</h2>
+        <h2 className="text-lg font-semibold">Agents</h2>
         <p className="text-sm text-neutral-500">
-          The app-wide role library. Assign roles to a team from within a project's
-          Roles page.
+          The app-wide agent library. Assign agents to a team from within a project's
+          Agents page.
         </p>
       </div>
 
-      {(roles.data ?? []).length === 0 ? (
-        <p className="text-sm text-neutral-500">No roles yet — create the first one below.</p>
+      {(agents.data ?? []).length === 0 ? (
+        <p className="text-sm text-neutral-500">No agents yet — create the first one below.</p>
       ) : (
         <div className="grid grid-cols-3 gap-3">
-          {(roles.data ?? []).map((role) => (
+          {(agents.data ?? []).map((agent) => (
             <div
-              key={role.id}
+              key={agent.id}
               className="space-y-1 rounded border border-neutral-200 bg-white p-3 text-sm shadow-sm"
             >
               <div className="flex items-center justify-between">
-                <span className="font-medium text-neutral-800">{role.title}</span>
+                <span className="font-medium text-neutral-800">{agent.title}</span>
                 <button
                   className="text-xs text-neutral-400 hover:text-neutral-700"
-                  onClick={() => startEditing(role)}
+                  onClick={() => startEditing(agent)}
                 >
                   Edit
                 </button>
               </div>
               <p className="text-xs text-neutral-500">
-                slug: <code>{role.slug}</code>
+                slug: <code>{agent.slug}</code>
               </p>
               <p className="break-all text-xs text-neutral-400">
-                harness: <code>{role.harnessPath}</code>
+                harness: <code>{agent.harnessPath}</code>
               </p>
             </div>
           ))}
@@ -94,25 +94,25 @@ export function RolesLibraryPage() {
         className="space-y-2 rounded border border-neutral-300 bg-white p-3 text-sm shadow-sm"
         onSubmit={(e) => {
           e.preventDefault();
-          if (title.trim() && harnessPath.trim()) saveRole.mutate();
+          if (title.trim() && harnessPath.trim()) saveAgent.mutate();
         }}
       >
         <h3 className="text-sm font-medium">
-          {editingRoleId ? "Edit role" : "Create a new role"}
+          {editingAgentId ? "Edit agent" : "Create a new agent"}
         </h3>
-        {editingRoleId && (
+        {editingAgentId && (
           <p className="text-xs text-amber-600">
-            This role is shared — editing it changes what every team it's assigned to
+            This agent is shared — editing it changes what every team it's assigned to
             sees.
           </p>
         )}
         <input
           className="w-full rounded border border-neutral-300 px-2 py-1 text-sm"
-          placeholder="Role title (e.g. Tech Lead)"
+          placeholder="Agent title (e.g. Tech Lead)"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
         />
-        {editingRoleId && (
+        {editingAgentId && (
           <input
             className="w-full rounded border border-neutral-300 px-2 py-1 text-sm"
             placeholder="Slug"
@@ -126,7 +126,7 @@ export function RolesLibraryPage() {
           value={harnessPath}
           onChange={(e) => setHarnessPath(e.target.value)}
         />
-        {editingRoleId && (
+        {editingAgentId && (
           <textarea
             className="w-full rounded border border-neutral-300 px-2 py-1 font-mono text-xs"
             placeholder="Harness template (CLAUDE.md)"
@@ -139,11 +139,11 @@ export function RolesLibraryPage() {
           <button
             type="submit"
             className="rounded bg-neutral-900 px-3 py-1 text-xs text-white disabled:opacity-50"
-            disabled={saveRole.isPending}
+            disabled={saveAgent.isPending}
           >
-            {editingRoleId ? "Save changes" : "Create role"}
+            {editingAgentId ? "Save changes" : "Create agent"}
           </button>
-          {editingRoleId && (
+          {editingAgentId && (
             <button
               type="button"
               className="rounded border border-neutral-300 px-3 py-1 text-xs hover:bg-neutral-100"
@@ -154,8 +154,8 @@ export function RolesLibraryPage() {
           )}
         </div>
 
-        {saveRole.isError && (
-          <p className="text-xs text-red-600">{(saveRole.error as Error).message}</p>
+        {saveAgent.isError && (
+          <p className="text-xs text-red-600">{(saveAgent.error as Error).message}</p>
         )}
       </form>
     </main>

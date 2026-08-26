@@ -43,12 +43,16 @@ data class Team(
 )
 
 // Fully app-wide — the same level as Project itself, no project/team
-// ownership at all. Create once in the global role library, then assign
-// to whichever Teams want it (see team_roles, handled directly via
-// JdbcTemplate in RoleController rather than a dedicated entity, same
+// ownership at all. Create once in the global agent library, then assign
+// to whichever Teams want it (see team_agents, handled directly via
+// JdbcTemplate in AgentController rather than a dedicated entity, same
 // hybrid approach as task_repositories).
-@Table("roles")
-data class Role(
+//
+// harnessPath points at a directory whose .claude/agents/*.md are Claude
+// Code *subagents* spawned inside this Agent's run — a different level,
+// despite the shared word.
+@Table("agents")
+data class Agent(
     @Id val id: UUID? = null,
     val title: String,
     val slug: String,

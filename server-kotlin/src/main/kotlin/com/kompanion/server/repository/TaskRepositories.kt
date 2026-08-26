@@ -8,10 +8,10 @@ import org.springframework.data.repository.ListCrudRepository
 import java.util.UUID
 
 interface TaskRepository : ListCrudRepository<Task, UUID> {
-    // Heartbeat candidate scan: backlog tasks with a role assigned, oldest
-    // first. Spring Data JDBC can't express "role_id is not null" via a
-    // derived-query keyword cleanly, so this filters status only and the
-    // caller (HeartbeatService) drops any with a null roleId itself —
+    // Heartbeat candidate scan: backlog tasks with an agent assigned,
+    // oldest first. Spring Data JDBC can't express "agent_id is not null"
+    // via a derived-query keyword cleanly, so this filters status only and
+    // the caller (HeartbeatService) drops any with a null agentId itself —
     // acceptable since backlog tasks are a small working set.
     fun findByStatusOrderByCreatedAt(status: TaskStatus): List<Task>
 }

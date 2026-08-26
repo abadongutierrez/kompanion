@@ -58,7 +58,7 @@ class RepoWorkspaceService {
     }
 
     // Idempotent per repo: if a repo's worktree already exists, reuse it
-    // as-is — a Task re-run or a role handoff (Engineer -> QA -> PM) must
+    // as-is — a Task re-run or an agent handoff (Engineer -> QA -> PM) must
     // land in the same branch/directory, not a fresh one each time.
     fun ensureWorktrees(task: Task, repos: List<Repository>): List<RepoWorktree> {
         val branchName = taskBranchName(task)

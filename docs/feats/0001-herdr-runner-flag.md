@@ -71,7 +71,7 @@ const result = await runner(prompt, workspaceDir, runId, systemPromptAppend, tas
 - Invalid/unset values fall back to `spawn` — never fail a run over a
   misconfigured flag.
 - The flag is a per-process/deployment setting (like `HEARTBEAT_ENABLED`),
-  not per-Task or per-Role — one running server is either Herdr-backed or
+  not per-Task or per-Agent — one running server is either Herdr-backed or
   not.
 
 ### `runClaudeViaHerdr` (new function, same file)

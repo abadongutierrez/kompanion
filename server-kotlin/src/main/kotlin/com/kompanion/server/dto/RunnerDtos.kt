@@ -9,7 +9,7 @@ data class BuiltinHarnessResponse(val slug: String, val title: String, val path:
 data class TaskRunResponse(
     val id: UUID,
     val taskId: UUID,
-    val roleId: UUID,
+    val agentId: UUID,
     val status: String,
     val summary: String?,
     val rawOutput: Any?,

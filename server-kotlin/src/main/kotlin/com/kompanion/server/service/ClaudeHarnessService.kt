@@ -1,18 +1,18 @@
 package com.kompanion.server.service
 
 import com.kompanion.server.dto.BuiltinHarnessResponse
-import com.kompanion.server.entity.Role
+import com.kompanion.server.entity.Agent
 import org.springframework.stereotype.Service
 import java.io.File
 
 // workspace/harnesses/ holds starter templates (engineer, qa,
 // product_manager, project_manager) — no longer auto-selected by any
-// discipline convention, just pre-made folders a new Role's harnessPath
+// discipline convention, just pre-made folders a new Agent's harnessPath
 // can point at, listed via listBuiltinHarnesses() below.
 //
-// Task workspaces are shared across roles: whichever role a Task is
+// Task workspaces are shared across agents: whichever agent a Task is
 // currently assigned to runs in the *same* directory, so e.g. QA can see
-// Engineer's actual output instead of a role-isolated copy. harnesses/
+// Engineer's actual output instead of an agent-isolated copy. harnesses/
 // stays a pure, immutable template; workspace/tasks/ is the mutable
 // runtime state.
 @Service
@@ -38,9 +38,9 @@ class ClaudeHarnessService {
     private val harnessesRoot = File(workspaceRoot, "harnesses")
     val workspacesRoot: File = File(workspaceRoot, "tasks")
 
-    // harnessPath is the sole source of a Role's harness — no fallback.
-    fun resolveHarnessDir(role: Role): File? {
-        val dir = File(role.harnessPath)
+    // harnessPath is the sole source of an Agent's harness — no fallback.
+    fun resolveHarnessDir(agent: Agent): File? {
+        val dir = File(agent.harnessPath)
         return if (dir.exists()) dir else null
     }
 
