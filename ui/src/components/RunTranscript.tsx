@@ -15,10 +15,14 @@ export function RunTranscript({
   teamId,
   taskId,
   runId,
+  onCostChange,
 }: {
   teamId: string;
   taskId: string;
   runId: string;
+  // Reported on every change so an ancestor can fold a still-running run
+  // into its own spend total; null once the run has no live figure to add.
+  onCostChange?: (costUsd: number | null) => void;
 }) {
   const [state, setState] = useState<TranscriptState>(() => createTranscriptState());
   const lastSeqRef = useRef(-1);
@@ -55,6 +59,19 @@ export function RunTranscript({
     return () => source.close();
   }, [teamId, taskId, runId]);
 
+  // Kept in a ref so a caller passing an inline arrow doesn't re-subscribe
+  // the SSE stream on every render.
+  const onCostChangeRef = useRef(onCostChange);
+  onCostChangeRef.current = onCostChange;
+
+  // Stop reporting once the run is finished: from that point the run's own
+  // cost_usd is persisted and shows up in the caller's own totals, so
+  // continuing to report would double-count it.
+  useEffect(() => {
+    onCostChangeRef.current?.(state.finished ? null : state.costUsd);
+    return () => onCostChangeRef.current?.(null);
+  }, [state.costUsd, state.finished]);
+
   useEffect(() => {
     if (stickToBottomRef.current && containerRef.current) {
       containerRef.current.scrollTop = containerRef.current.scrollHeight;
@@ -74,8 +91,21 @@ export function RunTranscript({
     <div
       ref={containerRef}
       onScroll={handleScroll}
-      className="max-h-64 space-y-1.5 overflow-y-auto rounded bg-neutral-50 p-2 text-xs"
+      className="relative max-h-64 space-y-1.5 overflow-y-auto rounded bg-neutral-50 p-2 text-xs"
     >
+      {state.costUsd !== null && (
+        <p
+          className="sticky top-0 z-10 -m-2 mb-0 bg-neutral-50/95 px-2 py-1 text-right text-neutral-500"
+          title={
+            state.costIsEstimate
+              ? "Estimated from token usage so far — replaced by the exact figure when the run finishes"
+              : "Final cost reported by Claude"
+          }
+        >
+          💰 {state.costIsEstimate ? "≈" : ""}${state.costUsd.toFixed(4)}
+          {state.costIsEstimate && !state.finished && " spent so far"}
+        </p>
+      )}
       {renderable.length === 0 && (
         <p className="text-neutral-400">Waiting for the agent to start…</p>
       )}
