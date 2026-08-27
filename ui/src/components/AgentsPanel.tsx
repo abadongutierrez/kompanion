@@ -70,7 +70,7 @@ export function AgentsPanel({ teamId }: { teamId: string }) {
         {(teamAgents.data ?? []).length === 0 ? (
           <p className="text-sm text-neutral-500">
             No agents assigned to this team yet — assign one below, or{" "}
-            <Link to="/agents" className="underline">
+            <Link to="/agents/new" className="underline">
               create one in the agent library
             </Link>
             .
