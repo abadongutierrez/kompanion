@@ -441,6 +441,7 @@ function TaskCard({
               teamId={teamId}
               taskId={task.id}
               runId={latestRun.id}
+              runtime={latestRun.runtime}
               onCostChange={setLiveCostUsd}
             />
           )}
@@ -456,7 +457,12 @@ function TaskCard({
                 {new Date(latestRun.createdAt).toLocaleTimeString()}
               </summary>
               <div className="mt-1">
-                <RunTranscript teamId={teamId} taskId={task.id} runId={latestRun.id} />
+                <RunTranscript
+                  teamId={teamId}
+                  taskId={task.id}
+                  runId={latestRun.id}
+                  runtime={latestRun.runtime}
+                />
               </div>
             </details>
           )}

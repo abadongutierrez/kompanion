@@ -39,3 +39,34 @@ Agents' runs. Call those subagents in prose; `Agent` (capitalized) always
 means the app entity. Harness directories on disk keep their old names
 (`engineer/`, `qa/`, `product_manager/`, `project_manager/`) — an Agent
 points at one by absolute path, so the folder name carries no meaning.
+
+## Agent runtimes
+
+An Agent names the CLI it runs on (`agents.runtime`) and optionally a model
+(`agents.model`, free text — the id formats differ per CLI). Two runtimes
+exist: `claude_code` and `opencode`. Adding a third means adding an
+`AgentRunner` `@Component` under `service/runner/`; `RunTaskService` keeps
+everything runtime-agnostic and resolves runners from injected beans.
+
+A harness folder can serve both — `CLAUDE.md` + `.claude/` for Claude Code,
+`AGENTS.md` + `.opencode/` for opencode. `workspace/harnesses/engineer/`
+carries all four and is the reference example.
+
+`task_runs` stores `runtime` and `model` as well, stamped when the run
+starts. That is not redundant with the Agent: replaying a stored transcript
+means picking the reducer that matches the event shape, and an Agent can be
+switched to another CLI afterwards.
+
+### opencode runs are not enforced
+
+**Known and accepted asymmetry.** Claude Code runs are confined by the
+`PreToolUse` hook in `workspace/hooks/`: raw Bash is denied, everything goes
+through `exec_in_folder.py`, which checks folder membership and appends to
+`commands.log`. opencode has no equivalent the server can install — its
+extension points are JS/TS plugins and a per-agent permission config — so an
+opencode run is scoped by `--dir` and nothing else, with no command log.
+
+Prefer Claude Code for agents working in real repositories. If opencode
+enforcement is needed later, the shape would be a plugin under
+`.opencode/plugin/` materialized by `OpencodeRunner.prepareWorkspace` the way
+the hook files are copied today.

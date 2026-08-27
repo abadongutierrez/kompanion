@@ -5,8 +5,17 @@ function assistant(id: string, usage: Record<string, number>): RunEventRaw {
   return { type: "assistant", message: { id, model: "claude-opus-5", usage } };
 }
 
+// Wrapped rather than passed to reduce directly: Array.reduce would feed the
+// element index into applyRunEvent's runtime parameter.
 function reduce(events: RunEventRaw[]) {
-  return events.reduce(applyRunEvent, createTranscriptState());
+  return events.reduce((state, event) => applyRunEvent(state, event), createTranscriptState());
+}
+
+function reduceOpencode(events: RunEventRaw[]) {
+  return events.reduce(
+    (state, event) => applyRunEvent(state, event, "opencode"),
+    createTranscriptState(),
+  );
 }
 
 describe("live cost", () => {
@@ -71,5 +80,76 @@ describe("live cost", () => {
       assistant("msg_1", { input_tokens: 10 }),
     ]);
     expect(state.blocks).toHaveLength(1);
+  });
+});
+
+// Shapes below are transcribed from a real `opencode run --format json`
+// against opencode 1.18.23, not from documentation.
+describe("opencode transcripts", () => {
+  const stepFinish = (cost: number): RunEventRaw => ({
+    type: "step_finish",
+    part: {
+      type: "step-finish",
+      reason: "stop",
+      tokens: { total: 2085, input: 2050, output: 35, reasoning: 0, cache: { read: 0, write: 0 } },
+      cost,
+    },
+  });
+
+  it("renders text parts as text blocks", () => {
+    const state = reduceOpencode([
+      { type: "step_start", part: { type: "step-start" } },
+      { type: "text", part: { type: "text", text: "done" } },
+      stepFinish(0),
+    ]);
+    expect(state.blocks).toEqual([{ kind: "text", text: "done", done: true }]);
+  });
+
+  it("sums cost across steps and never calls it an estimate", () => {
+    const state = reduceOpencode([stepFinish(0.25), stepFinish(0.5)]);
+    expect(state.costUsd).toBeCloseTo(0.75, 10);
+    expect(state.costIsEstimate).toBe(false);
+  });
+
+  it("keeps a reported zero as zero rather than inventing a price", () => {
+    // A local Ollama model genuinely costs nothing. Substituting a
+    // token-priced estimate here would report a charge nobody was billed.
+    const state = reduceOpencode([stepFinish(0)]);
+    expect(state.costUsd).toBe(0);
+  });
+
+  it("leaves cost null when the run ends before any step_finish", () => {
+    const state = reduceOpencode([{ type: "text", part: { type: "text", text: "hi" } }]);
+    expect(state.costUsd).toBeNull();
+  });
+
+  it("turns an error event into a failed result and finishes", () => {
+    const state = reduceOpencode([
+      {
+        type: "error",
+        error: { name: "APIError", data: { message: "model 'qwen2:latest' not found" } },
+      },
+    ]);
+    expect(state.finished).toBe(true);
+    expect(state.blocks).toEqual([
+      {
+        kind: "result",
+        ok: false,
+        summary: "APIError: model 'qwen2:latest' not found",
+        costUsd: null,
+      },
+    ]);
+  });
+
+  it("ignores event types it does not know", () => {
+    const state = reduceOpencode([{ type: "something_new_upstream", part: { x: 1 } }]);
+    expect(state.blocks).toEqual([]);
+  });
+
+  it("does not read opencode events with the Claude reducer", () => {
+    // The whole reason task_runs.runtime exists: the same bytes mean nothing
+    // to the other reducer.
+    const state = reduce([{ type: "text", part: { type: "text", text: "done" } }]);
+    expect(state.blocks).toEqual([]);
   });
 });

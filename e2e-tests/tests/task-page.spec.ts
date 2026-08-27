@@ -104,6 +104,72 @@ test.describe("task page", () => {
     }
   });
 
+  test("an opencode run is reduced with the opencode reducer, not Claude's", async ({
+    page,
+    request,
+  }) => {
+    const title = `E2E opencode ${Date.now()}`;
+    const taskId = await makeTask(request, title);
+
+    const runId = "dddddddd-4444-4444-4444-444444444444";
+    await page.route(`**/api/teams/${teamId}/tasks/${taskId}/runs`, (route) =>
+      route.fulfill({
+        json: [
+          {
+            id: runId,
+            taskId,
+            agentId: null,
+            agentTitle: "Engineer (opencode)",
+            runtime: "opencode",
+            model: "ollama/qwen2.5-coder:7b",
+            status: "succeeded",
+            createdAt: "2026-08-26T18:21:40.000Z",
+            durationMs: 12253,
+            costUsd: 0,
+          },
+        ],
+      }),
+    );
+
+    // opencode's event shape, transcribed from a real run — nothing here is
+    // meaningful to the Claude reducer, so rendering it proves the runtime
+    // stored on the run is what picks the reducer.
+    const events = [
+      { seq: 0, payload: { type: "step_start", part: { type: "step-start" } } },
+      { seq: 1, payload: { type: "text", part: { type: "text", text: "opencode said this" } } },
+      {
+        seq: 2,
+        payload: {
+          type: "step_finish",
+          part: { type: "step-finish", reason: "stop", cost: 0, tokens: { input: 2050, output: 35 } },
+        },
+      },
+    ];
+    await page.route(`**/runs/${runId}/events`, (route) =>
+      route.fulfill({
+        contentType: "text/event-stream",
+        body:
+          events.map((e) => `data: ${JSON.stringify(e)}\n\n`).join("") +
+          "event: done\ndata: {}\n\n",
+      }),
+    );
+
+    await page.goto(`/projects/${projectId}/tasks/${taskId}`);
+    await expect(page.getByRole("heading", { name: title })).toBeVisible();
+
+    // Runtime and model are on the row, so you can tell what produced a run.
+    await expect(page.getByText("opencode", { exact: false }).first()).toBeVisible();
+    await expect(page.getByText("ollama/qwen2.5-coder:7b")).toBeVisible();
+
+    // The text part rendered — the Claude reducer would have ignored it.
+    await expect(page.getByText("opencode said this")).toBeVisible();
+
+    // A local model really is free, so zero is shown as zero rather than
+    // being reported as unknown.
+    await expect(page.getByText("$0.0000")).toBeVisible();
+    await expect(page.getByText("cost unknown")).toHaveCount(0);
+  });
+
   test("browser back returns to the board (the modal used to leave the app)", async ({
     page,
     request,

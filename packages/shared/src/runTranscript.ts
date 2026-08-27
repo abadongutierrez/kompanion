@@ -7,6 +7,7 @@
 // we own, and pinning it down with strict zod would break on any upstream
 // field addition.
 import { estimateMessageCostUsd } from "./runCost.js";
+import type { AgentRuntime } from "./domain.js";
 
 export type RunEventRaw = { type: string; [key: string]: unknown };
 
@@ -68,7 +69,8 @@ function asString(value: unknown): string {
   return typeof value === "string" ? value : "";
 }
 
-export function applyRunEvent(state: TranscriptState, raw: RunEventRaw): TranscriptState {
+// Claude Code's `--output-format stream-json` shape.
+function applyClaudeEvent(state: TranscriptState, raw: RunEventRaw): TranscriptState {
   const blocks = state.blocks.slice();
   const open = { ...state.openBlocksByStreamIndex };
   const costByMessageId = { ...state.costByMessageId };
@@ -236,4 +238,94 @@ export function applyRunEvent(state: TranscriptState, raw: RunEventRaw): Transcr
     openBlocksByStreamIndex: open,
     costByMessageId,
   };
+}
+
+// opencode's `run --format json` shape, which is a different event stream
+// entirely: newline-delimited events carrying a `part`, rather than
+// Anthropic's streaming Messages format. Verified against opencode 1.18.23 —
+// `step_start`, `text`, `step_finish` and `error` were observed from real
+// runs; `tool_use` follows opencode's documented shape but was not reproduced
+// locally (the small local models available here answered in text instead of
+// calling tools), so treat that branch as the least-proven part of this file.
+//
+// Unknown event types are ignored rather than throwing: this is a shape we
+// don't own, and a new event type upstream should render as nothing, not
+// break the transcript.
+function applyOpencodeEvent(state: TranscriptState, raw: RunEventRaw): TranscriptState {
+  const blocks = [...state.blocks];
+  let finished = state.finished;
+  let costUsd = state.costUsd;
+  let costIsEstimate = state.costIsEstimate;
+
+  const part = asRecord(raw.part);
+
+  switch (raw.type) {
+    case "text": {
+      const text = asString(part.text);
+      if (text) blocks.push({ kind: "text", text, done: true });
+      break;
+    }
+
+    case "reasoning": {
+      const text = asString(part.text);
+      if (text) blocks.push({ kind: "thinking", text, done: true });
+      break;
+    }
+
+    case "tool_use": {
+      // opencode emits a tool only once it has completed — there is no
+      // pending/running state on the CLI stream — so the block is born done,
+      // with its result already attached.
+      const state_ = asRecord(part.state);
+      blocks.push({
+        kind: "tool_use",
+        id: asString(part.id),
+        name: asString(part.tool),
+        input: state_.input ?? null,
+        partialInputJson: "",
+        result: typeof state_.output === "string" ? state_.output : JSON.stringify(state_.output ?? ""),
+        resultIsError: asString(state_.status) === "error",
+        done: true,
+      });
+      break;
+    }
+
+    case "step_finish": {
+      // Cost accumulates across steps and is reported as opencode states it.
+      // Zero is a real answer — a local model costs nothing — so it is not
+      // second-guessed with a token-priced estimate that would invent a
+      // charge nobody was billed for.
+      const cost = part.cost;
+      if (typeof cost === "number") {
+        costUsd = (costUsd ?? 0) + cost;
+        costIsEstimate = false;
+      }
+      break;
+    }
+
+    case "error": {
+      const error = asRecord(raw.error);
+      const data = asRecord(error.data);
+      const summary =
+        [asString(error.name), asString(data.message)].filter(Boolean).join(": ") || null;
+      blocks.push({ kind: "result", ok: false, summary, costUsd });
+      finished = true;
+      break;
+    }
+  }
+
+  return { ...state, blocks, finished, costUsd, costIsEstimate };
+}
+
+// The runtime that produced the events decides how to read them. It comes
+// from task_runs.runtime, not from the Agent's current setting, so replaying
+// an old run still picks the reducer that matches what is stored.
+export function applyRunEvent(
+  state: TranscriptState,
+  raw: RunEventRaw,
+  runtime: AgentRuntime = "claude_code",
+): TranscriptState {
+  return runtime === "opencode"
+    ? applyOpencodeEvent(state, raw)
+    : applyClaudeEvent(state, raw);
 }

@@ -1,4 +1,4 @@
-import type { TaskRun } from "@kompanion/shared";
+import { AGENT_RUNTIME_LABEL, type TaskRun } from "@kompanion/shared";
 import { RunTranscript } from "./RunTranscript.js";
 import { RUN_STATUS_ICON, formatRunCost } from "./runStatus.js";
 
@@ -40,6 +40,12 @@ export function RunRow({
         <span>· {new Date(run.createdAt).toLocaleString()}</span>
         {run.durationMs != null && <span>· {(run.durationMs / 1000).toFixed(1)}s</span>}
         <span>· {formatRunCost(run.costUsd)}</span>
+        <span>· {AGENT_RUNTIME_LABEL[run.runtime]}</span>
+        {run.model && (
+          <span>
+            · <code>{run.model}</code>
+          </span>
+        )}
 
         <button
           type="button"
@@ -61,6 +67,7 @@ export function RunRow({
           teamId={teamId}
           taskId={taskId}
           runId={run.id}
+          runtime={run.runtime}
           className="max-h-[55vh] rounded-none"
         />
       )}

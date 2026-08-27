@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
+  type AgentRuntime,
   applyRunEvent,
   createTranscriptState,
   type RunEventRaw,
@@ -16,6 +17,10 @@ export function RunTranscript({
   teamId,
   taskId,
   runId,
+  // Which event shape to reduce. Comes from the run, never from the Agent's
+  // current setting — replaying an old run has to use the reducer that
+  // matches what was stored.
+  runtime,
   // Callers own the box: the card leaves this unset for the compact 16rem
   // default, the expanded view passes a flex-fill class instead.
   className = "max-h-64",
@@ -27,6 +32,7 @@ export function RunTranscript({
   teamId: string;
   taskId: string;
   runId: string;
+  runtime: AgentRuntime;
   className?: string;
   // Reported on every change so an ancestor can fold a still-running run
   // into its own spend total; null once the run has no live figure to add.
@@ -55,7 +61,7 @@ export function RunTranscript({
       // silently drop the duplicate instead of double-applying a delta.
       if (parsed.seq <= lastSeqRef.current) return;
       lastSeqRef.current = parsed.seq;
-      setState((prev) => applyRunEvent(prev, parsed.payload as RunEventRaw));
+      setState((prev) => applyRunEvent(prev, parsed.payload as RunEventRaw, runtime));
     };
     source.addEventListener("done", () => source.close());
     source.onerror = () => {
@@ -65,7 +71,7 @@ export function RunTranscript({
     };
 
     return () => source.close();
-  }, [teamId, taskId, runId]);
+  }, [teamId, taskId, runId, runtime]);
 
   // Kept in a ref so a caller passing an inline arrow doesn't re-subscribe
   // the SSE stream on every render.
