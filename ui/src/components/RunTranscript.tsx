@@ -162,12 +162,16 @@ export function RunTranscript({
                   <span className="ml-1 font-normal text-neutral-400">running…</span>
                 )}
               </summary>
-              <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap rounded bg-neutral-50 p-1">
+              {/* No height cap: a capped pre inside the scrolling transcript
+                  meant nested scrollbars, and reading a long command or file
+                  dump through an 8rem window. The transcript box itself is
+                  the one place that scrolls. */}
+              <pre className="mt-1 whitespace-pre-wrap break-words rounded bg-neutral-50 p-1">
                 {JSON.stringify(block.input, null, 2)}
               </pre>
               {block.result !== null && (
                 <pre
-                  className={`mt-1 max-h-32 overflow-auto whitespace-pre-wrap rounded p-1 ${
+                  className={`mt-1 whitespace-pre-wrap break-words rounded p-1 ${
                     block.resultIsError
                       ? "bg-red-50 text-red-700"
                       : "bg-neutral-50 text-neutral-600"
