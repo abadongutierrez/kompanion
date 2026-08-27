@@ -9,6 +9,9 @@ import com.kompanion.server.entity.Task
 import com.kompanion.server.entity.TaskStatus
 import com.kompanion.server.entity.isValidTaskTransition
 import org.springframework.jdbc.core.JdbcTemplate
+import com.kompanion.server.entity.AgentRuntime
+import com.kompanion.server.service.runner.AgentRunner
+import com.kompanion.server.service.runner.RunContext
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 import java.io.File
@@ -21,7 +24,7 @@ class NoHarnessException : RuntimeException("no harness for this agent")
 class OverBudgetException(val run: TaskRunResponse) : RuntimeException("team is over its monthly budget")
 class TaskAlreadyRunningException : RuntimeException("task is already running")
 
-private data class ClaudeResult(
+private data class RunResult(
     val ok: Boolean,
     val summary: String?,
     val rawOutput: Any?,
@@ -39,8 +42,10 @@ class RunTaskService(
     private val claudeHarnessService: ClaudeHarnessService,
     private val budgetService: BudgetService,
     private val repoWorkspaceService: RepoWorkspaceService,
-    private val workspaceEnforcementService: WorkspaceEnforcementService,
     private val runEventsBus: RunEventsBus,
+    // Every AgentRunner bean, keyed by the runtime it serves. Adding a
+    // runtime means adding a @Component — nothing here changes.
+    runnerList: List<AgentRunner>,
     // 180s was set back when a run worked in a throwaway scratch directory
     // and produced a markdown file. Real work in a real worktree — read the
     // repo, edit, run the tests, commit — routinely runs longer, and the
@@ -50,6 +55,8 @@ class RunTaskService(
     // team budget instead (see BudgetService).
     @Value("\${claude.run-timeout-ms:1800000}") private val runTimeoutMs: Long,
 ) {
+    private val runners: Map<AgentRuntime, AgentRunner> = runnerList.associateBy { it.runtime }
+
 
     private fun buildPrompt(
         task: Task,
@@ -166,58 +173,20 @@ class RunTaskService(
             ).joinToString("\n")
     }
 
-    // Materializes the assigned agent's .claude/ (skills/agents/hook
-    // settings) into the task's workspace, replacing any previous agent's
-    // config wholesale (so skills/agents don't accumulate across agents) but
-    // leaving everything else intact. CLAUDE.md is deliberately NOT copied
-    // here (see readAgentSystemPrompt) — could clobber a real repo's own
-    // CLAUDE.md otherwise.
-    private fun copyHarnessSkills(workspaceDir: File, harnessDir: File) {
-        workspaceDir.mkdirs()
-        File(workspaceDir, ".claude").deleteRecursively()
-        File(harnessDir, ".claude").copyRecursively(File(workspaceDir, ".claude"), overwrite = true)
-    }
-
-    // Read once and passed via --append-system-prompt instead of being
-    // copied as a file — works identically regardless of what cwd is, and
-    // can never clobber a real project's own CLAUDE.md.
-    private fun readAgentSystemPrompt(harnessDir: File): String? {
-        val claudeMd = File(harnessDir, "CLAUDE.md")
-        return if (claudeMd.exists()) claudeMd.readText() else null
-    }
-
-    // Claude Code's --output-format json/stream-json result line includes
-    // total_cost_usd at the top level.
-    private fun extractCostUsd(rawOutput: Map<String, Any?>): BigDecimal? =
-        (rawOutput["total_cost_usd"] as? Number)?.let { BigDecimal.valueOf(it.toDouble()) }
-
-    // Streams `claude --output-format stream-json --include-partial-messages`:
-    // every complete JSON line is persisted to task_run_events (for replay)
-    // and published live to any open SSE connections as it arrives. The
-    // final `result`-type line carries cost/summary.
-    private fun runClaudeStreaming(
-        prompt: String,
-        cwd: File,
+    // Spawns whatever the runner asks for and streams its stdout: every
+    // complete JSON line is persisted to task_run_events (for replay) and
+    // published live to any open SSE connections as it arrives. What the
+    // lines mean is the runner's business — this loop only cares that they
+    // are JSON, one per line, in order.
+    private fun runAgentStreaming(
+        runner: AgentRunner,
+        ctx: RunContext,
         runId: UUID,
-        systemPromptAppend: String?,
-        taskWorkspaceDir: File,
-        taskId: UUID,
-    ): ClaudeResult {
-        val bin = System.getenv("CLAUDE_BIN") ?: "claude"
+    ): RunResult {
         val started = System.currentTimeMillis()
-        val args = mutableListOf(
-            bin, "-p", prompt,
-            "--output-format", "stream-json",
-            "--include-partial-messages",
-            "--verbose",
-            "--dangerously-skip-permissions",
-        )
-        if (systemPromptAppend != null) {
-            args.add("--append-system-prompt")
-            args.add(systemPromptAppend)
-        }
+        val args = runner.buildCommand(ctx)
 
-        val processBuilder = ProcessBuilder(args).directory(cwd)
+        val processBuilder = ProcessBuilder(args).directory(ctx.cwdDir)
         // The prompt goes in via -p, so the CLI has no reason to read stdin
         // — but without this it inherits the JVM's, waits ~3s on a pipe
         // nobody ever writes to, warns "no stdin data received in 3s", and
@@ -229,15 +198,15 @@ class RunTaskService(
         // activity.log and where the PreToolUse enforcement hook reads
         // manifest.json from — deliberately separate from cwd (the real
         // repo being worked on) once repos are linked.
-        processBuilder.environment()["TASK_WORKSPACE_DIR"] = taskWorkspaceDir.path
-        processBuilder.environment()["TASK_ID"] = taskId.toString()
+        processBuilder.environment()["TASK_WORKSPACE_DIR"] = ctx.taskWorkspaceDir.path
+        processBuilder.environment()["TASK_ID"] = ctx.taskId.toString()
 
         val process = try {
             processBuilder.start()
         } catch (e: Exception) {
-            return ClaudeResult(
+            return RunResult(
                 ok = false,
-                summary = "Failed to launch Claude Code: ${e.message}",
+                summary = "Failed to launch ${args.firstOrNull() ?: "the agent CLI"}: ${e.message}",
                 rawOutput = mapOf("error" to e.message),
                 costUsd = null,
                 durationMs = (System.currentTimeMillis() - started).toInt(),
@@ -263,7 +232,10 @@ class RunTaskService(
         stderrThread.start()
 
         var seq = 0
-        var finalResult: Map<String, Any?>? = null
+        // Kept in full: a runner may need more than the last line (opencode
+        // accumulates cost across every step_finish), and the list is bounded
+        // by the run's own output.
+        val events = mutableListOf<Map<String, Any?>>()
 
         process.inputStream.bufferedReader().forEachLine { line ->
             val trimmed = line.trim()
@@ -281,9 +253,7 @@ class RunTaskService(
                 runId, currentSeq, trimmed,
             )
             runEventsBus.publishEvent(runId, currentSeq, trimmed)
-            if (parsed["type"] == "result") {
-                finalResult = parsed
-            }
+            events += parsed
         }
 
         val exitCode = process.waitFor()
@@ -291,25 +261,12 @@ class RunTaskService(
         stderrThread.join(1_000)
         val durationMs = (System.currentTimeMillis() - started).toInt()
 
-        val result = finalResult
-        if (result != null) {
-            return ClaudeResult(
-                ok = result["subtype"] == "success",
-                summary = result["result"] as? String,
-                rawOutput = result,
-                costUsd = extractCostUsd(result),
-                durationMs = durationMs,
-            )
-        }
-
-        val stderr = stderrBuilder.toString().trim()
-        return ClaudeResult(
-            ok = false,
-            summary = stderr.ifEmpty {
-                if (exitCode != 0) "claude exited with code $exitCode" else "claude ended without a result"
-            },
-            rawOutput = mapOf("exitCode" to exitCode, "stderr" to stderr),
-            costUsd = null,
+        val interpreted = runner.interpret(events, exitCode, stderrBuilder.toString().trim())
+        return RunResult(
+            ok = interpreted.ok,
+            summary = interpreted.summary,
+            rawOutput = interpreted.rawOutput,
+            costUsd = interpreted.costUsd,
             durationMs = durationMs,
         )
     }
@@ -423,6 +380,8 @@ class RunTaskService(
         val taskId = task.id!!
         val agentId = agent.id!!
         val harnessDir = claudeHarnessService.resolveHarnessDir(agent) ?: throw NoHarnessException()
+        val runner = runners[agent.runtime]
+            ?: throw IllegalStateException("no runner registered for runtime ${agent.runtime}")
 
         // Checked before spending anything: once a team is over its monthly
         // budget, refuse the run outright. Recorded as its own task_runs
@@ -503,17 +462,26 @@ class RunTaskService(
                     )
                 }
 
-                copyHarnessSkills(workspaceDir, harnessDir)
-                workspaceEnforcementService.installCwdEnforcement(workspaceDir, taskWorkspaceDir, manifest)
-                val systemPromptAppend = readAgentSystemPrompt(harnessDir)
-
-                // Starting a run means work is happening: move
-                // backlog -> in_progress before invoking Claude.
-                val startedStatus = transitionTaskStatus(taskId, task.status, TaskStatus.in_progress)
-
                 val teamSnapshot = if (agent.slug == "project-manager") buildTeamSnapshot(task.teamId) else null
                 val prompt = buildPrompt(task, manifest, teamSnapshot, mentionContext)
-                val result = runClaudeStreaming(prompt, workspaceDir, runId, systemPromptAppend, taskWorkspaceDir, taskId)
+                val ctx = RunContext(
+                    agent = agent,
+                    prompt = prompt,
+                    harnessDir = harnessDir,
+                    cwdDir = workspaceDir,
+                    taskWorkspaceDir = taskWorkspaceDir,
+                    taskId = taskId,
+                    // Only meaningful when the team has a budget; the gate
+                    // above already refused if the remainder were negative.
+                    remainingBudgetUsd = spend.monthlyBudgetUsd?.minus(spend.spendUsd),
+                )
+                runner.prepareWorkspace(ctx, manifest)
+
+                // Starting a run means work is happening: move
+                // backlog -> in_progress before invoking the CLI.
+                val startedStatus = transitionTaskStatus(taskId, task.status, TaskStatus.in_progress)
+
+                val result = runAgentStreaming(runner, ctx, runId)
 
                 transitionTaskStatus(taskId, startedStatus, if (result.ok) TaskStatus.in_review else TaskStatus.blocked)
 
