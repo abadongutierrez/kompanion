@@ -11,11 +11,17 @@ export function BudgetPanel({ teamId }: { teamId: string }) {
     queryFn: () => api.getTeamSpend(teamId),
   });
 
+  const daily = useQuery({
+    queryKey: ["teamDailySpend", teamId],
+    queryFn: () => api.getTeamDailySpend(teamId),
+  });
+
   const updateBudget = useMutation({
     mutationFn: (monthlyBudgetUsd: number | null) =>
       api.updateTeamBudget(teamId, { monthlyBudgetUsd }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["teamSpend", teamId] });
+      queryClient.invalidateQueries({ queryKey: ["teamDailySpend", teamId] });
       setDraft("");
     },
   });
@@ -62,6 +68,29 @@ export function BudgetPanel({ teamId }: { teamId: string }) {
           </button>
         </form>
       </div>
+
+      <h3 className="pt-2 text-xs font-semibold uppercase text-neutral-500">
+        By day this month
+      </h3>
+      {daily.data && daily.data.length === 0 ? (
+        <p className="text-xs text-neutral-400">No runs yet this month.</p>
+      ) : (
+        <table className="w-full max-w-md text-xs">
+          <tbody>
+            {(daily.data ?? []).map((d) => (
+              <tr key={d.day} className="border-b border-neutral-100 last:border-0">
+                <td className="py-1 text-neutral-600">{d.day}</td>
+                <td className="py-1 text-neutral-400">
+                  {d.runCount} {d.runCount === 1 ? "run" : "runs"}
+                </td>
+                <td className="py-1 text-right tabular-nums text-neutral-700">
+                  ${d.spendUsd.toFixed(4)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }

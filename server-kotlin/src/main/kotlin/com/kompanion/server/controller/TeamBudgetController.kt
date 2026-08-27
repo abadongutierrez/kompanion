@@ -33,4 +33,10 @@ class TeamBudgetController(
 
     @GetMapping("/spend")
     fun spend(@PathVariable teamId: UUID) = budgetService.getTeamSpend(teamId)
+
+    // Separate from /spend rather than a field on it: the board polls /spend
+    // on every card to decide whether runs are refused, and has no use for
+    // the breakdown.
+    @GetMapping("/spend/daily")
+    fun dailySpend(@PathVariable teamId: UUID) = budgetService.getDailySpend(teamId)
 }

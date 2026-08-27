@@ -19,6 +19,7 @@ import type {
   TaskWithRepositories,
   Team,
   TeamSpend,
+  DailySpend,
   UpdateRepositoryInput,
   UpdateAgentInput,
   UpdateTaskCommentInput,
@@ -144,6 +145,8 @@ export const api = {
 
   getTeamSpend: (teamId: string) =>
     request<TeamSpend>(`${base}/teams/${teamId}/spend`),
+  getTeamDailySpend: (teamId: string) =>
+    request<DailySpend[]>(`${base}/teams/${teamId}/spend/daily`),
   updateTeamBudget: (teamId: string, input: UpdateTeamBudgetInput) =>
     request<Team>(`${base}/teams/${teamId}/budget`, {
       method: "PATCH",

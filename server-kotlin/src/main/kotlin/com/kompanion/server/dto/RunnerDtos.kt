@@ -28,6 +28,15 @@ data class TaskRunResponse(
     val createdAt: OffsetDateTime?,
 )
 
+// One calendar day's spend. `day` is an ISO date computed in UTC, matching
+// the month window in TeamSpendResponse — the JDBC pool pins sessions to UTC
+// precisely so these boundaries don't drift with the server's local offset.
+data class DailySpendResponse(
+    val day: String,
+    val spendUsd: BigDecimal,
+    val runCount: Int,
+)
+
 data class TeamSpendResponse(
     val teamId: UUID,
     val monthlyBudgetUsd: BigDecimal?,

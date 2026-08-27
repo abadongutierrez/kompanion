@@ -1,5 +1,6 @@
 package com.kompanion.server.service
 
+import com.kompanion.server.dto.DailySpendResponse
 import com.kompanion.server.dto.TeamSpendResponse
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.stereotype.Service
@@ -43,6 +44,33 @@ class BudgetService(private val jdbc: JdbcTemplate) {
             teamId,
         ).first()
     }
+
+    // Per-day breakdown for the current month, newest first. Runs that cost
+    // nothing still count: an over_budget refusal or a run killed before it
+    // reported are both worth seeing on the day they happened, and a day with
+    // runs but no recorded cost reads differently from a day with none.
+    fun getDailySpend(teamId: UUID): List<DailySpendResponse> = jdbc.query(
+        """
+        select
+          to_char(date_trunc('day', tr.created_at), 'YYYY-MM-DD') as day,
+          coalesce(sum(tr.cost_usd), 0) as spend_usd,
+          count(*) as run_count
+        from task_runs tr
+        join tasks t on t.id = tr.task_id
+        where t.team_id = ?
+          and tr.created_at >= date_trunc('month', now())
+        group by 1
+        order by 1 desc
+        """.trimIndent(),
+        { rs, _ ->
+            DailySpendResponse(
+                day = rs.getString("day"),
+                spendUsd = rs.getBigDecimal("spend_usd") ?: BigDecimal.ZERO,
+                runCount = rs.getInt("run_count"),
+            )
+        },
+        teamId,
+    )
 
     fun isOverBudget(teamId: UUID): Boolean {
         val spend = getTeamSpend(teamId)

@@ -287,6 +287,15 @@ export const TaskRun = z.object({
 });
 export type TaskRun = z.infer<typeof TaskRun>;
 
+// One day's spend within the current month. `day` is an ISO date in UTC,
+// matching how the month window itself is computed server-side.
+export const DailySpend = z.object({
+  day: z.string(),
+  spendUsd: z.number(),
+  runCount: z.number().int(),
+});
+export type DailySpend = z.infer<typeof DailySpend>;
+
 export const UpdateTeamBudgetInput = z.object({
   monthlyBudgetUsd: z.number().positive().nullable(),
 });
