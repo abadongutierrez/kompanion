@@ -33,6 +33,21 @@ data class RunContext(
     val remainingBudgetUsd: BigDecimal?,
 )
 
+// Kept apart rather than summed: cache reads bill at 0.1x input and cache
+// writes at 1.25x, and on Claude Code `input` alone counts only what wasn't
+// served from cache — a few dozen tokens against hundreds of thousands read.
+// Anything displaying an input total has to add all three.
+data class TokenUsage(
+    val input: Long?,
+    val output: Long?,
+    val cacheRead: Long?,
+    val cacheWrite: Long?,
+) {
+    companion object {
+        val NONE = TokenUsage(null, null, null, null)
+    }
+}
+
 // What a runner makes of a finished process: everything that lands on the
 // task_runs row apart from durationMs, which is wall-clock and measured by
 // the caller.
@@ -41,6 +56,7 @@ data class Interpretation(
     val summary: String?,
     val rawOutput: Any?,
     val costUsd: BigDecimal?,
+    val tokens: TokenUsage = TokenUsage.NONE,
 )
 
 // The seam between orchestration and CLI. RunTaskService owns everything

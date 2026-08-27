@@ -12,6 +12,7 @@ import org.springframework.jdbc.core.JdbcTemplate
 import com.kompanion.server.entity.AgentRuntime
 import com.kompanion.server.service.runner.AgentRunner
 import com.kompanion.server.service.runner.RunContext
+import com.kompanion.server.service.runner.TokenUsage
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 import java.io.File
@@ -30,6 +31,7 @@ private data class RunResult(
     val rawOutput: Any?,
     val costUsd: BigDecimal?,
     val durationMs: Int,
+    val tokens: TokenUsage,
 )
 
 // Direct port of runTask.ts's runTaskWithClaude — the core orchestrator,
@@ -210,6 +212,8 @@ class RunTaskService(
                 rawOutput = mapOf("error" to e.message),
                 costUsd = null,
                 durationMs = (System.currentTimeMillis() - started).toInt(),
+                // The process never started, so there is nothing to count.
+                tokens = TokenUsage.NONE,
             )
         }
 
@@ -268,6 +272,7 @@ class RunTaskService(
             rawOutput = interpreted.rawOutput,
             costUsd = interpreted.costUsd,
             durationMs = durationMs,
+            tokens = interpreted.tokens,
         )
     }
 
@@ -302,6 +307,10 @@ class RunTaskService(
             rawOutput = rawOutput,
             costUsd = rs.getBigDecimal("cost_usd"),
             durationMs = rs.getObject("duration_ms") as Int?,
+            inputTokens = rs.getObject("input_tokens") as Long?,
+            outputTokens = rs.getObject("output_tokens") as Long?,
+            cacheReadTokens = rs.getObject("cache_read_tokens") as Long?,
+            cacheWriteTokens = rs.getObject("cache_write_tokens") as Long?,
             createdAt = rs.getObject("created_at", OffsetDateTime::class.java),
         )
     }
@@ -341,17 +350,20 @@ class RunTaskService(
         costUsd: BigDecimal?,
         durationMs: Int?,
         agentTitle: String?,
+        tokens: TokenUsage,
     ): TaskRunResponse {
         val rawOutputJson = rawOutput?.let { objectMapper.writeValueAsString(it) }
         return jdbc.query(
             """
             update task_runs
-            set status = ?, summary = ?, raw_output = ?::jsonb, cost_usd = ?, duration_ms = ?
+            set status = ?, summary = ?, raw_output = ?::jsonb, cost_usd = ?, duration_ms = ?,
+                input_tokens = ?, output_tokens = ?, cache_read_tokens = ?, cache_write_tokens = ?
             where id = ?
             returning *
             """.trimIndent(),
             { rs, _ -> mapTaskRun(rs, agentTitle) },
-            status, summary, rawOutputJson, costUsd, durationMs, runId,
+            status, summary, rawOutputJson, costUsd, durationMs,
+            tokens.input, tokens.output, tokens.cacheRead, tokens.cacheWrite, runId,
         ).first()
     }
 
@@ -497,6 +509,7 @@ class RunTaskService(
                     result.costUsd,
                     result.durationMs,
                     agent.title,
+                    result.tokens,
                 )
                 // publishEnd must only fire once the row above is already
                 // terminal — otherwise a subscriber that checked status

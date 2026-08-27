@@ -133,7 +133,26 @@ class OpencodeRunner : AgentRunner {
                 "tokens" to stepFinishes.mapNotNull { part(it)?.get("tokens") },
             ),
             costUsd = totalCost(stepFinishes),
+            tokens = totalTokens(stepFinishes),
         )
+    }
+
+    // opencode reports per step, so these add up across the run. Its cache
+    // counts are nested one level deeper than Claude's.
+    @Suppress("UNCHECKED_CAST")
+    private fun totalTokens(stepFinishes: List<Map<String, Any?>>): TokenUsage {
+        if (stepFinishes.isEmpty()) return TokenUsage.NONE
+        var input = 0L; var output = 0L; var read = 0L; var write = 0L; var seen = false
+        for (step in stepFinishes) {
+            val tokens = part(step)?.get("tokens") as? Map<String, Any?> ?: continue
+            seen = true
+            input += (tokens["input"] as? Number)?.toLong() ?: 0L
+            output += (tokens["output"] as? Number)?.toLong() ?: 0L
+            val cache = tokens["cache"] as? Map<String, Any?>
+            read += (cache?.get("read") as? Number)?.toLong() ?: 0L
+            write += (cache?.get("write") as? Number)?.toLong() ?: 0L
+        }
+        return if (seen) TokenUsage(input, output, read, write) else TokenUsage.NONE
     }
 
     // Summed across steps, and reported exactly as opencode states it. Zero

@@ -60,6 +60,18 @@ class ClaudeCodeRunner(
         return args
     }
 
+    @Suppress("UNCHECKED_CAST")
+    private fun tokensFrom(result: Map<String, Any?>): TokenUsage {
+        val usage = result["usage"] as? Map<String, Any?> ?: return TokenUsage.NONE
+        fun n(key: String) = (usage[key] as? Number)?.toLong()
+        return TokenUsage(
+            input = n("input_tokens"),
+            output = n("output_tokens"),
+            cacheRead = n("cache_read_input_tokens"),
+            cacheWrite = n("cache_creation_input_tokens"),
+        )
+    }
+
     private fun readSystemPrompt(harnessDir: File): String? =
         File(harnessDir, "CLAUDE.md").takeIf { it.exists() }?.readText()
 
@@ -77,6 +89,7 @@ class ClaudeCodeRunner(
                 summary = result["result"] as? String,
                 rawOutput = result,
                 costUsd = (result["total_cost_usd"] as? Number)?.let { BigDecimal.valueOf(it.toDouble()) },
+                tokens = tokensFrom(result),
             )
         }
 

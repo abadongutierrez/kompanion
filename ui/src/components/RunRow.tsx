@@ -1,6 +1,11 @@
 import { AGENT_RUNTIME_LABEL, type TaskRun } from "@kompanion/shared";
 import { RunTranscript } from "./RunTranscript.js";
-import { RUN_STATUS_ICON, formatRunCost } from "./runStatus.js";
+import {
+  RUN_STATUS_ICON,
+  formatRunCost,
+  formatTokens,
+  totalInputTokens,
+} from "./runStatus.js";
 
 // One run in the task page's list: a header summarising the run, and its
 // logs when open. Which row is open is the caller's business — the list
@@ -25,6 +30,7 @@ export function RunRow({
   onToggle: () => void;
 }) {
   const logsId = `run-logs-${run.id}`;
+  const tokensIn = totalInputTokens(run);
 
   return (
     <div className="shrink-0 overflow-hidden rounded border border-neutral-200">
@@ -40,6 +46,23 @@ export function RunRow({
         <span>· {new Date(run.createdAt).toLocaleString()}</span>
         {run.durationMs != null && <span>· {(run.durationMs / 1000).toFixed(1)}s</span>}
         <span>· {formatRunCost(run.costUsd)}</span>
+        {tokensIn != null && (
+          // The breakdown lives in the tooltip: the headline number is what
+          // the model read in total, but almost all of it is usually cache,
+          // which bills at a tenth of fresh input.
+          <span
+            title={[
+              `${run.inputTokens ?? 0} fresh input`,
+              `${run.cacheReadTokens ?? 0} read from cache`,
+              `${run.cacheWriteTokens ?? 0} written to cache`,
+            ].join("\n")}
+          >
+            · {formatTokens(tokensIn)} in
+          </span>
+        )}
+        {run.outputTokens != null && (
+          <span>· {formatTokens(run.outputTokens)} out</span>
+        )}
         <span>· {AGENT_RUNTIME_LABEL[run.runtime]}</span>
         {run.model && (
           <span>

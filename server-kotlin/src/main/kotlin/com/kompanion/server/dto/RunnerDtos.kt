@@ -25,6 +25,14 @@ data class TaskRunResponse(
     val rawOutput: Any?,
     val costUsd: BigDecimal?,
     val durationMs: Int?,
+    // Cache reads and writes are separate because they bill differently
+    // (0.1x and 1.25x of input), and because `inputTokens` counts only what
+    // was NOT served from cache — a display showing total input must add all
+    // three or it will report a 1.5M-token run as a few dozen.
+    val inputTokens: Long?,
+    val outputTokens: Long?,
+    val cacheReadTokens: Long?,
+    val cacheWriteTokens: Long?,
     val createdAt: OffsetDateTime?,
 )
 

@@ -283,6 +283,13 @@ export const TaskRun = z.object({
   rawOutput: z.unknown().nullable(),
   costUsd: z.number().nullable(),
   durationMs: z.number().int().nullable(),
+  // Cache reads and writes are kept apart from inputTokens because they bill
+  // differently, and because inputTokens counts only what was NOT served from
+  // cache. Use totalInputTokens() rather than inputTokens for display.
+  inputTokens: z.number().nullable(),
+  outputTokens: z.number().nullable(),
+  cacheReadTokens: z.number().nullable(),
+  cacheWriteTokens: z.number().nullable(),
   createdAt: z.string(),
 });
 export type TaskRun = z.infer<typeof TaskRun>;
