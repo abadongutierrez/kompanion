@@ -106,7 +106,7 @@ test.describe("task board", () => {
     await expect(page.getByRole("button", { name: "+ New Task" })).toBeVisible();
   });
 
-  test("the Runs section lists each run with its agent and cost", async ({
+  test("the card shows only the run count, not per-run detail", async ({
     page,
     request,
   }) => {
@@ -119,14 +119,9 @@ test.describe("task board", () => {
     await page.goto(`/projects/${projectId}/board`);
     const card = page.locator("div.border-neutral-200", { hasText: title }).first();
 
-    // Collapsed by default, like Comments — and a never-run task says so
-    // rather than showing an empty list.
-    const runs = card.locator("details", { hasText: "Runs" }).first();
-    await runs.getByText("Runs", { exact: false }).first().click();
-    await expect(runs.getByText("Not run yet.")).toBeVisible();
-
-    // The count only appears once there is at least one run, so an unrun
-    // task reads "Runs", never "Runs (0)".
-    await expect(card.getByText("Runs (", { exact: false })).toHaveCount(0);
+    // A never-run task says so, and there is no expandable run history on
+    // the card any more — run detail lives on the task page.
+    await expect(card.getByText("Not run yet.")).toBeVisible();
+    await expect(card.locator("details", { hasText: "Runs" })).toHaveCount(0);
   });
 });
