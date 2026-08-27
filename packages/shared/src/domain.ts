@@ -59,11 +59,27 @@ export type Team = z.infer<typeof Team>;
 // want it (see team_agents). This makes sharing a harnessPath/CLAUDE.md an
 // intentional, visible action instead of an accident of two Teams
 // pointing at the same directory.
+// Which CLI runs an Agent. The harness folder can carry both layouts
+// (CLAUDE.md + .claude/ for one, AGENTS.md + .opencode/ for the other), so
+// switching runtime doesn't necessarily mean a different folder.
+export const AgentRuntime = z.enum(["claude_code", "opencode"]);
+export type AgentRuntime = z.infer<typeof AgentRuntime>;
+
+export const AGENT_RUNTIME_LABEL: Record<AgentRuntime, string> = {
+  claude_code: "Claude Code",
+  opencode: "opencode",
+};
+
 export const Agent = z.object({
   id: z.string(),
   title: z.string(),
   slug: z.string(),
   harnessPath: z.string(),
+  runtime: AgentRuntime,
+  // null means "whatever that CLI defaults to". Id formats differ per
+  // runtime — `claude-opus-5` vs opencode's `ollama/qwen2.5-coder:7b` — so
+  // this is free text, not an enum that would go stale.
+  model: z.string().nullable(),
   createdAt: z.string(),
 });
 export type Agent = z.infer<typeof Agent>;
@@ -144,6 +160,9 @@ export type CreateTeamInput = z.infer<typeof CreateTeamInput>;
 export const CreateAgentInput = Agent.pick({
   title: true,
   harnessPath: true,
+}).extend({
+  runtime: AgentRuntime.optional(),
+  model: z.string().nullable().optional(),
 });
 export type CreateAgentInput = z.infer<typeof CreateAgentInput>;
 
@@ -162,6 +181,8 @@ export const UpdateAgentInput = Agent.pick({
   title: true,
   slug: true,
   harnessPath: true,
+  runtime: true,
+  model: true,
 }).partial();
 export type UpdateAgentInput = z.infer<typeof UpdateAgentInput>;
 
@@ -252,6 +273,11 @@ export const TaskRun = z.object({
   // Denormalized for display, like TaskComment's authorTitle — null when the
   // Agent that served the run has since been deleted from the library.
   agentTitle: z.string().nullable(),
+  // The runtime that produced this run, not whatever its Agent is set to
+  // now: the transcript reducer is chosen from this, so replaying an old run
+  // keeps working after an Agent switches CLI.
+  runtime: AgentRuntime,
+  model: z.string().nullable(),
   status: TaskRunStatus,
   summary: z.string().nullable(),
   rawOutput: z.unknown().nullable(),

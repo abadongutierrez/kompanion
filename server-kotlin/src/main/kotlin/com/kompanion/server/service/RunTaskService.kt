@@ -338,6 +338,8 @@ class RunTaskService(
             taskId = UUID.fromString(rs.getString("task_id")),
             agentId = UUID.fromString(rs.getString("agent_id")),
             agentTitle = agentTitle,
+            runtime = rs.getString("runtime"),
+            model = rs.getString("model"),
             status = rs.getString("status"),
             summary = rs.getString("summary"),
             rawOutput = rawOutput,
@@ -350,21 +352,28 @@ class RunTaskService(
     private fun insertOverBudgetRun(taskId: UUID, agent: Agent, summary: String): TaskRunResponse =
         jdbc.query(
             """
-            insert into task_runs (task_id, agent_id, status, summary, cost_usd, duration_ms)
-            values (?, ?, 'over_budget', ?, 0, 0)
+            insert into task_runs (task_id, agent_id, runtime, model, status, summary, cost_usd, duration_ms)
+            values (?, ?, ?, ?, 'over_budget', ?, 0, 0)
             returning *
             """.trimIndent(),
             // `returning *` can't join, so the title comes from the Agent the
             // caller already has rather than a second round trip.
             { rs, _ -> mapTaskRun(rs, agent.title) },
-            taskId, agent.id, summary,
+            taskId, agent.id, agent.runtime.name, agent.model, summary,
         ).first()
 
-    private fun insertRunningRun(taskId: UUID, agentId: UUID): UUID =
+    // runtime/model are stamped here, at the moment the run starts, not read
+    // back through agent_id later: the Agent can be switched to another CLI
+    // afterwards and this run's events still have to replay under the shape
+    // that produced them.
+    private fun insertRunningRun(taskId: UUID, agent: Agent): UUID =
         jdbc.query(
-            "insert into task_runs (task_id, agent_id, status) values (?, ?, 'running') returning id",
+            """
+            insert into task_runs (task_id, agent_id, runtime, model, status)
+            values (?, ?, ?, ?, 'running') returning id
+            """.trimIndent(),
             { rs, _ -> UUID.fromString(rs.getString("id")) },
-            taskId, agentId,
+            taskId, agent.id, agent.runtime.name, agent.model,
         ).first()
 
     private fun updateRunToTerminal(
@@ -442,7 +451,7 @@ class RunTaskService(
         // at the end — task_run_events needs a run_id to attach to from the
         // very first streamed line.
         val runId = try {
-            insertRunningRun(taskId, agentId)
+            insertRunningRun(taskId, agent)
         } catch (e: Exception) {
             // Nothing below runs, so release the claim here — a task must
             // never be left frozen by a run that never started.

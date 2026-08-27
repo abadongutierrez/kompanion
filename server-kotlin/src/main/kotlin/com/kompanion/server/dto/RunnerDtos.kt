@@ -15,6 +15,11 @@ data class TaskRunResponse(
     // reassigned without rewriting history — the title recorded here is
     // whichever one the run was served by at the time it is read.
     val agentTitle: String?,
+    // The runtime that actually produced this run, not whatever the Agent is
+    // set to now — the UI picks its transcript reducer from this, and replay
+    // of an old run has to keep working after an Agent switches CLI.
+    val runtime: String,
+    val model: String?,
     val status: String,
     val summary: String?,
     val rawOutput: Any?,

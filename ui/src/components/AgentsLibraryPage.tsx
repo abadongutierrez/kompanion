@@ -1,6 +1,10 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Agent } from "@kompanion/shared";
+import {
+  AGENT_RUNTIME_LABEL,
+  type Agent,
+  type AgentRuntime,
+} from "@kompanion/shared";
 import { api } from "../api.js";
 
 // The app-wide Agent library — a root-level page like Projects, reachable
@@ -13,6 +17,8 @@ export function AgentsLibraryPage() {
   const [title, setTitle] = useState("");
   const [slug, setSlug] = useState("");
   const [harnessPath, setHarnessPath] = useState("");
+  const [runtime, setRuntime] = useState<AgentRuntime>("claude_code");
+  const [model, setModel] = useState("");
   const [harnessTemplate, setHarnessTemplate] = useState("");
 
   const agents = useQuery({ queryKey: ["allAgents"], queryFn: api.listAllAgents });
@@ -22,6 +28,8 @@ export function AgentsLibraryPage() {
     setTitle("");
     setSlug("");
     setHarnessPath("");
+    setRuntime("claude_code");
+    setModel("");
     setHarnessTemplate("");
   }
 
@@ -30,6 +38,8 @@ export function AgentsLibraryPage() {
     setTitle(agent.title);
     setSlug(agent.slug);
     setHarnessPath(agent.harnessPath);
+    setRuntime(agent.runtime);
+    setModel(agent.model ?? "");
     const template = await api.getHarnessTemplate(agent.id);
     setHarnessTemplate(template.content);
   }
@@ -38,12 +48,12 @@ export function AgentsLibraryPage() {
     mutationFn: async () => {
       if (editingAgentId) {
         const [agent] = await Promise.all([
-          api.updateAgent(editingAgentId, { title, slug, harnessPath }),
+          api.updateAgent(editingAgentId, { title, slug, harnessPath, runtime, model }),
           api.updateHarnessTemplate(editingAgentId, harnessTemplate),
         ]);
         return agent;
       }
-      return api.createAgent({ title, harnessPath });
+      return api.createAgent({ title, harnessPath, runtime, model });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["allAgents"] });
@@ -80,7 +90,13 @@ export function AgentsLibraryPage() {
                 </button>
               </div>
               <p className="text-xs text-neutral-500">
-                slug: <code>{agent.slug}</code>
+                slug: <code>{agent.slug}</code> · {AGENT_RUNTIME_LABEL[agent.runtime]}
+                {agent.model && (
+                  <>
+                    {" · "}
+                    <code>{agent.model}</code>
+                  </>
+                )}
               </p>
               <p className="break-all text-xs text-neutral-400">
                 harness: <code>{agent.harnessPath}</code>
@@ -126,10 +142,39 @@ export function AgentsLibraryPage() {
           value={harnessPath}
           onChange={(e) => setHarnessPath(e.target.value)}
         />
+        <div className="flex gap-2">
+          <select
+            aria-label="Runtime"
+            className="rounded border border-neutral-300 px-2 py-1 text-sm"
+            value={runtime}
+            onChange={(e) => setRuntime(e.target.value as AgentRuntime)}
+          >
+            {Object.entries(AGENT_RUNTIME_LABEL).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+          <input
+            aria-label="Model"
+            className="min-w-0 flex-1 rounded border border-neutral-300 px-2 py-1 text-sm"
+            placeholder={
+              runtime === "opencode"
+                ? "Model (optional, e.g. ollama/qwen2.5-coder:7b)"
+                : "Model (optional, e.g. claude-opus-5)"
+            }
+            value={model}
+            onChange={(e) => setModel(e.target.value)}
+          />
+        </div>
         {editingAgentId && (
           <textarea
             className="w-full rounded border border-neutral-300 px-2 py-1 font-mono text-xs"
-            placeholder="Harness template (CLAUDE.md)"
+            placeholder={
+              runtime === "opencode"
+                ? "Harness template (AGENTS.md)"
+                : "Harness template (CLAUDE.md)"
+            }
             rows={10}
             value={harnessTemplate}
             onChange={(e) => setHarnessTemplate(e.target.value)}

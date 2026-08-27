@@ -11,7 +11,12 @@ data class CreateProjectRequest(val name: String)
 
 data class CreateTeamRequest(val name: String)
 
-data class CreateAgentRequest(val title: String, val harnessPath: String)
+data class CreateAgentRequest(
+    val title: String,
+    val harnessPath: String,
+    val runtime: String? = null,
+    val model: String? = null,
+)
 
 // slug is only touched when explicitly provided — unlike creation, editing
 // never silently re-derives it from a title change.
@@ -19,6 +24,9 @@ data class UpdateAgentRequest(
     val title: String? = null,
     val slug: String? = null,
     val harnessPath: String? = null,
+    val runtime: String? = null,
+    // Blank clears the model back to the CLI default; null leaves it alone.
+    val model: String? = null,
 )
 
 // POST /api/teams/{teamId}/agents — assign an existing Agent (from the

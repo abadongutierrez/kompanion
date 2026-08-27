@@ -6,6 +6,7 @@ import com.kompanion.server.dto.ErrorResponse
 import com.kompanion.server.dto.HarnessTemplateRequest
 import com.kompanion.server.dto.UpdateAgentRequest
 import com.kompanion.server.entity.Agent
+import com.kompanion.server.entity.AgentRuntime
 import com.kompanion.server.repository.AgentRepository
 import com.kompanion.server.repository.TeamRepository
 import com.kompanion.server.service.ClaudeHarnessService
@@ -33,19 +34,40 @@ class GlobalAgentsController(
 ) {
 
     // No scaffolding happens here — the operator is expected to have already
-    // created the harness directory (with its own .claude/ config) at
-    // harnessPath. We only validate it's really there, same as Repositories.
-    // Accepts either an absolute path or one relative to WORKSPACE_ROOT.
-    private fun validateHarnessPath(harnessPath: String): String? {
+    // created the harness directory at harnessPath. We only validate it's
+    // really there, same as Repositories. Accepts either an absolute path or
+    // one relative to WORKSPACE_ROOT.
+    //
+    // What counts as valid depends on the runtime: Claude Code reads
+    // .claude/, opencode reads .opencode/ and AGENTS.md. A folder can carry
+    // both and serve either.
+    private fun validateHarnessPath(harnessPath: String, runtime: AgentRuntime): String? {
         val dir = claudeHarnessService.resolveHarnessPath(harnessPath)
         if (!dir.exists()) {
-            return "no directory at \"${dir.path}\" — create the harness there first (with a .claude/ config), then register it"
+            return "no directory at \"${dir.path}\" — create the harness there first, then register it"
         }
-        if (!File(dir, ".claude").exists()) {
-            return "\"${dir.path}\" exists but has no .claude/ config — it isn't a valid harness directory"
+        return when (runtime) {
+            AgentRuntime.claude_code ->
+                if (File(dir, ".claude").exists()) null
+                else "\"${dir.path}\" exists but has no .claude/ config — it isn't a valid Claude Code harness"
+            AgentRuntime.opencode ->
+                if (File(dir, ".opencode").exists() || File(dir, "AGENTS.md").exists()) null
+                else "\"${dir.path}\" exists but has neither .opencode/ nor AGENTS.md — it isn't a valid opencode harness"
         }
-        return null
     }
+
+    // Rejects an unknown runtime with a 400 naming the accepted values rather
+    // than letting valueOf throw a 500.
+    private fun parseRuntime(raw: String?): Result<AgentRuntime?> =
+        when (raw) {
+            null -> Result.success(null)
+            else -> runCatching { AgentRuntime.valueOf(raw) }
+                .recoverCatching {
+                    throw IllegalArgumentException(
+                        "unknown runtime \"$raw\" — expected one of ${AgentRuntime.entries.joinToString(", ") { it.name }}",
+                    )
+                }
+        }
 
     // An Agent's slug is its only stable, machine-usable identifier (e.g.
     // the Project Manager team-snapshot gate keys off slug ==
@@ -73,7 +95,11 @@ class GlobalAgentsController(
 
     @PostMapping
     fun create(@RequestBody body: CreateAgentRequest): ResponseEntity<Any> {
-        validateHarnessPath(body.harnessPath)?.let {
+        val runtime = parseRuntime(body.runtime).getOrElse {
+            return ResponseEntity.badRequest().body(ErrorResponse(it.message ?: "invalid runtime"))
+        } ?: AgentRuntime.claude_code
+
+        validateHarnessPath(body.harnessPath, runtime)?.let {
             return ResponseEntity.badRequest().body(ErrorResponse(it))
         }
         val slug = uniqueSlug(body.title)
@@ -84,6 +110,8 @@ class GlobalAgentsController(
                 title = body.title,
                 slug = slug,
                 harnessPath = claudeHarnessService.toStoredHarnessPath(body.harnessPath),
+                runtime = runtime,
+                model = body.model?.ifBlank { null },
             ),
         )
         val reloaded = agents.findById(saved.id!!).orElse(saved)
@@ -92,13 +120,22 @@ class GlobalAgentsController(
 
     @PatchMapping("/{agentId}")
     fun update(@PathVariable agentId: UUID, @RequestBody body: UpdateAgentRequest): ResponseEntity<Any> {
-        body.harnessPath?.let { path ->
-            validateHarnessPath(path)?.let {
-                return ResponseEntity.badRequest().body(ErrorResponse(it))
-            }
+        val requestedRuntime = parseRuntime(body.runtime).getOrElse {
+            return ResponseEntity.badRequest().body(ErrorResponse(it.message ?: "invalid runtime"))
         }
         val existing = agents.findById(agentId).orElse(null)
             ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ErrorResponse("agent not found"))
+
+        // Re-validate whenever either half of (path, runtime) changes — a
+        // .claude/-only harness stops being valid the moment the Agent
+        // switches to opencode, and saying so now beats failing at run time.
+        val runtime = requestedRuntime ?: existing.runtime
+        val harnessPath = body.harnessPath ?: existing.harnessPath
+        if (body.harnessPath != null || requestedRuntime != null) {
+            validateHarnessPath(harnessPath, runtime)?.let {
+                return ResponseEntity.badRequest().body(ErrorResponse(it))
+            }
+        }
 
         body.slug?.let { slug ->
             val collision = agents.findBySlugAndIdNot(slug, agentId)
@@ -113,6 +150,9 @@ class GlobalAgentsController(
             slug = body.slug ?: existing.slug,
             harnessPath = body.harnessPath?.let { claudeHarnessService.toStoredHarnessPath(it) }
                 ?: existing.harnessPath,
+            runtime = runtime,
+            // Blank clears it back to the CLI default; absent leaves it alone.
+            model = body.model?.ifBlank { null } ?: existing.model.takeIf { body.model == null },
         )
         return ResponseEntity.ok(agents.save(updated))
     }
@@ -165,6 +205,11 @@ class TeamAgentsController(
                 title = rs.getString("title"),
                 slug = rs.getString("slug"),
                 harnessPath = rs.getString("harness_path"),
+                // Hand-rolled row mapping, so new columns have to be added
+                // here too — omitting these silently defaulted every
+                // team-scoped Agent back to Claude Code.
+                runtime = AgentRuntime.valueOf(rs.getString("runtime")),
+                model = rs.getString("model"),
                 createdAt = rs.getObject("created_at", java.time.OffsetDateTime::class.java),
             )
         },

@@ -51,12 +51,22 @@ data class Team(
 // harnessPath points at a directory whose .claude/agents/*.md are Claude
 // Code *subagents* spawned inside this Agent's run — a different level,
 // despite the shared word.
+// Lowercase constants deliberately, matching TaskStatus/TaskType: Spring Data
+// JDBC persists Kotlin enums via name()/valueOf(), so these must equal the
+// stored text verbatim.
+enum class AgentRuntime { claude_code, opencode }
+
 @Table("agents")
 data class Agent(
     @Id val id: UUID? = null,
     val title: String,
     val slug: String,
     val harnessPath: String,
+    // Which CLI runs this Agent, and optionally which model. A null model
+    // means "whatever that CLI defaults to" — the behaviour every Agent had
+    // before these columns existed.
+    val runtime: AgentRuntime = AgentRuntime.claude_code,
+    val model: String? = null,
     @ReadOnlyProperty val createdAt: OffsetDateTime? = null,
 )
 
