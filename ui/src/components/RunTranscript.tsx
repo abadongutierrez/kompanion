@@ -21,6 +21,13 @@ export function RunTranscript({
   // current setting — replaying an old run has to use the reducer that
   // matches what was stored.
   runtime,
+  // Forces every thinking/tool block open (true) or shut (false); null
+  // leaves each to its own default. `blocksNonce` changes on every
+  // expand-all/collapse-all click and is folded into each block's key, which
+  // remounts them — without that, React would keep reasserting `open` and a
+  // reader could never close a single block again afterwards.
+  blocksOpen = null,
+  blocksNonce = 0,
   // Callers own the box: the card leaves this unset for the compact 16rem
   // default, the expanded view passes a flex-fill class instead.
   className = "max-h-64",
@@ -33,6 +40,8 @@ export function RunTranscript({
   taskId: string;
   runId: string;
   runtime: AgentRuntime;
+  blocksOpen?: boolean | null;
+  blocksNonce?: number;
   className?: string;
   // Reported on every change so an ancestor can fold a still-running run
   // into its own spend total; null once the run has no live figure to add.
@@ -118,7 +127,11 @@ export function RunTranscript({
       {renderable.map((block, i) => {
         if (block.kind === "thinking") {
           return (
-            <details key={i} className="text-neutral-400">
+            <details
+              key={`${i}-${blocksNonce}`}
+              open={blocksOpen ?? false}
+              className="text-neutral-400"
+            >
               <summary className="cursor-pointer italic">
                 thinking{!block.done && "…"}
               </summary>
@@ -137,9 +150,11 @@ export function RunTranscript({
         if (block.kind === "tool_use") {
           return (
             <details
-              key={i}
+              key={`${i}-${blocksNonce}`}
               className="rounded border border-neutral-200 bg-white px-2 py-1"
-              open={!block.done}
+              // A still-running tool stays open by default so you can watch
+              // it; expand-all/collapse-all overrides that when set.
+              open={blocksOpen ?? !block.done}
             >
               <summary className="cursor-pointer font-medium text-neutral-700">
                 🔧 {block.name}

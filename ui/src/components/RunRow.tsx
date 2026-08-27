@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { AGENT_RUNTIME_LABEL, type TaskRun } from "@kompanion/shared";
 import { RunTranscript } from "./RunTranscript.js";
 import {
@@ -31,6 +32,18 @@ export function RunRow({
 }) {
   const logsId = `run-logs-${run.id}`;
   const tokensIn = totalInputTokens(run);
+
+  // null = each thinking/tool block keeps its own default. The nonce bumps on
+  // every click so the transcript can remount its blocks; without it, one
+  // "Expand all" would pin them open and individual toggling would stop
+  // working.
+  const [blocksOpen, setBlocksOpen] = useState<boolean | null>(null);
+  const [blocksNonce, setBlocksNonce] = useState(0);
+
+  function toggleAllBlocks() {
+    setBlocksOpen((prev) => !prev);
+    setBlocksNonce((n) => n + 1);
+  }
 
   return (
     <div className="shrink-0 overflow-hidden rounded border border-neutral-200">
@@ -70,15 +83,28 @@ export function RunRow({
           </span>
         )}
 
-        <button
-          type="button"
-          aria-expanded={isOpen}
-          aria-controls={logsId}
-          onClick={onToggle}
-          className="ml-auto shrink-0 rounded border border-neutral-200 bg-white px-2 py-0.5 text-neutral-600 hover:bg-neutral-50"
-        >
-          {isOpen ? "▾ Hide logs" : "▸ Show logs"}
-        </button>
+        <span className="ml-auto flex shrink-0 items-center gap-1">
+          {/* Only meaningful once the logs are showing — there is nothing to
+              expand inside a collapsed transcript. */}
+          {isOpen && (
+            <button
+              type="button"
+              onClick={toggleAllBlocks}
+              className="rounded border border-neutral-200 bg-white px-2 py-0.5 text-neutral-600 hover:bg-neutral-50"
+            >
+              {blocksOpen ? "⊟ Collapse all" : "⊞ Expand all"}
+            </button>
+          )}
+          <button
+            type="button"
+            aria-expanded={isOpen}
+            aria-controls={logsId}
+            onClick={onToggle}
+            className="rounded border border-neutral-200 bg-white px-2 py-0.5 text-neutral-600 hover:bg-neutral-50"
+          >
+            {isOpen ? "▾ Hide logs" : "▸ Show logs"}
+          </button>
+        </span>
       </div>
 
       {/* Mounted only while open: every RunTranscript opens its own
@@ -91,6 +117,8 @@ export function RunRow({
           taskId={taskId}
           runId={run.id}
           runtime={run.runtime}
+          blocksOpen={blocksOpen}
+          blocksNonce={blocksNonce}
           className="max-h-[55vh] rounded-none"
         />
       )}

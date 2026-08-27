@@ -138,6 +138,18 @@ test.describe("task page", () => {
       { seq: 0, payload: { type: "step_start", part: { type: "step-start" } } },
       { seq: 1, payload: { type: "text", part: { type: "text", text: "opencode said this" } } },
       {
+        seq: 3,
+        payload: {
+          type: "tool_use",
+          part: {
+            type: "tool",
+            id: "prt_tool_1",
+            tool: "bash",
+            state: { status: "completed", input: { command: "ls" }, output: "hello.txt" },
+          },
+        },
+      },
+      {
         seq: 2,
         payload: {
           type: "step_finish",
@@ -168,6 +180,23 @@ test.describe("task page", () => {
     // being reported as unknown.
     await expect(page.getByText("$0.0000")).toBeVisible();
     await expect(page.getByText("cost unknown")).toHaveCount(0);
+
+    // The tool block is a <details>, collapsed until asked otherwise.
+    const details = page.locator("details");
+    await expect(details).toHaveCount(1);
+    await expect(page.locator("details[open]")).toHaveCount(0);
+
+    const expandAll = page.getByRole("button", { name: /Expand all/ });
+    await expandAll.click();
+    await expect(page.locator("details[open]")).toHaveCount(1);
+
+    // Individual toggling still works afterwards — the control sets a
+    // starting state, it does not pin the blocks open.
+    await page.locator("details[open] > summary").first().click();
+    await expect(page.locator("details[open]")).toHaveCount(0);
+
+    await page.getByRole("button", { name: /Collapse all/ }).click();
+    await expect(page.locator("details[open]")).toHaveCount(0);
   });
 
   test("browser back returns to the board (the modal used to leave the app)", async ({
