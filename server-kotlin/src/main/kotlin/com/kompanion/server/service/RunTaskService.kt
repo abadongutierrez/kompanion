@@ -3,13 +3,14 @@ package com.kompanion.server.service
 import tools.jackson.databind.ObjectMapper
 import tools.jackson.module.kotlin.readValue
 import com.kompanion.server.dto.TaskRunResponse
+import com.kompanion.server.entity.Project
 import com.kompanion.server.entity.Repository
 import com.kompanion.server.entity.Agent
 import com.kompanion.server.entity.Task
-import com.kompanion.server.entity.TaskStatus
-import com.kompanion.server.entity.isValidTaskTransition
+import com.kompanion.server.domain.model.TaskStatus
+import com.kompanion.server.domain.rule.isValidTaskTransition
 import org.springframework.jdbc.core.JdbcTemplate
-import com.kompanion.server.entity.AgentRuntime
+import com.kompanion.server.domain.model.AgentRuntime
 import com.kompanion.server.service.runner.AgentRunner
 import com.kompanion.server.service.runner.RunContext
 import com.kompanion.server.service.runner.TokenUsage

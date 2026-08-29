@@ -1,20 +1,18 @@
 package com.kompanion.server.entity
 
+import com.kompanion.server.domain.model.TaskDependencyType
+import com.kompanion.server.domain.model.TaskStatus
+import com.kompanion.server.domain.model.TaskType
 import org.springframework.data.annotation.Id
 import org.springframework.data.annotation.ReadOnlyProperty
 import org.springframework.data.relational.core.mapping.Table
 import java.time.OffsetDateTime
 import java.util.UUID
 
-// Enum constant names are lowercase-with-underscores deliberately — Spring
-// Data JDBC persists Kotlin enums via name()/valueOf() by default, so the
-// constant names must match this schema's text values verbatim
-// (TaskStatus.in_progress <-> the stored string "in_progress").
-enum class TaskType { story, bug, chore, spike }
-
-enum class TaskStatus { backlog, in_progress, in_review, blocked, done }
-
-enum class TaskDependencyType { blocked_by, depends_on, relates_to }
+// The enums these rows persist live in domain/model — one definition, used
+// by both sides. Spring Data JDBC stores them via name()/valueOf(), which is
+// why their constants are lowercase-with-underscores and match the column
+// text verbatim.
 
 // updatedAt is NOT @ReadOnlyProperty (unlike createdAt) — every write path
 // explicitly sets it to "now" in application code, mirroring the original

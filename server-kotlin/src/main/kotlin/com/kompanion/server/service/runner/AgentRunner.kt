@@ -1,7 +1,7 @@
 package com.kompanion.server.service.runner
 
 import com.kompanion.server.entity.Agent
-import com.kompanion.server.entity.AgentRuntime
+import com.kompanion.server.domain.model.AgentRuntime
 import com.kompanion.server.service.WorkspaceManifest
 import java.io.File
 import java.math.BigDecimal

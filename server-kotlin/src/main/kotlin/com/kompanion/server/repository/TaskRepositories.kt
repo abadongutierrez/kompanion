@@ -3,7 +3,7 @@ package com.kompanion.server.repository
 import com.kompanion.server.entity.Task
 import com.kompanion.server.entity.TaskComment
 import com.kompanion.server.entity.TaskDependency
-import com.kompanion.server.entity.TaskStatus
+import com.kompanion.server.domain.model.TaskStatus
 import org.springframework.data.repository.ListCrudRepository
 import java.util.UUID
 

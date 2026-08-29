@@ -254,24 +254,54 @@ architecture is for.
 
 Already conforming:
 
-- `AgentRunner` + `ClaudeCodeRunner` / `OpencodeRunner` — a real port with
-  two adapters, and the template for the rest.
-- `TaskStatusTransitions.kt` — a pure domain rule with no framework.
+- `AgentRunner` + `ClaudeCodeRunner` / `OpencodeRunner` / `PiRunner` — a real
+  port with three adapters, and the template for the rest. (Still sitting in
+  `service/runner/`; it moves package, unchanged, with the run-task slice.)
+- `domain/model` + `domain/rule` — `Task`, `Agent`, the enums, and
+  `TaskStatusTransitions`. Pure Kotlin. The enums are the single definition
+  both the domain and the persistence rows use.
 - `RunTaskService` — genuinely runtime-agnostic orchestration.
+
+**Two slices are done**, and they are what the rest should be copied from:
+
+- `PATCH /api/teams/{teamId}/tasks/{taskId}/status` — `TaskStatusController`
+  → `UpdateTaskStatus` → `UpdateTaskStatusUseCase` → `TaskStore` /
+  `JdbcTaskStore`. Start here: it is the smallest complete example of the
+  whole shape.
+- `POST /api/agents` and `PATCH /api/agents/{agentId}` — `AgentWriteController`
+  → `CreateAgent` / `UpdateAgent` → `AgentStore` and `Harnesses`, the latter
+  showing what a non-persistence outbound port looks like.
+
+How a slice is done, concretely:
+
+1. The migrated endpoint gets a **new thin controller** in
+   `adapter/inbound/web/`. The legacy controller keeps everything not yet
+   moved; two classes may map the same base path as long as no route is
+   duplicated. When a legacy controller's last endpoint moves, delete it.
+2. The rules it carried become a use case, throwing `DomainException` —
+   never `ResponseEntity`. `DomainExceptionHandler` maps those to 404 / 409 /
+   400 in one place.
+3. Persistence gains a `*Row` type and a `Jdbc*Store` implementing the port;
+   the row and the domain model coexist with the legacy `entity/` type until
+   that table's last endpoint has moved.
+4. The use case gets a test against in-memory fakes (`src/test/.../fake/`) —
+   no Spring, no database. If it needs either, the boundary is wrong.
 
 Known gaps, in the order they are worth closing:
 
-1. Business rules in controllers (`AgentController` harness validation,
-   `TaskController` status transitions and inline SQL) — extract to use
-   cases.
-2. `entity/` types are simultaneously domain models and Spring Data rows —
-   split into `domain/model` + `adapter/outbound/persistence/*Row`.
-3. Repository interfaces are injected directly into controllers and services
-   — introduce outbound ports and let persistence implement them.
-4. `service/` mixes use cases (`RunTaskService`, `BudgetService`) with
-   adapters (`ClaudeHarnessService`, `RepoWorkspaceService`,
-   `RunEventsBus`) — separate them into `application/usecase` and
-   `adapter/outbound/`.
+1. The rest of the task endpoints (list/get/update/delete/link-repository/
+   assign-agent) — finishes `TaskStore` and gets `JdbcTemplate` out of the
+   web layer, then `TaskController` can go.
+2. `RunTaskService` → `RunTaskUseCase` behind `RunLauncher`,
+   `WorkspaceProvisioner`, `RunEventPublisher` and `TaskRunStore`; the
+   runners move to `adapter/outbound/runner/`. The payoff is orchestration
+   testable with a fake launcher — no CLI, no spend.
+3. `TaskCommentController` runs its own SQL and triggers runs — two use
+   cases (post a comment, reply as an agent).
+4. The smaller controllers: budgets, heartbeat, dependencies, repositories,
+   teams, projects.
+5. `dto/` moves under `adapter/inbound/web/`, and the remaining `entity/` and
+   `repository/` packages disappear as their last callers move.
 
 **Migration is strangler-style, not a rewrite.** New endpoints and new
 features are built in the target layout from the start. Existing code moves
@@ -286,4 +316,10 @@ Reviewed by hand today. The dependency rule is a one-line check, so if it
 starts slipping the fix is a Konsist or ArchUnit test in `src/test/` that
 fails the build when `domain` or `application` imports
 `org.springframework.web`, `org.springframework.data`, `java.sql`, or
-`com.kompanion.server.adapter`. Add it when it earns its keep, not before.
+`com.kompanion.server.adapter`. Add it when it earns its keep, not before —
+which means once the migration is finished, since a half-migrated tree would
+fail such a test on day one.
+
+Until then the same check runs as a grep over `domain/` and `application/`.
+The only sanctioned exception is `@Service` / `@Transactional` on use-case
+implementations.

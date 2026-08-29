@@ -1,5 +1,6 @@
 package com.kompanion.server.entity
 
+import com.kompanion.server.domain.model.AgentRuntime
 import org.springframework.data.annotation.Id
 import org.springframework.data.annotation.ReadOnlyProperty
 import org.springframework.data.relational.core.mapping.Table
@@ -51,10 +52,6 @@ data class Team(
 // harnessPath points at a directory whose .claude/agents/*.md are Claude
 // Code *subagents* spawned inside this Agent's run — a different level,
 // despite the shared word.
-// Lowercase constants deliberately, matching TaskStatus/TaskType: Spring Data
-// JDBC persists Kotlin enums via name()/valueOf(), so these must equal the
-// stored text verbatim.
-enum class AgentRuntime { claude_code, opencode }
 
 @Table("agents")
 data class Agent(

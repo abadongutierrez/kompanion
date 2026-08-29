@@ -2,7 +2,7 @@ package com.kompanion.server.service
 
 import com.kompanion.server.entity.Repository
 import com.kompanion.server.entity.Task
-import com.kompanion.server.entity.TaskType
+import com.kompanion.server.domain.model.TaskType
 import org.springframework.stereotype.Service
 import java.io.File
 

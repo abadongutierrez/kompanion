@@ -1,8 +1,8 @@
 package com.kompanion.server.dto
 
-import com.kompanion.server.entity.TaskDependencyType
-import com.kompanion.server.entity.TaskStatus
-import com.kompanion.server.entity.TaskType
+import com.kompanion.server.domain.model.TaskDependencyType
+import com.kompanion.server.domain.model.TaskStatus
+import com.kompanion.server.domain.model.TaskType
 import java.time.OffsetDateTime
 import java.util.UUID
 

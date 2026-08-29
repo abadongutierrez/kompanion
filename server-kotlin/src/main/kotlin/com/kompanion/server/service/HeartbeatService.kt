@@ -2,7 +2,7 @@ package com.kompanion.server.service
 
 import com.kompanion.server.dto.HeartbeatStatusResponse
 import com.kompanion.server.entity.Task
-import com.kompanion.server.entity.TaskStatus
+import com.kompanion.server.domain.model.TaskStatus
 import com.kompanion.server.repository.AgentRepository
 import com.kompanion.server.repository.TaskRepository
 import org.springframework.beans.factory.annotation.Value

@@ -6,11 +6,9 @@ import com.kompanion.server.dto.ErrorResponse
 import com.kompanion.server.dto.LinkRepositoryRequest
 import com.kompanion.server.dto.TaskWithRepositoriesResponse
 import com.kompanion.server.dto.UpdateTaskRequest
-import com.kompanion.server.dto.UpdateTaskStatusRequest
 import com.kompanion.server.entity.Task
-import com.kompanion.server.entity.TaskStatus
-import com.kompanion.server.entity.TaskType
-import com.kompanion.server.entity.isValidTaskTransition
+import com.kompanion.server.domain.model.TaskStatus
+import com.kompanion.server.domain.model.TaskType
 import com.kompanion.server.repository.AgentRepository
 import com.kompanion.server.repository.TaskRepository
 import com.kompanion.server.service.NoHarnessException
@@ -24,6 +22,11 @@ import org.springframework.web.bind.annotation.*
 import java.time.OffsetDateTime
 import java.util.UUID
 
+// Everything about a Task except its status transition, which moved to
+// adapter/inbound/web/TaskStatusController as the first slice of the
+// migration in ARCHITECTURE.md. The endpoints still here keep their old
+// shape — controller holding rules, JdbcTemplate in the web layer — until
+// their own slice; when the last one moves, this class goes away.
 @RestController
 @RequestMapping("/api/teams/{teamId}/tasks")
 class TaskController(
@@ -138,24 +141,6 @@ class TaskController(
             )
         }
         return ResponseEntity.status(HttpStatus.CREATED).body(findOneWithRepositories(taskId))
-    }
-
-    @PatchMapping("/{taskId}/status")
-    fun updateStatus(
-        @PathVariable teamId: UUID,
-        @PathVariable taskId: UUID,
-        @RequestBody body: UpdateTaskStatusRequest,
-    ): ResponseEntity<Any> {
-        val existing = tasks.findById(taskId).orElse(null)
-            ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ErrorResponse("task not found"))
-
-        if (!isValidTaskTransition(existing.status, body.status)) {
-            return ResponseEntity.status(HttpStatus.CONFLICT)
-                .body(ErrorResponse("cannot transition task from ${existing.status} to ${body.status}"))
-        }
-
-        tasks.save(existing.copy(status = body.status, updatedAt = OffsetDateTime.now()))
-        return ResponseEntity.ok(findOneWithRepositories(taskId))
     }
 
     @PatchMapping("/{taskId}")

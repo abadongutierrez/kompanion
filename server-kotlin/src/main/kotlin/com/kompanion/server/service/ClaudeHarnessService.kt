@@ -50,8 +50,9 @@ class ClaudeHarnessService {
     // The inverse, applied on the way in: an absolute path pointing inside
     // workspaceRoot is stored relative to it. Anything else is stored
     // verbatim — there's nothing to relativize a path outside workspace/
-    // against.
-    fun toStoredHarnessPath(harnessPath: String): String {
+    // against. Used for both an Agent's harnessPath and a Project's
+    // workspacePath; the rule is about workspaceRoot, not about harnesses.
+    fun toStoredPath(harnessPath: String): String {
         val file = File(harnessPath)
         if (!file.isAbsolute) return harnessPath
         val canonical = file.canonicalFile
@@ -83,7 +84,7 @@ class ClaudeHarnessService {
                 }
                 // Relative, so the UI can hand it straight back to
                 // POST /api/agents and have it stored as-is.
-                BuiltinHarnessResponse(slug = dir.name, title = title, path = toStoredHarnessPath(dir.path))
+                BuiltinHarnessResponse(slug = dir.name, title = title, path = toStoredPath(dir.path))
             }
             ?: emptyList()
     }

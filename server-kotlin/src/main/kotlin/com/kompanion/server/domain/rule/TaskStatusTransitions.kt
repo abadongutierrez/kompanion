@@ -1,4 +1,6 @@
-package com.kompanion.server.entity
+package com.kompanion.server.domain.rule
+
+import com.kompanion.server.domain.model.TaskStatus
 
 // Direct port of packages/shared/src/domain.ts's TASK_STATUS_TRANSITIONS /
 // isValidTaskTransition. "blocked" can be entered from or exited back to

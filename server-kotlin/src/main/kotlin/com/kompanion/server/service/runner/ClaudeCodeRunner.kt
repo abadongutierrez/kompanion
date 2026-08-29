@@ -1,6 +1,6 @@
 package com.kompanion.server.service.runner
 
-import com.kompanion.server.entity.AgentRuntime
+import com.kompanion.server.domain.model.AgentRuntime
 import com.kompanion.server.service.WorkspaceEnforcementService
 import com.kompanion.server.service.WorkspaceManifest
 import org.springframework.stereotype.Component
