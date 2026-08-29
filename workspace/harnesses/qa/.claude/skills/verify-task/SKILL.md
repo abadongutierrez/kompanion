@@ -1,6 +1,6 @@
 ---
 name: verify-task
-description: Use this whenever you've been handed an SDLC Paperclip Task to verify (a story, bug, chore, or spike) rather than implement. Produces a test plan and a pass/fail assessment in the current directory — this Task's shared workspace, where an Engineer's actual implementation (if any) will already be.
+description: Use this whenever you've been handed an SDLC Kompanion Task to verify (a story, bug, chore, or spike) rather than implement. Produces a test plan and a pass/fail assessment in this Task's workspace, verified against an Engineer's actual implementation.
 ---
 
 Verify the task described in the prompt. Check the prompt's `Workspace:` line first — it tells you which of these two modes you're in:

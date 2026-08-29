@@ -1,6 +1,6 @@
 ---
 name: refine-task
-description: Use this whenever you've been handed an SDLC Paperclip Task to refine (a story, bug, chore, or spike) rather than implement or verify. Produces tightened scope and acceptance criteria in the current directory — this Task's shared workspace, which an Engineer and QA will also work in.
+description: Use this whenever you've been handed an SDLC Kompanion Task to refine (a story, bug, chore, or spike) rather than implement or verify. Produces tightened scope and acceptance criteria in this Task's workspace, which an Engineer and QA will also read.
 ---
 
 Refine the task described in the prompt. Check the prompt's `Workspace:` line first — it tells you which of these two modes you're in:

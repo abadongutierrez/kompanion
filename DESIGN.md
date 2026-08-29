@@ -1,4 +1,4 @@
-# Design: SDLC Kompanion (an SDLC-flavored Paperclip)
+# Design: SDLC Kompanion
 
 **Backend:** `server-kotlin/` (Kotlin/Spring Boot, port 3200). An equivalent Node/TypeScript backend in `server/` was maintained alongside it until it was removed from `main`; it lives on the `typescript-server` branch, and a few notes below are explicitly flagged as historical to it.
 
@@ -6,27 +6,27 @@
 
 ## One-liner
 
-Paperclip orchestrates AI agents as a **company** chasing a business goal. This project orchestrates AI agents as a **software development team** running a delivery process — sprints, code review, on-call — instead of a generic org chasing revenue.
+This project orchestrates AI agents as a **software development team** running a delivery process — sprints, code review, on-call — rather than as a generic org chasing an outcome.
 
-**Paperclip's unit is the company. This project keeps Company as the top-level isolation boundary too — but a Company runs one or more Projects, and teams live inside a Project.**
+**Company is the top-level isolation boundary. A Company runs one or more Projects, and Teams live inside a Project.**
 
-## Why not just use Paperclip as-is
+## Why a delivery-specific domain model
 
-Paperclip's domain model (Company → Agent → Goal → Issue) is deliberately generic so it fits any business. That genericness costs SDLC-specific structure we'd otherwise get for free:
+A generic agent-orchestration model (org → agent → goal → ticket) fits any business, and that genericness costs the SDLC structure this system exists to provide:
 
-- A "goal" in Paperclip is a business objective ($1M MRR). A dev team's unit of work is an epic/feature tied to a roadmap, not a revenue number.
-- Paperclip's org chart is reporting lines only. A dev team also has discipline (engineer vs. QA vs. designer) and process role (who reviews, who approves a merge, who's on call) that reporting lines don't capture.
-- Paperclip's governance is generic approval gates. Software delivery has specific, well-known gates: code review, CI passing, QA sign-off, deploy approval.
-- Paperclip's ticket system is generic issues. Dev work needs branch/PR linkage, sprint/iteration membership, and story-shaped fields (points, acceptance criteria).
+- A dev team's unit of work is an epic/feature tied to a roadmap, not a revenue number.
+- An org chart of reporting lines doesn't capture discipline (engineer vs. QA vs. designer) or process role (who reviews, who approves a merge, who's on call).
+- Generic approval gates don't capture software delivery's specific, well-known ones: code review, CI passing, QA sign-off, deploy approval.
+- Generic issues don't carry branch/PR linkage, sprint membership, or story-shaped fields (points, acceptance criteria).
 
-None of this requires reinventing orchestration mechanics (heartbeats, budgets, audit trails, workspaces) — those are domain-agnostic and worth keeping conceptually. It requires a domain model layered on top that speaks the language of software delivery.
+None of this requires reinventing orchestration mechanics — heartbeats, budgets, audit trails, workspaces are domain-agnostic and worth keeping as they are. It requires a domain model on top that speaks the language of software delivery.
 
 ## Hierarchy
 
 ```
-Company                  (the isolation boundary — matches Paperclip's Company literally, not a rename)
+Company                  (the isolation boundary)
 └── Project(s)           (a product / codebase / roadmap within the Company)
-    └── Team(s)          (a squad within the Project — Paperclip has no equivalent; Company was flat)
+    └── Team(s)          (a squad within the Project)
         └── Agent(s)     (an AI agent on the team, e.g. Engineer, QA)
         └── Task(s)      (assigned to an Agent, traced back to a Project-level Objective)
 ```
@@ -35,20 +35,20 @@ A Company can run multiple Projects (e.g. "Acme Corp" running a "Website" Projec
 
 ## Domain model
 
-| Paperclip concept | This project | Status |
-| --- | --- | --- |
-| Company | **Company** | Kept as Company, not renamed — this is the isolation boundary, same role it plays in Paperclip. **Not built yet**: no `companies` table exists; `projects.company_id` doesn't exist either. Next thing to build. |
-| *(none — Company was flat)* | **Project** | Schema exists (`projects` table) but currently sits at the top with no parent — adding `company_id` is the pending migration. **Not built yet:** a Project should own a list of **Repositories** (the repos that make up "the product") and a local **workspace root** where those repos are cloned — see Repositories & Worktrees below. Today a Project has no repo linkage at all. |
-| *(none — Company was flat)* | **Team** | Built. One Team seeded so far; per-Team monthly budget is real (see Budget below). |
-| Agent | **Agent** | Built. **Two runtimes**: Claude Code and opencode, behind an `AgentRunner` seam (`service/runner/`) — an Agent names its CLI and optionally its model, and `task_runs` records which produced each run. opencode runs are deliberately unenforced (see AGENTS.md). Started life as a Role/Actor pair (a position, plus the instance filling it); the Actor half was never built and the Role half shed `discipline` and `reportsToRoleId`, leaving `title` + `slug` + `harnessPath`. V15 renamed the survivor to Agent, which is what it had become. |
-| Goal | **Objective** | **Not built.** Tasks have no `objectiveId` or any roadmap linkage yet — still just a table-of-concepts entry. Scoped to Project (a roadmap outcome for one product), not Company — a Company's Projects can have unrelated roadmaps. |
-| Issue / Ticket | **Task** | Built: type, status, story points, acceptance criteria, branch/PR link field. `branchOrPrLink` exists but has been unused so far — it's about to become real once Tasks execute against actual repo worktrees instead of scratch directories (see Repositories & Worktrees). State machine below. |
-| Governance / Approval gates | **Review gates** | **Not built.** `in_review → done` today is the same generic status-transition button as any other move — no distinct approval action, no required reviewer Agent. |
-| Routines & Schedules | **Ceremonies** | **Not built.** No standup/retro/on-call concept exists. |
-| Heartbeats | **Heartbeats** | Built — see Heartbeats below. |
-| Work Products | Work Products | Implicit only: a Task's shared workspace *is* its work product directory, but there's no separate Work Product entity, listing, or attachment concept. |
-| Budget & Cost Control | **Budget & Cost Control** | Built, scoped to **Team** (not Company/Project — see Budget below for why, and the open question on whether that should change now that Company exists). |
-| Runtime skill injection | **Agent harness** | Built — see Agent harness below. |
+| Concept | Status |
+| --- | --- |
+| **Company** | The isolation boundary. **Not built yet**: no `companies` table exists; `projects.company_id` doesn't exist either. Next thing to build. |
+| **Project** | Schema exists (`projects` table) but currently sits at the top with no parent — adding `company_id` is the pending migration. **Not built yet:** a Project should own a list of **Repositories** (the repos that make up "the product") and a local **workspace root** where those repos are cloned — see Repositories & Worktrees below. Today a Project has no repo linkage at all. |
+| **Team** | Built. One Team seeded so far; per-Team monthly budget is real (see Budget below). |
+| **Agent** | Built. **Two runtimes**: Claude Code and opencode, behind an `AgentRunner` seam (`service/runner/`) — an Agent names its CLI and optionally its model, and `task_runs` records which produced each run. opencode runs are deliberately unenforced (see AGENTS.md). Started life as a Role/Actor pair (a position, plus the instance filling it); the Actor half was never built and the Role half shed `discipline` and `reportsToRoleId`, leaving `title` + `slug` + `harnessPath`. V15 renamed the survivor to Agent, which is what it had become. |
+| **Objective** | **Not built.** Tasks have no `objectiveId` or any roadmap linkage yet — still just a table-of-concepts entry. Scoped to Project (a roadmap outcome for one product), not Company — a Company's Projects can have unrelated roadmaps. |
+| **Task** | Built: type, status, story points, acceptance criteria, branch/PR link field. `branchOrPrLink` exists but has been unused so far — it's about to become real once Tasks execute against actual repo worktrees instead of scratch directories (see Repositories & Worktrees). State machine below. |
+| **Review gates** | **Not built.** `in_review → done` today is the same generic status-transition button as any other move — no distinct approval action, no required reviewer Agent. |
+| **Ceremonies** | **Not built.** No standup/retro/on-call concept exists. |
+| **Heartbeats** | Built — see Heartbeats below. |
+| **Work Products** | Implicit only: a Task's shared workspace *is* its work product directory, but there's no separate Work Product entity, listing, or attachment concept. |
+| **Budget & Cost Control** | Built, scoped to **Team** (not Company/Project — see Budget below for why, and the open question on whether that should change now that Company exists). |
+| **Agent harness** | Built — see Agent harness below. |
 
 ## Task state machine
 
@@ -108,7 +108,7 @@ Scoped to **Team**, not Project as originally sketched in the domain model — T
 
 ## Stack
 
-Following Paperclip's stack rather than inventing a new one, trimmed for v1 scope:
+Trimmed for v1 scope:
 
 - **Server:** Node/TypeScript, Express, Postgres (local via Docker Compose — `docker-compose.dev.yml`).
 - **UI:** React + Vite, TypeScript, Tailwind.
