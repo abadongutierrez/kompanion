@@ -40,17 +40,79 @@ means the app entity. Harness directories on disk keep their old names
 (`engineer/`, `qa/`, `product_manager/`, `project_manager/`) — an Agent
 points at one by absolute path, so the folder name carries no meaning.
 
+## Workspaces
+
+A Project names a folder when it is created (`projects.workspace_path`, V21) —
+absolute, or relative to `WORKSPACE_ROOT`, the same storage rule an Agent's
+`harnessPath` follows. Leave it blank in the UI and the server uses
+`projects/<slug>-<id8>` under `WORKSPACE_ROOT` and creates it.
+
+Each Task gets `<project workspace>/tasks/<taskId>/`. That folder is:
+
+- **the agent's**, not just the platform's. It is an allowed root in
+  `manifest.json`, so an agent can write there even when a repository is
+  linked and the cwd is a worktree somewhere else entirely. Plans, notes,
+  test plans, verdicts and anything handed to the next agent belong there —
+  they are a record of the run, not part of the deliverable, and are never
+  committed.
+- **shared** across agents and runs on that task, which is what makes an
+  Engineer → Coder or Engineer → QA handoff work.
+- **also ours**: `manifest.json`, `commands.log`, `activity.log` and
+  `pi-sessions/` live in it. `manifest.json` is read-only to the agent — both
+  enforcement paths deny a file-tool write to it, because it is where they read
+  their own allowed roots from. A shell command routed through
+  `exec_in_folder.py` could still overwrite it; no hook can inspect arbitrary
+  shell. The blast radius is one run, since the server rewrites the manifest
+  before every run. Making that airtight means moving our metadata out of the
+  agent-writable root, which we have not done.
+
+Tasks created before V21 keep their old folder under `WORKSPACE_ROOT/tasks/`:
+`ClaudeHarnessService.resolveWorkspaceDir` falls back to it when it exists, so
+their history and prior runs stay where the agents left them.
+
+The prompt tells the agent both directories — a `Workspace:` line for the cwd
+and a `Task workspace:` line for the folder above — and the harness texts and
+skills repeat the split. Change one, change the others.
+
 ## Agent runtimes
 
 An Agent names the CLI it runs on (`agents.runtime`) and optionally a model
-(`agents.model`, free text — the id formats differ per CLI). Two runtimes
-exist: `claude_code` and `opencode`. Adding a third means adding an
+(`agents.model`, free text — the id formats differ per CLI). Three runtimes
+exist: `claude_code`, `opencode` and `pi`. Adding a fourth means adding an
 `AgentRunner` `@Component` under `service/runner/`; `RunTaskService` keeps
-everything runtime-agnostic and resolves runners from injected beans.
+everything runtime-agnostic and resolves runners from injected beans, and so
+does `GlobalAgentsController`'s harness validation.
 
-A harness folder can serve both — `CLAUDE.md` + `.claude/` for Claude Code,
-`AGENTS.md` + `.opencode/` for opencode. `workspace/harnesses/engineer/`
-carries all four and is the reference example.
+A harness folder can serve all three — `CLAUDE.md` + `.claude/` for Claude
+Code, `AGENTS.md` + `.opencode/` for opencode, `AGENTS.md` + `pi-agent/` for
+pi. `workspace/harnesses/engineer/` carries every layout and is the reference
+example.
+
+The full reference — exact command lines, what each CLI is sent, the event
+shapes, the enforcement comparison, and how to add a fourth runtime — is
+[docs/agent-runtimes.md](docs/agent-runtimes.md). Keep it in sync when a
+runner changes.
+
+### pi
+
+pi (https://github.com/earendil-works/pi-mono) runs headless as
+`pi -p --mode json`, verified against 0.84.3. It is the runtime for local
+models: `pi-agent/` inside a harness is a pi *agent-config directory*
+(`models.json`, `settings.json`), copied into the task workspace each run and
+pointed at with `PI_CODING_AGENT_DIR`, because pi reads custom providers only
+from there and has no project-level equivalent. The engineer harness ships an
+LM Studio provider that way — its `baseUrl` is a WSL-to-Windows host address
+and will differ per machine. Without a `pi-agent/` folder pi falls back to the
+server user's `~/.pi/agent`.
+
+A pi run writes nothing into the repository it works on: the harness AGENTS.md
+goes in through `--append-system-prompt`, the enforcement extension is loaded
+from an absolute path, and sessions land in the task workspace.
+
+Model ids carry the provider prefix (`lmstudio/qwen3.8-27b`). pi has no
+cost-cap flag, so a team budget is only enforced by the pre-flight gate — same
+gap as opencode. Local models are slow; `CLAUDE_RUN_TIMEOUT_MS` (default 30
+minutes) is the ceiling to raise if runs get killed mid-answer.
 
 `task_runs` stores `runtime` and `model` as well, stamped when the run
 starts. That is not redundant with the Agent: replaying a stored transcript

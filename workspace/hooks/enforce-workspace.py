@@ -11,7 +11,11 @@ paths — not left to the model's own cd/pathing.
 Edit/Write/MultiEdit/Read: hard guarantee. A relative file_path is resolved
 against the primary root; an absolute file_path outside every allowed root
 is denied rather than silently redirected (guessing where it "should" go is
-worse than refusing).
+worse than refusing). The allowed roots are the linked repositories' worktrees
+plus the Task's own workspace folder — the latter is where plans, notes and
+handoff files for the next agent belong. The one exception inside them is
+manifest.json, which is read-only: this hook reads its own permissions from
+it.
 
 Bash: also a hard guarantee now — every raw Bash command is denied outright
 except one exact shape: invoking exec_in_folder.py (which does its own
@@ -24,9 +28,10 @@ import json
 import os
 import sys
 
-from _workspace_common import is_under_any_root, load_allowed_roots
+from _workspace_common import is_under_any_root, load_allowed_roots, manifest_path
 
 FILE_PATH_TOOLS = {"Edit", "Write", "MultiEdit", "Read"}
+WRITE_TOOLS = {"Edit", "Write", "MultiEdit"}
 
 EXEC_IN_FOLDER_HINT = (
     'Raw Bash commands aren\'t allowed. Use: python3 '
@@ -76,6 +81,15 @@ def main():
         file_path = tool_input.get("file_path")
         if not file_path:
             allow()
+            return
+        if tool_name in WRITE_TOOLS and os.path.abspath(
+            file_path if os.path.isabs(file_path) else os.path.join(primary, file_path)
+        ) == manifest_path():
+            deny(
+                "manifest.json is written by the platform each run and is "
+                "read-only — it is where this hook reads your allowed "
+                "directories from. Write your own files next to it instead."
+            )
             return
         if os.path.isabs(file_path):
             if is_under_any_root(file_path, allowed_roots):

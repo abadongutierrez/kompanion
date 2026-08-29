@@ -1,6 +1,6 @@
 ---
 name: plan-capacity
-description: Use this whenever you've been handed a Project Manager Task (e.g. "plan team capacity", "assess parallelization"). Reads the prompt's Team snapshot section — every Agent's load and every Task's status/dependencies — and produces a capacity/parallelization plan in the current directory.
+description: Use this whenever you've been handed a Project Manager Task (e.g. "plan team capacity", "assess parallelization"). Reads the prompt's Team snapshot section — every Agent's load and every Task's status/dependencies — and produces a capacity/parallelization plan in this Task's workspace.
 ---
 
 Plan capacity for the team described in the prompt's `Team snapshot:` section:

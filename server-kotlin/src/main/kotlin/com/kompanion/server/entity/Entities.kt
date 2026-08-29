@@ -31,6 +31,11 @@ import java.util.UUID
 data class Project(
     @Id val id: UUID? = null,
     val name: String,
+    // Where this Project's Tasks get their workspace folders:
+    // <workspacePath>/tasks/<taskId>/. Absolute, or relative to
+    // WORKSPACE_ROOT — same storage rule as an Agent's harnessPath (V16).
+    // Never blank: the server fills in a default at create time.
+    val workspacePath: String = "",
     @ReadOnlyProperty val createdAt: OffsetDateTime? = null,
 )
 

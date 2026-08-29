@@ -33,6 +33,10 @@ export const TASK_STATUS_TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
 export const Project = z.object({
   id: z.string(),
   name: z.string(),
+  // The folder this Project's Tasks get their workspaces under:
+  // <workspacePath>/tasks/<taskId>/. Absolute, or relative to the server's
+  // WORKSPACE_ROOT — the same storage rule an Agent's harnessPath follows.
+  workspacePath: z.string(),
   createdAt: z.string(),
 });
 export type Project = z.infer<typeof Project>;
@@ -150,7 +154,11 @@ export const CreateTaskDependencyInput = z.object({
 });
 export type CreateTaskDependencyInput = z.infer<typeof CreateTaskDependencyInput>;
 
-export const CreateProjectInput = Project.pick({ name: true });
+// workspacePath is optional: omitted, the server picks one under its
+// WORKSPACE_ROOT from the project name, and creates the folder.
+export const CreateProjectInput = Project.pick({ name: true }).extend({
+  workspacePath: z.string().optional(),
+});
 export type CreateProjectInput = z.infer<typeof CreateProjectInput>;
 
 export const CreateTeamInput = Team.pick({ name: true }).extend({

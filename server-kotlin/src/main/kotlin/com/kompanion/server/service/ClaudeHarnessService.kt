@@ -2,6 +2,7 @@ package com.kompanion.server.service
 
 import com.kompanion.server.dto.BuiltinHarnessResponse
 import com.kompanion.server.entity.Agent
+import com.kompanion.server.entity.Project
 import org.springframework.stereotype.Service
 import java.io.File
 
@@ -36,7 +37,12 @@ class ClaudeHarnessService {
         ?: File(serverRoot.parentFile, "workspace")
 
     private val harnessesRoot = File(workspaceRoot, "harnesses")
-    val workspacesRoot: File = File(workspaceRoot, "tasks")
+
+    // The pre-V21 home for every task folder in the app, kept for one reason:
+    // resolveWorkspaceDir falls back to it so a task that already has runs
+    // keeps its history instead of starting in an empty folder under its
+    // project. New tasks never land here.
+    val legacyWorkspacesRoot: File = File(workspaceRoot, "tasks")
 
     // A stored harnessPath is either absolute (a harness anywhere on disk)
     // or relative to workspaceRoot (the normal case — "harnesses/engineer").
@@ -70,7 +76,22 @@ class ClaudeHarnessService {
         return if (dir.exists()) dir else null
     }
 
-    fun resolveWorkspaceDir(taskId: java.util.UUID): File = File(workspacesRoot, taskId.toString())
+    // A Project's own folder. Same absolute-or-relative-to-workspaceRoot rule
+    // as a harness path, so resolveHarnessPath does the work.
+    fun resolveProjectWorkspaceDir(project: Project): File =
+        resolveHarnessPath(project.workspacePath)
+
+    // A Task's folder inside its Project's workspace. The legacy fallback is
+    // deliberately keyed on the old folder existing, not on a flag: a task
+    // created before V21 has its manifest, logs and any agent output there,
+    // and moving those from application code would be a filesystem migration
+    // nobody asked for.
+    fun resolveWorkspaceDir(project: Project, taskId: java.util.UUID): File {
+        val dir = File(File(resolveProjectWorkspaceDir(project), "tasks"), taskId.toString())
+        if (dir.exists()) return dir
+        val legacy = File(legacyWorkspacesRoot, taskId.toString())
+        return if (legacy.exists()) legacy else dir
+    }
 
     private val knownAcronyms = setOf("qa")
 

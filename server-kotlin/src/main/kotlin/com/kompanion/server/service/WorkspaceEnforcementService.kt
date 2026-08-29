@@ -22,6 +22,12 @@ data class WorkspaceManifest(
     val branchName: String?,
     val primary: ManifestRepoEntry,
     val otherRepos: List<ManifestRepoEntry>,
+    // The Task's own folder under its Project's workspace — an allowed root
+    // for the agent (that is where plans, notes and handoff files go), but
+    // deliberately not a ManifestRepoEntry: it is not a repository, nothing
+    // there is ever committed, and the enforcement scripts treat it
+    // separately so manifest.json itself stays read-only.
+    val taskWorkspace: String,
 )
 
 private const val ENFORCEMENT_MATCHER = "Bash|Edit|Write|MultiEdit|Read"

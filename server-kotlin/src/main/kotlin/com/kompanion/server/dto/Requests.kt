@@ -7,7 +7,9 @@ package com.kompanion.server.dto
 // value — the controller layer does the coalesce-style partial update, same
 // as today's `coalesce(${x ?? null}, x)` SQL pattern.
 
-data class CreateProjectRequest(val name: String)
+// workspacePath is optional: left out, the server puts the Project's folder
+// under WORKSPACE_ROOT with a name derived from the title.
+data class CreateProjectRequest(val name: String, val workspacePath: String? = null)
 
 data class CreateTeamRequest(val name: String)
 

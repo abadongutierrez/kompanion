@@ -28,8 +28,16 @@ export function ProjectsPage() {
                 to={`/projects/${project.id}/board`}
                 className="flex items-center justify-between px-4 py-3 text-sm hover:bg-neutral-50"
               >
-                <span className="font-medium">{project.name}</span>
-                <span className="text-xs text-neutral-400">
+                <span className="min-w-0">
+                  <span className="font-medium">{project.name}</span>
+                  {/* Where this project's task workspaces live — worth
+                      seeing without opening the database, since it is
+                      where an agent's plans and notes end up. */}
+                  <span className="ml-2 truncate font-mono text-xs text-neutral-400">
+                    {project.workspacePath}
+                  </span>
+                </span>
+                <span className="shrink-0 text-xs text-neutral-400">
                   Created {new Date(project.createdAt).toLocaleDateString()}
                 </span>
               </Link>

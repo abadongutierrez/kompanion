@@ -85,6 +85,15 @@ class RunTaskService(
             "Workspace: scratch (no repository linked) — use the solution.md/notes.md convention from your skill."
         }
 
+        // Always present, repo or not: the one directory an agent may write in
+        // that is not the deliverable. It is how a plan reaches the next agent
+        // without being committed to someone's repository.
+        val taskWorkspaceLine =
+            "Task workspace: ${manifest.taskWorkspace} — your own folder for this task, shared with every " +
+                "agent that works on it and carried across runs. Write plans, notes and handoff files here, " +
+                "by absolute path. It is not part of any repository and is never committed. " +
+                "manifest.json in it is written by the platform and is read-only to you."
+
         val lines = listOfNotNull(
             "Task ID: ${task.id}",
             "Task: ${task.title}",
@@ -92,6 +101,7 @@ class RunTaskService(
             task.description?.let { "Description: $it" },
             task.acceptanceCriteria?.let { "Acceptance criteria: $it" },
             workspaceLine,
+            taskWorkspaceLine,
             teamSnapshot,
             mentionContext,
         )
@@ -294,6 +304,26 @@ class RunTaskService(
         createdAt = rs.getObject("created_at", OffsetDateTime::class.java),
     )
 
+    // A Task knows its Team; the workspace folder hangs off the Project one
+    // level up. Read here rather than passed in, because every caller of
+    // runTaskWithClaude only ever has the Task.
+    private fun projectFor(teamId: UUID): Project = jdbc.query(
+        """
+        select p.id, p.name, p.workspace_path
+        from projects p
+        join teams t on t.project_id = p.id
+        where t.id = ?
+        """.trimIndent(),
+        { rs, _ ->
+            Project(
+                id = UUID.fromString(rs.getString("id")),
+                name = rs.getString("name"),
+                workspacePath = rs.getString("workspace_path"),
+            )
+        },
+        teamId,
+    ).firstOrNull() ?: throw IllegalStateException("team $teamId has no project")
+
     private fun mapTaskRun(rs: ResultSet, agentTitle: String?): TaskRunResponse {
         val rawOutputText = rs.getString("raw_output")
         val rawOutput = rawOutputText?.let { objectMapper.readValue<Any>(it) }
@@ -433,7 +463,12 @@ class RunTaskService(
         }
         try {
             try {
-                val taskWorkspaceDir = claudeHarnessService.resolveWorkspaceDir(taskId)
+                val taskWorkspaceDir = claudeHarnessService.resolveWorkspaceDir(projectFor(task.teamId), taskId)
+                // Created up front rather than by whoever writes there first:
+                // it is an allowed root for the run, and an agent told to
+                // write into a directory that does not exist would have to
+                // create it through a shell command.
+                taskWorkspaceDir.mkdirs()
 
                 // Deterministic order so "primary" repo is stable across
                 // re-runs/agent handoffs.
@@ -457,6 +492,7 @@ class RunTaskService(
                     val others = worktrees.drop(1)
                     workspaceDir = primary.worktreeDir
                     manifest = WorkspaceManifest(
+                        taskWorkspace = taskWorkspaceDir.path,
                         branchName = repoWorkspaceService.taskBranchName(task),
                         primary = ManifestRepoEntry(
                             name = primary.repo.name,
@@ -470,7 +506,10 @@ class RunTaskService(
                 } else {
                     workspaceDir = taskWorkspaceDir
                     manifest = WorkspaceManifest(
+                        taskWorkspace = taskWorkspaceDir.path,
                         branchName = null,
+                        // Same directory as the task workspace: with no repo
+                        // linked there is nowhere else to work.
                         primary = ManifestRepoEntry(null, null, workspaceDir.path),
                         otherRepos = emptyList(),
                     )
