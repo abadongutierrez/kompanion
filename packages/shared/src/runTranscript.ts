@@ -317,6 +317,186 @@ function applyOpencodeEvent(state: TranscriptState, raw: RunEventRaw): Transcrip
   return { ...state, blocks, finished, costUsd, costIsEstimate };
 }
 
+// pi's `-p --mode json` shape (verified against pi 0.84.3 and its docs/json.md):
+// newline-delimited AgentSessionEvents. Text and thinking arrive as
+// delta-only `message_update` events carrying an `assistantMessageEvent`,
+// while tools arrive as their own top-level `tool_execution_*` events with
+// full arguments — so tool blocks are built from those rather than from the
+// `toolcall_delta` argument stream, which would only reassemble the same JSON.
+//
+// Unknown event types (`session`, `turn_start`, `queue_update`, compaction,
+// ...) are ignored rather than throwing: this is a shape we don't own, and a
+// new event type upstream should render as nothing, not break the transcript.
+// A pi tool result is `{ content: [{type: "text", text}, ...], details? }`,
+// confirmed against a real run — not the bare string the transcript renders.
+// Anything unexpected falls back to JSON so nothing is silently dropped.
+function toolResultText(result: unknown): string {
+  if (typeof result === "string") return result;
+  const content = asRecord(result).content;
+  if (Array.isArray(content)) {
+    const texts = content
+      .map(asRecord)
+      .filter((c) => c.type === "text")
+      .map((c) => asString(c.text));
+    if (texts.length > 0) return texts.join("\n");
+  }
+  return JSON.stringify(result ?? "");
+}
+
+function applyPiEvent(state: TranscriptState, raw: RunEventRaw): TranscriptState {
+  const blocks = state.blocks.slice();
+  let open = { ...state.openBlocksByStreamIndex };
+  let finished = state.finished;
+  let costUsd = state.costUsd;
+  let costIsEstimate = state.costIsEstimate;
+
+  function markOpenDone() {
+    for (const blockIndex of Object.values(open)) {
+      const block = blocks[blockIndex];
+      if (block && block.kind !== "system" && block.kind !== "result") {
+        blocks[blockIndex] = { ...block, done: true } as TranscriptBlock;
+      }
+    }
+  }
+
+  // The visible answer of an assistant message: its text blocks, without
+  // thinking or tool calls.
+  function assistantText(message: Record<string, unknown>): string {
+    const content = message.content;
+    if (!Array.isArray(content)) return "";
+    return content
+      .map(asRecord)
+      .filter((c) => c.type === "text")
+      .map((c) => asString(c.text))
+      .join("\n")
+      .trim();
+  }
+
+  switch (raw.type) {
+    case "message_start": {
+      // contentIndex is numbered per message, not per run, so the map of
+      // open blocks can't survive into the next one.
+      open = {};
+      break;
+    }
+
+    case "message_update": {
+      const event = asRecord(raw.assistantMessageEvent);
+      const index = Number(event.contentIndex);
+      switch (event.type) {
+        case "text_start": {
+          open[index] = blocks.push({ kind: "text", text: "", done: false }) - 1;
+          break;
+        }
+        case "thinking_start": {
+          open[index] = blocks.push({ kind: "thinking", text: "", done: false }) - 1;
+          break;
+        }
+        case "text_delta":
+        case "thinking_delta": {
+          const blockIndex = open[index];
+          if (blockIndex === undefined) break;
+          const block = blocks[blockIndex];
+          if (block.kind === "text" || block.kind === "thinking") {
+            blocks[blockIndex] = { ...block, text: block.text + asString(event.delta) };
+          }
+          break;
+        }
+        case "text_end":
+        case "thinking_end": {
+          const blockIndex = open[index];
+          if (blockIndex === undefined) break;
+          const block = blocks[blockIndex];
+          if (block.kind === "text" || block.kind === "thinking") {
+            // `content` is the authoritative final string; the accumulated
+            // deltas should equal it, but a dropped delta shouldn't survive
+            // into the rendered transcript.
+            blocks[blockIndex] = { ...block, text: asString(event.content), done: true };
+          }
+          delete open[index];
+          break;
+        }
+      }
+      break;
+    }
+
+    case "tool_execution_start": {
+      blocks.push({
+        kind: "tool_use",
+        id: asString(raw.toolCallId),
+        name: asString(raw.toolName),
+        input: raw.args ?? null,
+        partialInputJson: "",
+        result: null,
+        resultIsError: false,
+        done: false,
+      });
+      break;
+    }
+
+    case "tool_execution_end": {
+      const toolCallId = asString(raw.toolCallId);
+      for (let i = blocks.length - 1; i >= 0; i--) {
+        const block = blocks[i];
+        if (block.kind === "tool_use" && block.id === toolCallId) {
+          blocks[i] = {
+            ...block,
+            result: toolResultText(raw.result),
+            resultIsError: !!raw.isError,
+            done: true,
+          };
+          break;
+        }
+      }
+      break;
+    }
+
+    case "message_end": {
+      const message = asRecord(raw.message);
+      if (message.role !== "assistant") break;
+      markOpenDone();
+      open = {};
+      // pi reports usage per assistant message, so cost accumulates across
+      // the run and is reported exactly as pi states it. Zero is a real
+      // answer — a local LM Studio model costs nothing — so it is not
+      // second-guessed with a token-priced estimate that would invent a
+      // charge nobody was billed for.
+      const total = asRecord(asRecord(message.usage).cost).total;
+      if (typeof total === "number") {
+        costUsd = (costUsd ?? 0) + total;
+        costIsEstimate = false;
+      }
+      break;
+    }
+
+    case "agent_end": {
+      // pi retries a failed turn by ending the agent loop and starting
+      // another one; only the last agent_end closes the transcript.
+      if (raw.willRetry === true) break;
+      markOpenDone();
+      open = {};
+      const messages = Array.isArray(raw.messages) ? raw.messages.map(asRecord) : [];
+      const last = messages.filter((m) => m.role === "assistant").pop();
+      const stopReason = last ? asString(last.stopReason) : "";
+      const ok = stopReason !== "error" && stopReason !== "aborted";
+      blocks.push({
+        kind: "result",
+        ok,
+        summary: last
+          ? ok
+            ? assistantText(last) || null
+            : asString(last.errorMessage) || stopReason || null
+          : null,
+        costUsd,
+      });
+      finished = true;
+      break;
+    }
+  }
+
+  return { ...state, blocks, finished, costUsd, costIsEstimate, openBlocksByStreamIndex: open };
+}
+
 // The runtime that produced the events decides how to read them. It comes
 // from task_runs.runtime, not from the Agent's current setting, so replaying
 // an old run still picks the reducer that matches what is stored.
@@ -325,7 +505,12 @@ export function applyRunEvent(
   raw: RunEventRaw,
   runtime: AgentRuntime = "claude_code",
 ): TranscriptState {
-  return runtime === "opencode"
-    ? applyOpencodeEvent(state, raw)
-    : applyClaudeEvent(state, raw);
+  switch (runtime) {
+    case "opencode":
+      return applyOpencodeEvent(state, raw);
+    case "pi":
+      return applyPiEvent(state, raw);
+    default:
+      return applyClaudeEvent(state, raw);
+  }
 }

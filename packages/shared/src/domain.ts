@@ -59,15 +59,17 @@ export type Team = z.infer<typeof Team>;
 // want it (see team_agents). This makes sharing a harnessPath/CLAUDE.md an
 // intentional, visible action instead of an accident of two Teams
 // pointing at the same directory.
-// Which CLI runs an Agent. The harness folder can carry both layouts
-// (CLAUDE.md + .claude/ for one, AGENTS.md + .opencode/ for the other), so
-// switching runtime doesn't necessarily mean a different folder.
-export const AgentRuntime = z.enum(["claude_code", "opencode"]);
+// Which CLI runs an Agent. The harness folder can carry every layout at once
+// (CLAUDE.md + .claude/ for one, AGENTS.md + .opencode/ for another, plus
+// pi-agent/ for pi), so switching runtime doesn't necessarily mean a
+// different folder.
+export const AgentRuntime = z.enum(["claude_code", "opencode", "pi"]);
 export type AgentRuntime = z.infer<typeof AgentRuntime>;
 
 export const AGENT_RUNTIME_LABEL: Record<AgentRuntime, string> = {
   claude_code: "Claude Code",
   opencode: "opencode",
+  pi: "pi",
 };
 
 export const Agent = z.object({

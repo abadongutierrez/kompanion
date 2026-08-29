@@ -8,6 +8,24 @@ import {
 } from "@kompanion/shared";
 import { api } from "../api.js";
 
+// Example ids, not validation: models are free text because every CLI names
+// them differently.
+const MODEL_PLACEHOLDER: Record<AgentRuntime, string> = {
+  claude_code: "Model (optional, e.g. claude-opus-5)",
+  opencode: "Model (optional, e.g. ollama/qwen2.5-coder:7b)",
+  pi: "Model (optional, e.g. lmstudio/qwen3.8-27b)",
+};
+
+// Which file in the harness folder this text becomes the system prompt from.
+// The endpoint behind it always reads and writes CLAUDE.md; the runtimes that
+// prefer AGENTS.md fall back to CLAUDE.md, so one template still serves all
+// three.
+const HARNESS_TEMPLATE_PLACEHOLDER: Record<AgentRuntime, string> = {
+  claude_code: "Harness template (CLAUDE.md)",
+  opencode: "Harness template (AGENTS.md)",
+  pi: "Harness template (AGENTS.md)",
+};
+
 // Creating and editing an agent each get their own route — /agents/new and
 // /agents/:agentId — instead of the single form that used to sit under the
 // library list. Both modes render this one page: the fields are the same,
@@ -169,11 +187,7 @@ export function AgentFormPage({ mode }: { mode: "create" | "edit" }) {
           <input
             aria-label="Model"
             className="min-w-0 flex-1 rounded border border-neutral-300 px-2 py-1 text-sm"
-            placeholder={
-              runtime === "opencode"
-                ? "Model (optional, e.g. ollama/qwen2.5-coder:7b)"
-                : "Model (optional, e.g. claude-opus-5)"
-            }
+            placeholder={MODEL_PLACEHOLDER[runtime]}
             value={model}
             onChange={(e) => setModel(e.target.value)}
           />
@@ -182,11 +196,7 @@ export function AgentFormPage({ mode }: { mode: "create" | "edit" }) {
           <textarea
             className="w-full rounded border border-neutral-300 px-2 py-1 font-mono text-xs"
             aria-label="Harness template"
-            placeholder={
-              runtime === "opencode"
-                ? "Harness template (AGENTS.md)"
-                : "Harness template (CLAUDE.md)"
-            }
+            placeholder={HARNESS_TEMPLATE_PLACEHOLDER[runtime]}
             rows={16}
             value={harnessTemplate}
             onChange={(e) => setHarnessTemplate(e.target.value)}

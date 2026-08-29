@@ -1,0 +1,5 @@
+{
+  "httpIdleTimeoutMs": 0,
+  "defaultProjectTrust": "never",
+  "quietStartup": true
+}

@@ -83,6 +83,13 @@ interface AgentRunner {
     // and must never be shell-interpreted.
     fun buildCommand(ctx: RunContext): List<String>
 
+    // Extra environment for the CLI process, on top of the TASK_ID /
+    // TASK_WORKSPACE_DIR the caller always sets. Empty for the two runtimes
+    // that configure themselves entirely through flags and files; pi needs it
+    // because its provider catalogue (LM Studio and friends) is only readable
+    // from a config directory named by PI_CODING_AGENT_DIR.
+    fun environment(ctx: RunContext): Map<String, String> = emptyMap()
+
     // `events` is every JSON line the CLI wrote to stdout, in order. Empty
     // when it produced none, which is itself a failure signal worth
     // reporting rather than treating as an empty success.

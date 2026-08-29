@@ -203,6 +203,7 @@ class RunTaskService(
         // repo being worked on) once repos are linked.
         processBuilder.environment()["TASK_WORKSPACE_DIR"] = ctx.taskWorkspaceDir.path
         processBuilder.environment()["TASK_ID"] = ctx.taskId.toString()
+        processBuilder.environment().putAll(runner.environment(ctx))
 
         val process = try {
             processBuilder.start()

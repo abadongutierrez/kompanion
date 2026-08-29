@@ -45,6 +45,16 @@ class WorkspaceEnforcementService(
     // module they share) have to travel together into the workspace.
     private val hookFiles = listOf("enforce-workspace.py", "exec_in_folder.py", "_workspace_common.py")
 
+    // pi loads this by absolute path with -e, so unlike the Claude Code hooks
+    // it never has to be copied anywhere — which is why a pi run writes
+    // nothing at all into the repository it works on.
+    val piExtensionFile = File(claudeHarnessService.workspaceRoot, "pi/enforce-workspace.ts")
+
+    // The script the pi extension rewrites every bash call into, and the
+    // Claude hook allows as the single exception to its Bash denial. Same
+    // file, same membership check, same commands.log.
+    val execInFolderScript = File(hooksSrcDir, "exec_in_folder.py")
+
     // manifest.json (and, via the TASK_WORKSPACE_DIR env var each harness's
     // Stop hook writes activity.log to) live in the Task's own workspace
     // folder, not inside the real repository being worked on — they're our
@@ -54,10 +64,7 @@ class WorkspaceEnforcementService(
     // since hooks only resolve from the exact cwd) is a separate directory:
     // the scratch workspace, or now a real repo's worktree.
     fun installCwdEnforcement(cwdDir: File, taskWorkspaceDir: File, manifest: WorkspaceManifest) {
-        taskWorkspaceDir.mkdirs()
-        File(taskWorkspaceDir, "manifest.json").writeText(
-            objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(manifest),
-        )
+        writeManifest(taskWorkspaceDir, manifest)
 
         val hooksDir = File(File(cwdDir, ".claude"), "hooks")
         hooksDir.mkdirs()
@@ -88,5 +95,22 @@ class WorkspaceEnforcementService(
         preToolUse.add(entry)
 
         settingsFile.writeText(objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(settings))
+    }
+
+    // pi's half of the same guarantee. There is nothing to install: the
+    // extension is passed to the CLI as an absolute path and reads this very
+    // manifest at tool time, so all this has to do is make sure the manifest
+    // is on disk before the run starts.
+    fun installPiEnforcement(taskWorkspaceDir: File, manifest: WorkspaceManifest) {
+        writeManifest(taskWorkspaceDir, manifest)
+    }
+
+    // manifest.json is the single source of truth both enforcement paths read
+    // their allowed roots from — written once, here, so the two can't drift.
+    private fun writeManifest(taskWorkspaceDir: File, manifest: WorkspaceManifest) {
+        taskWorkspaceDir.mkdirs()
+        File(taskWorkspaceDir, "manifest.json").writeText(
+            objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(manifest),
+        )
     }
 }

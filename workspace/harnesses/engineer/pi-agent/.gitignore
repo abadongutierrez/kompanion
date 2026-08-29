@@ -1,0 +1,11 @@
+# pi writes its own state into whatever PI_CODING_AGENT_DIR points at. A run
+# points it at a copy of this folder in the task workspace, so nothing here
+# should ever change — but a stray `pi` invoked against this directory
+# directly (say, `pi --list-models` while debugging) leaves these behind.
+# They are runtime state, not harness template, and auth.json can hold
+# credentials.
+auth.json
+models-store.json
+trust.json
+sessions/
+npm/

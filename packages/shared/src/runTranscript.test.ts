@@ -153,3 +153,164 @@ describe("opencode transcripts", () => {
     expect(state.blocks).toEqual([]);
   });
 });
+
+// pi's `-p --mode json` stream. Shapes taken from pi 0.84.3's docs/json.md
+// and a real run: text and thinking arrive as delta-only `message_update`
+// events, tools as their own `tool_execution_*` events.
+function reducePi(events: RunEventRaw[]) {
+  return events.reduce((state, event) => applyRunEvent(state, event, "pi"), createTranscriptState());
+}
+
+function piUpdate(assistantMessageEvent: Record<string, unknown>): RunEventRaw {
+  return { type: "message_update", usage: {}, assistantMessageEvent };
+}
+
+function piAssistantEnd(
+  content: Record<string, unknown>[],
+  cost: number | null = null,
+): RunEventRaw {
+  return {
+    type: "message_end",
+    message: {
+      role: "assistant",
+      content,
+      stopReason: "stop",
+      usage: cost === null ? {} : { cost: { total: cost } },
+    },
+  };
+}
+
+describe("pi transcript", () => {
+  it("assembles streamed text from deltas", () => {
+    const state = reducePi([
+      { type: "message_start", message: { role: "assistant", content: [] } },
+      piUpdate({ type: "text_start", contentIndex: 0 }),
+      piUpdate({ type: "text_delta", contentIndex: 0, delta: "Hel" }),
+      piUpdate({ type: "text_delta", contentIndex: 0, delta: "lo" }),
+      piUpdate({ type: "text_end", contentIndex: 0, content: "Hello" }),
+    ]);
+    expect(state.blocks).toEqual([{ kind: "text", text: "Hello", done: true }]);
+  });
+
+  it("keeps thinking and text in separate blocks, by contentIndex", () => {
+    const state = reducePi([
+      piUpdate({ type: "thinking_start", contentIndex: 0 }),
+      piUpdate({ type: "thinking_delta", contentIndex: 0, delta: "hmm" }),
+      piUpdate({ type: "text_start", contentIndex: 1 }),
+      piUpdate({ type: "text_delta", contentIndex: 1, delta: "answer" }),
+    ]);
+    expect(state.blocks).toEqual([
+      { kind: "thinking", text: "hmm", done: false },
+      { kind: "text", text: "answer", done: false },
+    ]);
+  });
+
+  it("does not carry open blocks across messages", () => {
+    // contentIndex restarts at 0 on every message, so a stale entry would
+    // append the next message's text to the previous message's block.
+    const state = reducePi([
+      piUpdate({ type: "text_start", contentIndex: 0 }),
+      piUpdate({ type: "text_delta", contentIndex: 0, delta: "first" }),
+      { type: "message_start", message: { role: "assistant", content: [] } },
+      piUpdate({ type: "text_start", contentIndex: 0 }),
+      piUpdate({ type: "text_delta", contentIndex: 0, delta: "second" }),
+    ]);
+    expect(state.blocks).toEqual([
+      { kind: "text", text: "first", done: false },
+      { kind: "text", text: "second", done: false },
+    ]);
+  });
+
+  it("builds a tool block from tool_execution_start and closes it on end", () => {
+    const state = reducePi([
+      {
+        type: "tool_execution_start",
+        toolCallId: "call_1",
+        toolName: "read",
+        args: { path: "README.md" },
+      },
+      {
+        // pi wraps a tool result in content blocks; the transcript wants the
+        // text, not the envelope.
+        type: "tool_execution_end",
+        toolCallId: "call_1",
+        toolName: "read",
+        result: { content: [{ type: "text", text: "# Title" }] },
+        isError: false,
+      },
+    ]);
+    expect(state.blocks).toEqual([
+      {
+        kind: "tool_use",
+        id: "call_1",
+        name: "read",
+        input: { path: "README.md" },
+        partialInputJson: "",
+        result: "# Title",
+        resultIsError: false,
+        done: true,
+      },
+    ]);
+  });
+
+  it("accumulates the cost pi reports, per assistant message", () => {
+    const state = reducePi([piAssistantEnd([], 0.002), piAssistantEnd([], 0.003)]);
+    expect(state.costUsd).toBeCloseTo(0.005, 10);
+    expect(state.costIsEstimate).toBe(false);
+  });
+
+  it("keeps a zero cost as a real answer for a local model", () => {
+    expect(reducePi([piAssistantEnd([], 0)]).costUsd).toBe(0);
+  });
+
+  it("closes the transcript on agent_end with the final assistant text", () => {
+    const state = reducePi([
+      {
+        type: "agent_end",
+        willRetry: false,
+        messages: [
+          { role: "user", content: [{ type: "text", text: "hi" }] },
+          { role: "assistant", stopReason: "stop", content: [{ type: "text", text: "done" }] },
+        ],
+      },
+    ]);
+    expect(state.finished).toBe(true);
+    expect(state.blocks).toEqual([{ kind: "result", ok: true, summary: "done", costUsd: null }]);
+  });
+
+  it("reports a failed stopReason with pi's own error message", () => {
+    const state = reducePi([
+      {
+        type: "agent_end",
+        willRetry: false,
+        messages: [
+          {
+            role: "assistant",
+            stopReason: "error",
+            errorMessage: "connect ECONNREFUSED 127.0.0.1:1234",
+            content: [],
+          },
+        ],
+      },
+    ]);
+    expect(state.blocks).toEqual([
+      {
+        kind: "result",
+        ok: false,
+        summary: "connect ECONNREFUSED 127.0.0.1:1234",
+        costUsd: null,
+      },
+    ]);
+  });
+
+  it("stays open when pi is going to retry the turn", () => {
+    const state = reducePi([{ type: "agent_end", willRetry: true, messages: [] }]);
+    expect(state.finished).toBe(false);
+    expect(state.blocks).toEqual([]);
+  });
+
+  it("ignores event types it does not know", () => {
+    const state = reducePi([{ type: "queue_update", steering: [], followUp: [] }]);
+    expect(state.blocks).toEqual([]);
+  });
+});

@@ -59,14 +59,27 @@ switched to another CLI afterwards.
 
 ### opencode runs are not enforced
 
-**Known and accepted asymmetry.** Claude Code runs are confined by the
-`PreToolUse` hook in `workspace/hooks/`: raw Bash is denied, everything goes
-through `exec_in_folder.py`, which checks folder membership and appends to
-`commands.log`. opencode has no equivalent the server can install — its
-extension points are JS/TS plugins and a per-agent permission config — so an
-opencode run is scoped by `--dir` and nothing else, with no command log.
+**Known and accepted asymmetry, and opencode is now the only one.** Claude
+Code runs are confined by the `PreToolUse` hook in `workspace/hooks/`: raw
+Bash is denied, everything goes through `exec_in_folder.py`, which checks
+folder membership and appends to `commands.log`. pi runs get the same
+guarantee from `workspace/pi/enforce-workspace.ts`, an extension loaded with
+`-e`: pi's `tool_call` event can block a call and mutate its input, so file
+tools are held to the roots in `manifest.json` and every `bash` call is
+rewritten to run through that same `exec_in_folder.py`.
 
-Prefer Claude Code for agents working in real repositories. If opencode
+For pi the extension is installed twice, deliberately: on the command line
+with `-e`, and into the run's config directory at `pi-agent/extensions/`.
+Only the second one reaches a child pi process — anything that spawns
+subagents builds the child's argv itself and forwards none of ours, so a
+child would otherwise run unconfined. Loading it twice is safe: the path
+rewrite is idempotent and the bash wrap detects itself.
+
+opencode has no equivalent the server can install — its extension points are
+JS/TS plugins and a per-agent permission config — so an opencode run is scoped
+by `--dir` and nothing else, with no command log.
+
+Prefer Claude Code or pi for agents working in real repositories. If opencode
 enforcement is needed later, the shape would be a plugin under
 `.opencode/plugin/` materialized by `OpencodeRunner.prepareWorkspace` the way
 the hook files are copied today.

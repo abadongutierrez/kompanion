@@ -199,6 +199,129 @@ test.describe("task page", () => {
     await expect(page.locator("details[open]")).toHaveCount(0);
   });
 
+  test("a pi run is reduced with the pi reducer, not Claude's", async ({ page, request }) => {
+    const title = `E2E pi ${Date.now()}`;
+    const taskId = await makeTask(request, title);
+
+    const runId = "eeeeeeee-5555-4555-8555-555555555555";
+    await page.route(`**/api/teams/${teamId}/tasks/${taskId}/runs`, (route) =>
+      route.fulfill({
+        json: [
+          {
+            id: runId,
+            taskId,
+            agentId: null,
+            agentTitle: "Engineer (pi)",
+            runtime: "pi",
+            model: "lmstudio/qwen3.8-27b",
+            status: "succeeded",
+            createdAt: "2026-08-28T18:21:40.000Z",
+            durationMs: 69000,
+            costUsd: 0,
+          },
+        ],
+      }),
+    );
+
+    // pi's event shape, transcribed from a real LM Studio run: text arrives
+    // as delta-only message_update events, tools as their own
+    // tool_execution_* events. None of it means anything to the other two
+    // reducers, so rendering it proves the runtime stored on the run is what
+    // picks the reducer.
+    const events = [
+      { seq: 0, payload: { type: "message_start", message: { role: "assistant", content: [] } } },
+      {
+        seq: 1,
+        payload: {
+          type: "tool_execution_start",
+          toolCallId: "call_1",
+          toolName: "read",
+          args: { path: "sample.txt" },
+        },
+      },
+      {
+        seq: 2,
+        payload: {
+          type: "tool_execution_end",
+          toolCallId: "call_1",
+          toolName: "read",
+          result: { content: [{ type: "text", text: "hello world" }] },
+          isError: false,
+        },
+      },
+      {
+        seq: 3,
+        payload: {
+          type: "message_update",
+          usage: {},
+          assistantMessageEvent: { type: "text_start", contentIndex: 0 },
+        },
+      },
+      {
+        seq: 4,
+        payload: {
+          type: "message_update",
+          usage: {},
+          assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: "pi said this" },
+        },
+      },
+      {
+        seq: 5,
+        payload: {
+          type: "message_end",
+          message: {
+            role: "assistant",
+            stopReason: "stop",
+            content: [{ type: "text", text: "pi said this" }],
+            usage: { input: 2176, output: 46, cost: { total: 0 } },
+          },
+        },
+      },
+      {
+        seq: 6,
+        payload: {
+          type: "agent_end",
+          willRetry: false,
+          messages: [
+            {
+              role: "assistant",
+              stopReason: "stop",
+              content: [{ type: "text", text: "pi said this" }],
+            },
+          ],
+        },
+      },
+    ];
+    await page.route(`**/runs/${runId}/events`, (route) =>
+      route.fulfill({
+        contentType: "text/event-stream",
+        body:
+          events.map((e) => `data: ${JSON.stringify(e)}\n\n`).join("") +
+          "event: done\ndata: {}\n\n",
+      }),
+    );
+
+    await page.goto(`/projects/${projectId}/tasks/${taskId}`);
+    await expect(page.getByRole("heading", { name: title })).toBeVisible();
+
+    await expect(page.getByText("pi", { exact: false }).first()).toBeVisible();
+    await expect(page.getByText("lmstudio/qwen3.8-27b")).toBeVisible();
+
+    // Assembled from the deltas — the Claude reducer would have ignored them.
+    await expect(page.getByText("pi said this").first()).toBeVisible();
+
+    // A local model really is free, so zero is shown as zero.
+    await expect(page.getByText("$0.0000")).toBeVisible();
+    await expect(page.getByText("cost unknown")).toHaveCount(0);
+
+    // The tool block rendered, with the text pulled out of pi's content
+    // envelope rather than the raw JSON.
+    const details = page.locator("details");
+    await expect(details).toHaveCount(1);
+    await page.getByRole("button", { name: /Expand all/ }).click();
+    await expect(page.getByText("hello world")).toBeVisible();
+  });
+
   test("browser back returns to the board (the modal used to leave the app)", async ({
     page,
     request,
