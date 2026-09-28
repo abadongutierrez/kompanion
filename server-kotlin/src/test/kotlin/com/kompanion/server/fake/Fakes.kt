@@ -2,10 +2,16 @@ package com.kompanion.server.fake
 
 import com.kompanion.server.application.port.outbound.AgentStore
 import com.kompanion.server.application.port.outbound.Harnesses
+import com.kompanion.server.application.port.outbound.ProjectStore
+import com.kompanion.server.application.port.outbound.SpendStore
 import com.kompanion.server.application.port.outbound.TaskStore
 import com.kompanion.server.domain.model.Agent
 import com.kompanion.server.domain.model.AgentRuntime
+import com.kompanion.server.domain.model.DaySpend
+import com.kompanion.server.domain.model.ProjectSpend
 import com.kompanion.server.domain.model.Task
+import java.math.BigDecimal
+import java.time.OffsetDateTime
 import java.util.UUID
 
 // Fakes, not mocks, per ARCHITECTURE.md: a map-backed store reads better
@@ -59,4 +65,27 @@ class FakeHarnesses(var problem: String? = null) : Harnesses {
         validated += runtime to path
         return problem
     }
+}
+
+// Seeded with whatever the test wants the rollup to say. The query itself is
+// the adapter's problem; what the use case owes is the existence check and
+// the assembly of the two halves.
+class InMemorySpendStore(
+    private val spend: ProjectSpend? = null,
+    private val byDay: List<DaySpend> = emptyList(),
+) : SpendStore {
+    val asked = mutableListOf<UUID>()
+
+    override fun projectSpend(projectId: UUID): ProjectSpend {
+        asked += projectId
+        return spend ?: ProjectSpend(projectId, BigDecimal.ZERO, 0, BigDecimal.ZERO, OffsetDateTime.now())
+    }
+
+    override fun projectDailySpend(projectId: UUID): List<DaySpend> = byDay
+}
+
+class InMemoryProjectStore(vararg seed: UUID) : ProjectStore {
+    private val ids = seed.toSet()
+
+    override fun exists(id: UUID): Boolean = ids.contains(id)
 }

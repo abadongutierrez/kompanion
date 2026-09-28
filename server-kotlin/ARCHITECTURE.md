@@ -262,7 +262,7 @@ Already conforming:
   both the domain and the persistence rows use.
 - `RunTaskService` — genuinely runtime-agnostic orchestration.
 
-**Two slices are done**, and they are what the rest should be copied from:
+**Three slices are done**, and they are what the rest should be copied from:
 
 - `PATCH /api/teams/{teamId}/tasks/{taskId}/status` — `TaskStatusController`
   → `UpdateTaskStatus` → `UpdateTaskStatusUseCase` → `TaskStore` /
@@ -271,6 +271,12 @@ Already conforming:
 - `POST /api/agents` and `PATCH /api/agents/{agentId}` — `AgentWriteController`
   → `CreateAgent` / `UpdateAgent` → `AgentStore` and `Harnesses`, the latter
   showing what a non-persistence outbound port looks like.
+- `GET /api/projects/{projectId}/spend` — `ProjectSpendController` →
+  `GetProjectSpend` → `GetProjectSpendUseCase` → `ProjectStore` +
+  `SpendStore` / `JdbcProjectStore` + `JdbcSpendStore`. A read, and the one
+  that shows the sanctioned `JdbcTemplate` rollup living behind an outbound
+  port; its wire DTOs are in `adapter/inbound/web/` rather than `dto/`,
+  which is where new ones go.
 
 How a slice is done, concretely:
 
@@ -298,8 +304,9 @@ Known gaps, in the order they are worth closing:
    testable with a fake launcher — no CLI, no spend.
 3. `TaskCommentController` runs its own SQL and triggers runs — two use
    cases (post a comment, reply as an agent).
-4. The smaller controllers: budgets, heartbeat, dependencies, repositories,
-   teams, projects.
+4. The smaller controllers: budgets (`TeamBudgetController` still owns the
+   per-team spend and the cap that gates runs), heartbeat, dependencies,
+   repositories, teams, projects.
 5. `dto/` moves under `adapter/inbound/web/`, and the remaining `entity/` and
    `repository/` packages disappear as their last callers move.
 

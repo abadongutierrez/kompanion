@@ -21,10 +21,11 @@ test("GET /health reports ok", async () => {
 });
 
 test.describe("validation the client-side UI can't be relied on to enforce", () => {
+  let projectId: string;
   let teamId: string;
 
   test.beforeAll(async ({ request }) => {
-    ({ teamId } = await ensureProjectAndTeam(request));
+    ({ projectId, teamId } = await ensureProjectAndTeam(request));
   });
 
   test("rejects a negative monthly budget and never persists it", async ({ request }) => {
@@ -78,5 +79,35 @@ test.describe("validation the client-side UI can't be relied on to enforce", () 
     expect(res.status()).toBe(400);
 
     await request.delete(`/api/teams/${teamId}/tasks/${created.id}`);
+  });
+
+  // The Budget tab used to render whichever team came back first, so spend on
+  // every other team in the project was simply invisible. The rollup has to
+  // account for all of them — asserted here rather than in board.spec.ts
+  // because the numbers are what matters, not the markup.
+  test("project spend rolls up every team in the project", async ({ request }) => {
+    const spend = await request.get(`/api/projects/${projectId}/spend`).then((r) => r.json());
+
+    const teams: { id: string }[] = await request
+      .get(`/api/projects/${projectId}/teams`)
+      .then((r) => r.json());
+    expect(teams.length).toBeGreaterThan(0);
+
+    const perTeamThisMonth = await Promise.all(
+      teams.map((t) =>
+        request.get(`/api/teams/${t.id}/spend`).then(async (r) => (await r.json()).spendUsd),
+      ),
+    );
+    const summed = perTeamThisMonth.reduce((a: number, b: number) => a + b, 0);
+
+    expect(spend.monthSpendUsd).toBeCloseTo(summed, 6);
+    // All time is a superset of this month, and byDay covers the month only.
+    expect(spend.totalSpendUsd).toBeGreaterThanOrEqual(spend.monthSpendUsd);
+    expect(Array.isArray(spend.byDay)).toBe(true);
+  });
+
+  test("spend for a project that does not exist is a 404, not $0.00", async ({ request }) => {
+    const res = await request.get("/api/projects/00000000-0000-0000-0000-000000000000/spend");
+    expect(res.status()).toBe(404);
   });
 });

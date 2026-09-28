@@ -326,6 +326,20 @@ export const TeamSpend = z.object({
 });
 export type TeamSpend = z.infer<typeof TeamSpend>;
 
+// What a whole project has cost, across every team under it. The total is
+// all-time — the question the Budget tab asks — while monthSpendUsd and
+// byDay cover the current month, which is the window the per-team budget
+// caps in TeamSpend are enforced over.
+export const ProjectSpend = z.object({
+  projectId: z.string(),
+  totalSpendUsd: z.number(),
+  totalRunCount: z.number().int(),
+  monthSpendUsd: z.number(),
+  periodStart: z.string(),
+  byDay: z.array(DailySpend),
+});
+export type ProjectSpend = z.infer<typeof ProjectSpend>;
+
 // A comment's @mentions are resolved on read against the team's current
 // Agent slugs rather than stored — so an agent rename doesn't strand old
 // mentions pointing at a stale identifier.
