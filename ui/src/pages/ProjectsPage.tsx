@@ -1,0 +1,57 @@
+import { useNavigate, Link } from "react-router-dom";
+import { Muted } from "@/shared/ui/index.js";
+import { CreateProjectForm, useProjects } from "@/features/projects/index.js";
+
+// The root landing page — always shown at "/", regardless of how many
+// projects exist or which one was last visited. Unlike the old
+// auto-select-the-first-one behavior, switching projects should be a
+// deliberate, visible action.
+export function ProjectsPage() {
+  const navigate = useNavigate();
+  const projects = useProjects();
+
+  return (
+    <main className="mx-auto max-w-3xl space-y-8 px-6 py-8">
+      <div>
+        <h2 className="text-lg font-semibold">Projects</h2>
+        <Muted>Pick a project to open its board.</Muted>
+      </div>
+
+      {projects.isLoading && <Muted>Loading…</Muted>}
+
+      {projects.data && projects.data.length > 0 && (
+        <ul className="divide-y divide-neutral-200 rounded border border-neutral-200 bg-white">
+          {projects.data.map((project) => (
+            <li key={project.id}>
+              <Link
+                to={`/projects/${project.id}/board`}
+                className="flex items-center justify-between px-4 py-3 text-sm hover:bg-neutral-50"
+              >
+                <span className="min-w-0">
+                  <span className="font-medium">{project.name}</span>
+                  {/* Where this project's task workspaces live — worth
+                      seeing without opening the database, since it is
+                      where an agent's plans and notes end up. */}
+                  <span className="ml-2 truncate font-mono text-xs text-neutral-400">
+                    {project.workspacePath}
+                  </span>
+                </span>
+                <span className="shrink-0 text-xs text-neutral-400">
+                  Created {new Date(project.createdAt).toLocaleDateString()}
+                </span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {projects.data && projects.data.length === 0 && (
+        <Muted>No projects yet — create the first one below.</Muted>
+      )}
+
+      <CreateProjectForm
+        onCreated={(project) => navigate(`/projects/${project.id}/board`)}
+      />
+    </main>
+  );
+}

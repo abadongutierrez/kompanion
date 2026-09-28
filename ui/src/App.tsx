@@ -1,11 +1,10 @@
-import { useQuery } from "@tanstack/react-query";
 import { Navigate, NavLink, Route, Routes } from "react-router-dom";
-import { api } from "./api.js";
-import { ProjectsPage } from "./components/ProjectsPage.js";
-import { ProjectShell } from "./components/ProjectShell.js";
-import { AgentsLibraryPage } from "./components/AgentsLibraryPage.js";
-import { AgentFormPage } from "./components/AgentFormPage.js";
-import { TaskPage } from "./components/TaskPage.js";
+import { HeartbeatIndicator } from "@/features/system/index.js";
+import { ProjectsPage } from "@/pages/ProjectsPage.js";
+import { ProjectShell } from "@/pages/ProjectShell.js";
+import { AgentsLibraryPage } from "@/pages/AgentsLibraryPage.js";
+import { AgentFormPage } from "@/pages/AgentFormPage.js";
+import { TaskPage } from "@/pages/TaskPage.js";
 
 export function App() {
   return (
@@ -46,32 +45,5 @@ export function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </div>
-  );
-}
-
-function HeartbeatIndicator() {
-  const status = useQuery({
-    queryKey: ["heartbeatStatus"],
-    queryFn: api.getHeartbeatStatus,
-    refetchInterval: 10_000,
-  });
-
-  if (!status.data) return null;
-
-  if (!status.data.enabled) {
-    return <span className="text-xs text-neutral-400">Heartbeats: off</span>;
-  }
-
-  const lastTick = status.data.lastTickAt
-    ? new Date(status.data.lastTickAt).toLocaleTimeString()
-    : "never";
-
-  return (
-    <span className="text-xs text-neutral-500">
-      Heartbeats: on — every {Math.round(status.data.intervalMs / 1000)}s
-      <br />
-      last tick {lastTick}
-      {status.data.lastRunTaskId && ` — ran task ${status.data.lastRunTaskId.slice(0, 8)}`}
-    </span>
   );
 }
