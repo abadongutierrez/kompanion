@@ -22,6 +22,14 @@ Status is taken from `DESIGN.md` and the git log. Each item becomes a spec in
    `branchOrPrLink`.
 3. **Review gates.** A distinct approval action for `in_review → done`, with
    an optional required reviewer Agent.
+4. **Skills library.** A shared repository of skills that can be assigned
+   ("taught") to Agents. Skills live on the filesystem as standard skill
+   folders (`SKILL.md` plus files); a `skills` row holds a path, like an
+   Agent's `harnessPath`. `agent_skills` links Agents to skills. At run
+   start, `prepareWorkspace` copies each assigned skill into the run's
+   `.claude/skills/<slug>/`, so a run keeps the snapshot it started with.
+   Each run records the slug and hash of every skill it loaded. v1: Claude
+   Code only, register by path plus a scan button, read-only in the UI.
 
 ## Later
 
@@ -32,6 +40,11 @@ Status is taken from `DESIGN.md` and the git log. Each item becomes a spec in
 - Ceremonies (standup, retro, on-call).
 - Work Products as a real entity.
 - Multi-repo Tasks.
+- Skills library extras: skills for opencode and pi, per-Project default
+  skills, skill bundles, import from a git URL, edit in the UI, stored
+  snapshots for exact replay.
+- Automatic handoff between Agents (for example Engineer → QA) instead of
+  manual reassign or mention.
 
 ## Open questions
 
