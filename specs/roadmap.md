@@ -15,21 +15,34 @@ Status is taken from `DESIGN.md` and the git log. Each item becomes a spec in
 
 ## Next
 
-1. **Company** as the isolation boundary (`companies` table,
-   `projects.company_id`).
-2. **Repositories and worktrees.** A Project owns repos. A Task targets one
-   repo and runs in a `git worktree` on its own branch. Populate
-   `branchOrPrLink`.
-3. **Review gates.** A distinct approval action for `in_review → done`, with
-   an optional required reviewer Agent.
-4. **Skills library.** A shared repository of skills that can be assigned
-   ("taught") to Agents. Skills live on the filesystem as standard skill
-   folders (`SKILL.md` plus files); a `skills` row holds a path, like an
-   Agent's `harnessPath`. `agent_skills` links Agents to skills. At run
-   start, `prepareWorkspace` copies each assigned skill into the run's
-   `.claude/skills/<slug>/`, so a run keeps the snapshot it started with.
-   Each run records the slug and hash of every skill it loaded. v1: Claude
-   Code only, register by path plus a scan button, read-only in the UI.
+Listed in priority order, top first.
+
+### Company
+
+The isolation boundary: a `companies` table and `projects.company_id`.
+
+### Repositories and worktrees
+
+A Project owns repos. A Task targets one repo and runs in a `git worktree` on
+its own branch. Populate `branchOrPrLink`.
+
+### Review gates
+
+A distinct approval action for `in_review → done`, with an optional required
+reviewer Agent.
+
+### Skills library
+
+A shared repository of skills that can be assigned ("taught") to Agents.
+
+- Skills live on the filesystem as standard skill folders (`SKILL.md` plus
+  files). A `skills` row holds a path, like an Agent's `harnessPath`.
+  `agent_skills` links Agents to skills.
+- At run start, `prepareWorkspace` copies each assigned skill into the run's
+  `.claude/skills/<slug>/`, so a run keeps the snapshot it started with.
+- Each run records the slug and hash of every skill it loaded.
+- v1: Claude Code only, register by path plus a scan button, read-only in the
+  UI.
 
 ## Later
 
