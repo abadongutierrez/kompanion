@@ -26,7 +26,7 @@ class CreateAgentUseCaseTest {
         val created = useCase(agents, FakeHarnesses()).handle(
             CreateAgentCommand(
                 title = "Staff Engineer!",
-                harnessPath = "/workspace/harnesses/engineer",
+                harnessPath = "/library/harnesses/engineer",
                 runtime = null,
                 model = null,
             ),

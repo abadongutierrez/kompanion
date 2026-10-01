@@ -37,7 +37,7 @@ class GlobalAgentsController(
     fun getHarnessTemplate(@PathVariable agentId: UUID): ResponseEntity<Any> {
         val agent = agents.findById(agentId).orElse(null)
             ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ErrorResponse("agent not found"))
-        val claudeMd = File(claudeHarnessService.resolveHarnessPath(agent.harnessPath), "CLAUDE.md")
+        val claudeMd = File(claudeHarnessService.resolveLibraryPath(agent.harnessPath), "CLAUDE.md")
         val content = if (claudeMd.exists()) claudeMd.readText() else ""
         return ResponseEntity.ok(HarnessTemplateRequest(content))
     }
@@ -49,7 +49,7 @@ class GlobalAgentsController(
     ): ResponseEntity<Any> {
         val agent = agents.findById(agentId).orElse(null)
             ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ErrorResponse("agent not found"))
-        File(claudeHarnessService.resolveHarnessPath(agent.harnessPath), "CLAUDE.md").writeText(body.content)
+        File(claudeHarnessService.resolveLibraryPath(agent.harnessPath), "CLAUDE.md").writeText(body.content)
         return ResponseEntity.ok(HarnessTemplateRequest(body.content))
     }
 }

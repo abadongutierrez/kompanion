@@ -19,10 +19,10 @@ class FileHarnesses(
 
     private val runners: Map<AgentRuntime, AgentRunner> = runnerList.associateBy { it.runtime }
 
-    override fun normalizePath(path: String): String = claudeHarnessService.toStoredPath(path)
+    override fun normalizePath(path: String): String = claudeHarnessService.toStoredLibraryPath(path)
 
     override fun validate(runtime: AgentRuntime, path: String): String? {
-        val dir = claudeHarnessService.resolveHarnessPath(path)
+        val dir = claudeHarnessService.resolveLibraryPath(path)
         if (!dir.exists()) {
             return "no directory at \"${dir.path}\" — create the harness there first, then register it"
         }

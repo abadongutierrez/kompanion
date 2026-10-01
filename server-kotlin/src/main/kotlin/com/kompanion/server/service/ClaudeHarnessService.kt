@@ -3,40 +3,36 @@ package com.kompanion.server.service
 import com.kompanion.server.dto.BuiltinHarnessResponse
 import com.kompanion.server.entity.Agent
 import com.kompanion.server.entity.Project
+import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.stereotype.Service
 import java.io.File
 
-// workspace/harnesses/ holds starter templates (engineer, qa,
-// product_manager, project_manager) — no longer auto-selected by any
-// discipline convention, just pre-made folders a new Agent's harnessPath
-// can point at, listed via listBuiltinHarnesses() below.
+// Two roots, kept apart on purpose:
+//
+//   libraryRoot   — tracked templates the app only reads: harnesses/ (starter
+//                   folders a new Agent's harnessPath can point at, listed via
+//                   listBuiltinHarnesses() below), hooks/ and pi/.
+//   workspaceRoot — everything the app generates or copies: project folders
+//                   and the Task folders inside them.
 //
 // Task workspaces are shared across agents: whichever agent a Task is
 // currently assigned to runs in the *same* directory, so e.g. QA can see
-// Engineer's actual output instead of an agent-isolated copy. harnesses/
-// stays a pure, immutable template; workspace/tasks/ is the mutable
-// runtime state.
+// Engineer's actual output instead of an agent-isolated copy. The library
+// stays a pure, immutable template; the workspace is the mutable runtime
+// state.
 @Service
-class ClaudeHarnessService {
+class ClaudeHarnessService internal constructor(
+    val libraryRoot: File,
+    val workspaceRoot: File,
+) {
 
-    // Resolved from the JVM's working directory — assumes the app is run
-    // from server-kotlin/ (true for `gradle bootRun`/the packaged jar run
-    // from that directory, matching every run so far). The removed Node
-    // server resolved this from its own source file location via
-    // import.meta.url, which is cwd-independent; this is a known
-    // simplification to revisit if this ever needs to run from an
-    // arbitrary working directory.
-    private val serverRoot = File(".").canonicalFile
+    @Autowired
+    constructor() : this(
+        libraryRootFrom(System.getenv(), File(".").canonicalFile),
+        workspaceRootFrom(System.getenv(), File(".").canonicalFile),
+    )
 
-    // workspace/ lives at the repo root, a sibling of server-kotlin/ (it
-    // was hoisted there back when a second backend shared it).
-    // WORKSPACE_ROOT lets it be pointed elsewhere; the default assumes
-    // this server runs from server-kotlin/, so the parent is the repo
-    // root.
-    val workspaceRoot: File = System.getenv("WORKSPACE_ROOT")?.let { File(it).canonicalFile }
-        ?: File(serverRoot.parentFile, "workspace")
-
-    private val harnessesRoot = File(workspaceRoot, "harnesses")
+    private val harnessesRoot = File(libraryRoot, "harnesses")
 
     // The pre-V21 home for every task folder in the app, kept for one reason:
     // resolveWorkspaceDir falls back to it so a task that already has runs
@@ -45,41 +41,50 @@ class ClaudeHarnessService {
     val legacyWorkspacesRoot: File = File(workspaceRoot, "tasks")
 
     // A stored harnessPath is either absolute (a harness anywhere on disk)
-    // or relative to workspaceRoot (the normal case — "harnesses/engineer").
-    // Relative is what gets stored for anything under workspace/, so the
+    // or relative to libraryRoot (the normal case — "harnesses/engineer").
+    // Relative is what gets stored for anything under library/, so the
     // database stays portable across machines and checkouts; see V16.
-    fun resolveHarnessPath(harnessPath: String): File {
-        val asGiven = File(harnessPath)
-        return if (asGiven.isAbsolute) asGiven else File(workspaceRoot, harnessPath)
+    fun resolveLibraryPath(path: String): File {
+        val asGiven = File(path)
+        return if (asGiven.isAbsolute) asGiven else File(libraryRoot, path)
     }
 
     // The inverse, applied on the way in: an absolute path pointing inside
-    // workspaceRoot is stored relative to it. Anything else is stored
-    // verbatim — there's nothing to relativize a path outside workspace/
-    // against. Used for both an Agent's harnessPath and a Project's
-    // workspacePath; the rule is about workspaceRoot, not about harnesses.
-    fun toStoredPath(harnessPath: String): String {
-        val file = File(harnessPath)
-        if (!file.isAbsolute) return harnessPath
+    // libraryRoot is stored relative to it. Anything else is stored
+    // verbatim — there's nothing to relativize a path outside library/
+    // against.
+    fun toStoredLibraryPath(path: String): String = relativeTo(libraryRoot, path)
+
+    // A Project's workspacePath follows the same rule, against workspaceRoot:
+    // absolute, or relative to it ("projects/acme-1a2b3c4d").
+    fun resolveWorkspacePath(path: String): File {
+        val asGiven = File(path)
+        return if (asGiven.isAbsolute) asGiven else File(workspaceRoot, path)
+    }
+
+    fun toStoredWorkspacePath(path: String): String = relativeTo(workspaceRoot, path)
+
+    private fun relativeTo(root: File, path: String): String {
+        val file = File(path)
+        if (!file.isAbsolute) return path
         val canonical = file.canonicalFile
-        val root = workspaceRoot.canonicalFile
-        return if (canonical.path.startsWith(root.path + File.separator)) {
-            canonical.path.removePrefix(root.path + File.separator)
+        val canonicalRoot = root.canonicalFile
+        return if (canonical.path.startsWith(canonicalRoot.path + File.separator)) {
+            canonical.path.removePrefix(canonicalRoot.path + File.separator)
         } else {
-            harnessPath
+            path
         }
     }
 
     // harnessPath is the sole source of an Agent's harness — no fallback.
     fun resolveHarnessDir(agent: Agent): File? {
-        val dir = resolveHarnessPath(agent.harnessPath)
+        val dir = resolveLibraryPath(agent.harnessPath)
         return if (dir.exists()) dir else null
     }
 
-    // A Project's own folder. Same absolute-or-relative-to-workspaceRoot rule
-    // as a harness path, so resolveHarnessPath does the work.
+    // A Project's own folder.
     fun resolveProjectWorkspaceDir(project: Project): File =
-        resolveHarnessPath(project.workspacePath)
+        resolveWorkspacePath(project.workspacePath)
 
     // A Task's folder inside its Project's workspace. The legacy fallback is
     // deliberately keyed on the old folder existing, not on a flag: a task
@@ -105,8 +110,28 @@ class ClaudeHarnessService {
                 }
                 // Relative, so the UI can hand it straight back to
                 // POST /api/agents and have it stored as-is.
-                BuiltinHarnessResponse(slug = dir.name, title = title, path = toStoredPath(dir.path))
+                BuiltinHarnessResponse(slug = dir.name, title = title, path = toStoredLibraryPath(dir.path))
             }
             ?: emptyList()
+    }
+
+    companion object {
+        // Both defaults assume the app runs from server-kotlin/ (true for
+        // `gradle bootRun` and the packaged jar run from that directory), so
+        // the parent of the working directory is the repo root. The removed
+        // Node server resolved this from its own source file location, which
+        // is cwd-independent; this is a known simplification to revisit if
+        // the app ever needs to run from an arbitrary directory.
+
+        // library/ sits at the repo root, a sibling of server-kotlin/.
+        // LIBRARY_ROOT lets it be pointed elsewhere.
+        fun libraryRootFrom(env: Map<String, String>, serverRoot: File): File =
+            env["LIBRARY_ROOT"]?.let { File(it).canonicalFile }
+                ?: File(serverRoot.parentFile, "library")
+
+        // WORKSPACE_ROOT lets it be pointed elsewhere.
+        fun workspaceRootFrom(env: Map<String, String>, serverRoot: File): File =
+            env["WORKSPACE_ROOT"]?.let { File(it).canonicalFile }
+                ?: File(serverRoot.parentFile, "workspace")
     }
 }

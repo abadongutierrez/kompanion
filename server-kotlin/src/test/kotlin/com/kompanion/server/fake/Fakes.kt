@@ -59,7 +59,7 @@ class InMemoryAgentStore(vararg seed: Agent) : AgentStore {
 class FakeHarnesses(var problem: String? = null) : Harnesses {
     val validated = mutableListOf<Pair<AgentRuntime, String>>()
 
-    override fun normalizePath(path: String): String = path.removePrefix("/workspace/")
+    override fun normalizePath(path: String): String = path.removePrefix("/library/")
 
     override fun validate(runtime: AgentRuntime, path: String): String? {
         validated += runtime to path

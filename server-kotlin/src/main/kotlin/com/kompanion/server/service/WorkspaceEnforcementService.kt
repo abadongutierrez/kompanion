@@ -40,10 +40,10 @@ class WorkspaceEnforcementService(
     private val claudeHarnessService: ClaudeHarnessService,
 ) {
 
-    // hooks/ lives under the same shared workspace/ root as harnesses/ and
-    // tasks/ — reuses ClaudeHarnessService's WORKSPACE_ROOT resolution
-    // rather than recomputing it separately.
-    private val hooksSrcDir = File(claudeHarnessService.workspaceRoot, "hooks")
+    // hooks/ lives under the same library/ root as harnesses/ — reuses
+    // ClaudeHarnessService's LIBRARY_ROOT resolution rather than recomputing
+    // it separately. It is read-only input: the scripts are copied from here.
+    private val hooksSrcDir = File(claudeHarnessService.libraryRoot, "hooks")
 
     // enforce-workspace.py denies every raw Bash call except one shape:
     // invoking exec_in_folder.py, which does its own folder-membership
@@ -54,7 +54,7 @@ class WorkspaceEnforcementService(
     // pi loads this by absolute path with -e, so unlike the Claude Code hooks
     // it never has to be copied anywhere — which is why a pi run writes
     // nothing at all into the repository it works on.
-    val piExtensionFile = File(claudeHarnessService.workspaceRoot, "pi/enforce-workspace.ts")
+    val piExtensionFile = File(claudeHarnessService.libraryRoot, "pi/enforce-workspace.ts")
 
     // The script the pi extension rewrites every bash call into, and the
     // Claude hook allows as the single exception to its Bash denial. Same

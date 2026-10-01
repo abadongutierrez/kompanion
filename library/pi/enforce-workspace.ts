@@ -1,7 +1,7 @@
 /**
  * pi extension enforcing that a run's file and shell operations stay within
  * this Task's allowed directories — the same guarantee the Claude Code
- * PreToolUse hook (workspace/hooks/enforce-workspace.py) gives, expressed
+ * PreToolUse hook (library/hooks/enforce-workspace.py) gives, expressed
  * through pi's blocking `tool_call` event.
  *
  * Loaded by absolute path with `-e`, which bypasses pi's project-trust gate,

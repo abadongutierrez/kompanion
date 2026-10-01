@@ -29,13 +29,13 @@ class ProjectController(
         // hence two writes rather than one. The id suffix is what keeps two
         // projects with the same name out of each other's folder.
         val workspacePath = body.workspacePath?.takeIf { it.isNotBlank() }
-            ?.let { claudeHarnessService.toStoredPath(it.trim()) }
+            ?.let { claudeHarnessService.toStoredWorkspacePath(it.trim()) }
             ?: "projects/${slugify(body.name)}-${saved.id!!.toString().take(8)}"
 
         // Unlike a repository's localPath, this folder is ours, so it is
         // created rather than required to exist. Doing it now means the
         // operator can see (and populate) it before the first task ever runs.
-        claudeHarnessService.resolveHarnessPath(workspacePath).mkdirs()
+        claudeHarnessService.resolveWorkspacePath(workspacePath).mkdirs()
 
         projects.save(saved.copy(workspacePath = workspacePath))
         val reloaded = projects.findById(saved.id!!).orElse(saved.copy(workspacePath = workspacePath))

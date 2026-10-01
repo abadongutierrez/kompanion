@@ -13,7 +13,7 @@ import java.math.BigDecimal
 // a real `pi -p --mode json` run.
 //
 // Unlike opencode, a pi run IS confined. pi's extension API has a blocking
-// `tool_call` hook, so workspace/pi/enforce-workspace.ts enforces the same
+// `tool_call` hook, so library/pi/enforce-workspace.ts enforces the same
 // allowed-roots rule as the Claude Code PreToolUse hook and funnels every bash
 // call through the same exec_in_folder.py (folder check + commands.log).
 //
