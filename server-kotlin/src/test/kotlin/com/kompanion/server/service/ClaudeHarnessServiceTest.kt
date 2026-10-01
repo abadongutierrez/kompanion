@@ -6,6 +6,8 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertThrows
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
 import java.util.UUID
@@ -36,16 +38,30 @@ class ClaudeHarnessServiceTest {
     }
 
     @Test
-    fun `workspace root defaults to workspace next to server-kotlin`(@TempDir tmp: File) {
-        val serverRoot = File(tmp, "server-kotlin")
-        assertEquals(File(tmp, "workspace").path, ClaudeHarnessService.workspaceRootFrom(emptyMap(), serverRoot).path)
+    fun `workspace root defaults to dot-kompanion workspace in the home folder`(@TempDir tmp: File) {
+        val root = ClaudeHarnessService.workspaceRootFrom(emptyMap(), tmp.path)
+        assertEquals(File(File(tmp, ".kompanion"), "workspace").path, root.path)
     }
 
     @Test
     fun `WORKSPACE_ROOT overrides the default`(@TempDir tmp: File) {
         val other = File(tmp, "elsewhere").apply { mkdirs() }
-        val root = ClaudeHarnessService.workspaceRootFrom(mapOf("WORKSPACE_ROOT" to other.path), File(tmp, "server-kotlin"))
+        val root = ClaudeHarnessService.workspaceRootFrom(mapOf("WORKSPACE_ROOT" to other.path), tmp.path)
         assertEquals(other.canonicalPath, root.path)
+    }
+
+    @Test
+    fun `WORKSPACE_ROOT works when there is no home folder`(@TempDir tmp: File) {
+        val root = ClaudeHarnessService.workspaceRootFrom(mapOf("WORKSPACE_ROOT" to tmp.path), null)
+        assertEquals(tmp.canonicalPath, root.path)
+    }
+
+    @Test
+    fun `no home folder and no WORKSPACE_ROOT fails with a clear message`() {
+        val error = assertThrows(IllegalStateException::class.java) {
+            ClaudeHarnessService.workspaceRootFrom(emptyMap(), null)
+        }
+        assertTrue(error.message!!.contains("WORKSPACE_ROOT"))
     }
 
     // -- workspace paths (projects, tasks) -----------------------------
@@ -178,16 +194,24 @@ class ClaudeHarnessServiceTest {
     // -- wiring --------------------------------------------------------
 
     @Test
-    fun `spring builds the service through its no-arg constructor`() {
-        // contextLoads needs a database; this checks the one new thing about
-        // the bean — that Spring picks the @Autowired no-arg constructor over
-        // the internal one that takes the two roots.
-        org.springframework.context.annotation.AnnotationConfigApplicationContext(
-            ClaudeHarnessService::class.java,
-        ).use { context ->
-            val built = context.getBean(ClaudeHarnessService::class.java)
-            assertEquals("library", built.libraryRoot.name)
-            assertEquals("workspace", built.workspaceRoot.name)
+    fun `spring builds the service through its no-arg constructor and creates the workspace`(@TempDir tmp: File) {
+        // contextLoads needs a database; this checks what is new about the
+        // bean — that Spring picks the @Autowired no-arg constructor over the
+        // internal one, and that it creates the workspace folder. user.home
+        // points at a temp folder so the test never touches the real one.
+        val realHome = System.getProperty("user.home")
+        System.setProperty("user.home", tmp.path)
+        try {
+            org.springframework.context.annotation.AnnotationConfigApplicationContext(
+                ClaudeHarnessService::class.java,
+            ).use { context ->
+                val built = context.getBean(ClaudeHarnessService::class.java)
+                assertEquals("library", built.libraryRoot.name)
+                assertEquals(File(File(tmp, ".kompanion"), "workspace").path, built.workspaceRoot.path)
+                assertTrue(built.workspaceRoot.isDirectory)
+            }
+        } finally {
+            System.setProperty("user.home", realHome)
         }
     }
 

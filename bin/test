@@ -26,4 +26,11 @@ if ! (cd "$PROJECT_ROOT/server-kotlin" && ./gradlew test); then
   exit 1
 fi
 
+# Run the shell tests for the bin/ scripts
+echo -e "\n${BLUE}Running bin script tests...${NC}\n"
+if ! "$PROJECT_ROOT/bin/tests/migrate-workspace.sh"; then
+  echo -e "\n${RED}❌ Some tests failed${NC}"
+  exit 1
+fi
+
 echo -e "\n${GREEN}✅ All tests passed${NC}\n"

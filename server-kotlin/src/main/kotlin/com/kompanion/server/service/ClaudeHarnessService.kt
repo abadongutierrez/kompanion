@@ -13,7 +13,8 @@ import java.io.File
 //                   folders a new Agent's harnessPath can point at, listed via
 //                   listBuiltinHarnesses() below), hooks/ and pi/.
 //   workspaceRoot — everything the app generates or copies: project folders
-//                   and the Task folders inside them.
+//                   and the Task folders inside them. Defaults to
+//                   ~/.kompanion/workspace, outside the repo.
 //
 // Task workspaces are shared across agents: whichever agent a Task is
 // currently assigned to runs in the *same* directory, so e.g. QA can see
@@ -29,7 +30,7 @@ class ClaudeHarnessService internal constructor(
     @Autowired
     constructor() : this(
         libraryRootFrom(System.getenv(), File(".").canonicalFile),
-        workspaceRootFrom(System.getenv(), File(".").canonicalFile),
+        workspaceRootFrom(System.getenv(), System.getProperty("user.home")).also { it.mkdirs() },
     )
 
     private val harnessesRoot = File(libraryRoot, "harnesses")
@@ -129,9 +130,15 @@ class ClaudeHarnessService internal constructor(
             env["LIBRARY_ROOT"]?.let { File(it).canonicalFile }
                 ?: File(serverRoot.parentFile, "library")
 
+        // The workspace is generated data, so it lives outside the repo, in
+        // the operator's home, and every checkout and worktree shares it.
         // WORKSPACE_ROOT lets it be pointed elsewhere.
-        fun workspaceRootFrom(env: Map<String, String>, serverRoot: File): File =
+        fun workspaceRootFrom(env: Map<String, String>, home: String?): File =
             env["WORKSPACE_ROOT"]?.let { File(it).canonicalFile }
-                ?: File(serverRoot.parentFile, "workspace")
+                ?: home?.takeIf { it.isNotBlank() }?.let { File(File(it, ".kompanion"), "workspace") }
+                ?: throw IllegalStateException(
+                    "Cannot find a home folder for the default workspace (~/.kompanion/workspace). " +
+                        "Set WORKSPACE_ROOT to an absolute path.",
+                )
     }
 }

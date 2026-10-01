@@ -1,0 +1,176 @@
+#!/bin/bash
+set -e
+
+# One-time move of runtime data out of the repo's workspace/ folder into
+# WORKSPACE_ROOT (default ~/.kompanion/workspace), plus the database rows that
+# point into the old folder. See specs/2026-09-30-library-and-workspace-roots/.
+#
+#   ./bin/migrate-workspace             dry run: report only, change nothing
+#   ./bin/migrate-workspace --apply     do it
+#   ./bin/migrate-workspace --skip-db   files only, leave the database alone
+#
+# Overrides (mostly for tests):
+#   WORKSPACE_ROOT      the new root
+#   OLD_WORKSPACE_ROOT  the old root (default <repo>/workspace)
+#   PORT                server port to check is free (default 3200)
+#   DB_CONTAINER        Postgres container (default: the one publishing 5433)
+#   DB_USER, DB_NAME    default sdlc / sdlc, DB_PASSWORD default sdlc
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+APPLY=0
+SKIP_DB=0
+for arg in "$@"; do
+  case "$arg" in
+    --apply) APPLY=1 ;;
+    --skip-db) SKIP_DB=1 ;;
+    -h|--help) sed -n '3,17p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    *) echo -e "${RED}Unknown option: $arg${NC}"; exit 2 ;;
+  esac
+done
+
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+OLD_ROOT="$(readlink -m "${OLD_WORKSPACE_ROOT:-$PROJECT_ROOT/workspace}")"
+NEW_ROOT="$(readlink -m "${WORKSPACE_ROOT:-$HOME/.kompanion/workspace}")"
+SERVER_PORT="${PORT:-3200}"
+DB_USER="${DB_USER:-sdlc}"
+DB_NAME="${DB_NAME:-sdlc}"
+DB_PASSWORD="${DB_PASSWORD:-sdlc}"
+FOLDERS=(projects tasks)
+
+if [ "$APPLY" = 1 ]; then
+  echo -e "${BLUE}Migrating workspace data${NC}"
+else
+  echo -e "${BLUE}Migrating workspace data (dry run, nothing will change)${NC}"
+fi
+echo "  from: $OLD_ROOT"
+echo "  to:   $NEW_ROOT"
+echo
+
+if [ "$OLD_ROOT" = "$NEW_ROOT" ]; then
+  echo -e "${RED}Old and new roots are the same folder. Nothing to do.${NC}"
+  exit 1
+fi
+
+# 1. The server must be down: it reads and writes these folders.
+if (echo > "/dev/tcp/127.0.0.1/$SERVER_PORT") 2>/dev/null; then
+  echo -e "${RED}Something is answering on port $SERVER_PORT. Stop the server first (./bin/stop).${NC}"
+  exit 1
+fi
+
+# 2. Work out what would move, and stop before moving anything if a
+# destination already has content.
+has_content() { [ -d "$1" ] && [ -n "$(ls -A "$1" 2>/dev/null)" ]; }
+
+TO_MOVE=()
+for name in "${FOLDERS[@]}"; do
+  if ! has_content "$OLD_ROOT/$name"; then
+    echo -e "  ${YELLOW}skip${NC}  $name/  (nothing at the old location)"
+    continue
+  fi
+  if has_content "$NEW_ROOT/$name"; then
+    echo -e "${RED}$NEW_ROOT/$name already has content. Move or remove it, then run again. Nothing was moved.${NC}"
+    exit 1
+  fi
+  echo -e "  move  $name/  ($(find "$OLD_ROOT/$name" -type f | wc -l) files)"
+  TO_MOVE+=("$name")
+done
+
+# 3. Move. Same filesystem: a rename. Otherwise copy, check the file count,
+# then remove the source.
+move_folder() {
+  local name="$1" src="$OLD_ROOT/$1" dst="$NEW_ROOT/$1"
+  mkdir -p "$NEW_ROOT"
+  [ -d "$dst" ] && rmdir "$dst"
+  if [ "$(stat -c %d "$NEW_ROOT")" = "$(stat -c %d "$OLD_ROOT")" ]; then
+    mv "$src" "$dst"
+  else
+    cp -a "$src" "$dst"
+    if [ "$(find "$src" -type f | wc -l)" != "$(find "$dst" -type f | wc -l)" ]; then
+      echo -e "${RED}File count differs after copying $name/. The source was kept at $src.${NC}"
+      exit 1
+    fi
+    rm -rf "$src"
+  fi
+  echo -e "  ${GREEN}moved${NC} $name/"
+}
+
+if [ "$APPLY" = 1 ]; then
+  for name in "${TO_MOVE[@]}"; do move_folder "$name"; done
+fi
+
+# 4. Database: absolute paths inside the old root become relative. Relative
+# rows stay valid (harness paths resolve against the library root, project
+# paths against WORKSPACE_ROOT). Absolute paths elsewhere are only listed.
+if [ "$SKIP_DB" = 1 ]; then
+  echo -e "\n${YELLOW}--skip-db: database not touched${NC}"
+  exit 0
+fi
+
+CONTAINER="${DB_CONTAINER:-$(docker ps --filter publish=5433 --format '{{.Names}}' 2>/dev/null | head -1)}"
+if [ -z "$CONTAINER" ]; then
+  echo -e "\n${RED}No running Postgres container found (looked for one publishing port 5433).${NC}"
+  echo "Start it with: docker compose -f docker-compose.dev.yml up -d"
+  echo "Files were handled above; run again for the database, or use --skip-db."
+  exit 1
+fi
+
+psql_run() {
+  docker exec -i -e PGPASSWORD="$DB_PASSWORD" "$CONTAINER" \
+    psql -U "$DB_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -v prefix="$OLD_ROOT/" "$@"
+}
+
+echo -e "\n${BLUE}Database ($CONTAINER)${NC}"
+
+CHANGES="$(psql_run -At <<'SQL'
+select 'agents ' || count(*) from agents where starts_with(harness_path, :'prefix');
+select 'projects ' || count(*) from projects where starts_with(workspace_path, :'prefix');
+SQL
+)"
+AGENT_ROWS="$(echo "$CHANGES" | awk '$1=="agents"{print $2}')"
+PROJECT_ROWS="$(echo "$CHANGES" | awk '$1=="projects"{print $2}')"
+echo "  agents.harness_path to rewrite:     $AGENT_ROWS"
+echo "  projects.workspace_path to rewrite: $PROJECT_ROWS"
+
+if [ "$APPLY" = 1 ] && [ $((AGENT_ROWS + PROJECT_ROWS)) -gt 0 ]; then
+  mkdir -p "$NEW_ROOT"
+  BACKUP="$NEW_ROOT/migration-backup-$(date +%Y%m%d-%H%M%S).sql"
+  psql_run -At > "$BACKUP" <<'SQL'
+select format('update agents set harness_path = %L where id = %L;', harness_path, id)
+  from agents where starts_with(harness_path, :'prefix');
+select format('update projects set workspace_path = %L where id = %L;', workspace_path, id)
+  from projects where starts_with(workspace_path, :'prefix');
+SQL
+  echo "  backup of old values: $BACKUP"
+  psql_run <<'SQL'
+begin;
+update agents set harness_path = substr(harness_path, length(:'prefix') + 1)
+  where starts_with(harness_path, :'prefix');
+update projects set workspace_path = substr(workspace_path, length(:'prefix') + 1)
+  where starts_with(workspace_path, :'prefix');
+commit;
+SQL
+  echo -e "  ${GREEN}rows rewritten${NC}"
+fi
+
+LEFT="$(psql_run -At -F ' ' <<'SQL'
+select 'agents', slug, harness_path from agents
+  where harness_path like '/%' and not starts_with(harness_path, :'prefix');
+select 'projects', name, workspace_path from projects
+  where workspace_path like '/%' and not starts_with(workspace_path, :'prefix');
+SQL
+)"
+if [ -n "$LEFT" ]; then
+  echo -e "\n${YELLOW}Absolute paths outside the old root were left alone. Check them by hand:${NC}"
+  echo "$LEFT" | sed 's/^/  /'
+fi
+
+if [ "$APPLY" = 0 ]; then
+  echo -e "\n${YELLOW}Dry run only. Run with --apply to do it.${NC}"
+else
+  echo -e "\n${GREEN}Done.${NC}"
+fi
