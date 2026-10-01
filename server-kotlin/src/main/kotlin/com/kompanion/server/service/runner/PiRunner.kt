@@ -1,6 +1,7 @@
 package com.kompanion.server.service.runner
 
 import com.kompanion.server.domain.model.AgentRuntime
+import com.kompanion.server.domain.rule.SkillLayout
 import com.kompanion.server.service.WorkspaceEnforcementService
 import com.kompanion.server.service.WorkspaceManifest
 import org.springframework.stereotype.Component
@@ -45,11 +46,22 @@ class PiRunner(
     override fun prepareWorkspace(ctx: RunContext, manifest: WorkspaceManifest) {
         ctx.cwdDir.mkdirs()
 
-        val harnessConfig = File(ctx.harnessDir, PI_AGENT_DIR)
+        val harnessConfig = File(ctx.instanceDir, PI_AGENT_DIR)
         if (harnessConfig.exists()) {
             val dest = configDir(ctx)
             dest.deleteRecursively()
             harnessConfig.copyRecursively(dest, overwrite = true)
+
+            // pi's own runtime files (credentials, model cache, trust) are
+            // left out of the stored agent instance on purpose — they may hold
+            // secrets and they change by themselves. They still have to reach
+            // the run, so they come straight from the harness, as they always
+            // have.
+            val harnessState = File(ctx.harnessDir, PI_AGENT_DIR)
+            for (name in SkillLayout.PI_RUNTIME_STATE) {
+                File(harnessState, name).takeIf { it.exists() }
+                    ?.copyRecursively(File(dest, name), overwrite = true)
+            }
 
             // The enforcement extension goes into the config directory as
             // well as onto the command line, and the difference matters: a
@@ -91,7 +103,7 @@ class PiRunner(
 
         ctx.agent.model?.let { args += listOf("--model", it) }
 
-        readSystemPrompt(ctx.harnessDir)?.let { args += listOf("--append-system-prompt", it) }
+        readSystemPrompt(ctx.instanceDir)?.let { args += listOf("--append-system-prompt", it) }
 
         // pi discovers skills from its config dir and from the *cwd* — never
         // from the harness, which is neither. So a harness's skills only
@@ -100,7 +112,7 @@ class PiRunner(
         // .claude/skills is included because pi implements the Agent Skills
         // standard, so a SKILL.md written for Claude Code loads unchanged and
         // the two runtimes can share one definition instead of drifting.
-        for (dir in skillDirs(ctx.harnessDir)) {
+        for (dir in skillDirs(ctx.instanceDir)) {
             args += listOf("--skill", dir.path)
         }
 

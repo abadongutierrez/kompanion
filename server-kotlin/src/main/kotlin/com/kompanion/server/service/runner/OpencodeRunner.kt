@@ -43,7 +43,7 @@ class OpencodeRunner : AgentRunner {
 
         val destOpencode = File(ctx.cwdDir, ".opencode")
         destOpencode.deleteRecursively()
-        File(ctx.harnessDir, ".opencode").takeIf { it.exists() }
+        File(ctx.instanceDir, ".opencode").takeIf { it.exists() }
             ?.copyRecursively(destOpencode, overwrite = true)
 
         val agentsDir = File(destOpencode, "agents")
@@ -56,7 +56,7 @@ class OpencodeRunner : AgentRunner {
     // without being duplicated.
     private fun buildAgentDefinition(ctx: RunContext): String {
         val body = listOf("AGENTS.md", "CLAUDE.md")
-            .map { File(ctx.harnessDir, it) }
+            .map { File(ctx.instanceDir, it) }
             .firstOrNull { it.exists() }
             ?.readText()
             .orEmpty()

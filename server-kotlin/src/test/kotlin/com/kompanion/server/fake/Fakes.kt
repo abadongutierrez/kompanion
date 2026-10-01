@@ -1,6 +1,10 @@
 package com.kompanion.server.fake
 
+import com.kompanion.server.application.port.outbound.AgentInstances
 import com.kompanion.server.application.port.outbound.AgentStore
+import com.kompanion.server.application.port.outbound.BuildInstanceRequest
+import com.kompanion.server.application.port.outbound.BuiltInstance
+import com.kompanion.server.application.port.outbound.RunInstances
 import com.kompanion.server.application.port.outbound.Harnesses
 import com.kompanion.server.application.port.outbound.ProjectStore
 import com.kompanion.server.application.port.outbound.SkillFiles
@@ -9,6 +13,7 @@ import com.kompanion.server.application.port.outbound.SkillStore
 import com.kompanion.server.application.port.outbound.SpendStore
 import com.kompanion.server.application.port.outbound.TaskStore
 import com.kompanion.server.domain.model.Agent
+import com.kompanion.server.domain.model.AgentInstance
 import com.kompanion.server.domain.model.AgentRuntime
 import com.kompanion.server.domain.model.DaySpend
 import com.kompanion.server.domain.model.ProjectSpend
@@ -130,6 +135,27 @@ class InMemorySkillStore(vararg seed: Skill) : SkillStore {
 
     override fun replaceAssignments(agentId: UUID, skillIds: Collection<UUID>) {
         assignments[agentId] = skillIds.toList()
+    }
+}
+
+// Answers every build with the same instance and remembers what it was asked.
+class FakeAgentInstances(
+    private val answer: AgentInstance = AgentInstance("hash-1", emptyList(), null, null),
+    private val path: String = "/store/hash-1",
+) : AgentInstances {
+    val requests = mutableListOf<BuildInstanceRequest>()
+
+    override fun build(request: BuildInstanceRequest): BuiltInstance {
+        requests += request
+        return BuiltInstance(answer, path)
+    }
+}
+
+class InMemoryRunInstances : RunInstances {
+    val recorded = mutableListOf<Pair<UUID, AgentInstance>>()
+
+    override fun record(runId: UUID, instance: AgentInstance) {
+        recorded += runId to instance
     }
 }
 

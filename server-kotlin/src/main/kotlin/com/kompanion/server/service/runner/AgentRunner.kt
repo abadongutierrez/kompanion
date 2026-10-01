@@ -18,6 +18,12 @@ data class RunContext(
     // The harness template directory, already resolved from the Agent's
     // (possibly relative) harnessPath.
     val harnessDir: File,
+    // The stored agent instance for this run: the harness plus the Agent's
+    // skills, laid out for this runtime and hashed. Runners build their
+    // working directory from it and read the system prompt from it, so what
+    // ran is exactly what was stored. harnessDir stays for the one thing that
+    // is deliberately not in the instance — see PiRunner.
+    val instanceDir: File,
     // Where the CLI runs: a real git worktree once repos are linked,
     // otherwise the task's scratch workspace.
     val cwdDir: File,

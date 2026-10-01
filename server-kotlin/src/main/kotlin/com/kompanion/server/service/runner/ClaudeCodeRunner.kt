@@ -32,7 +32,8 @@ class ClaudeCodeRunner(
     override fun prepareWorkspace(ctx: RunContext, manifest: WorkspaceManifest) {
         ctx.cwdDir.mkdirs()
         File(ctx.cwdDir, ".claude").deleteRecursively()
-        File(ctx.harnessDir, ".claude").copyRecursively(File(ctx.cwdDir, ".claude"), overwrite = true)
+        File(ctx.instanceDir, ".claude").takeIf { it.exists() }
+            ?.copyRecursively(File(ctx.cwdDir, ".claude"), overwrite = true)
         workspaceEnforcementService.installCwdEnforcement(ctx.cwdDir, ctx.taskWorkspaceDir, manifest)
     }
 
@@ -48,7 +49,7 @@ class ClaudeCodeRunner(
 
         ctx.agent.model?.let { args += listOf("--model", it) }
 
-        readSystemPrompt(ctx.harnessDir)?.let { args += listOf("--append-system-prompt", it) }
+        readSystemPrompt(ctx.instanceDir)?.let { args += listOf("--append-system-prompt", it) }
 
         // Subagent spend counts toward this too, and Claude Code stops
         // background subagents once it is reached. Rounded down, because
@@ -72,8 +73,8 @@ class ClaudeCodeRunner(
         )
     }
 
-    private fun readSystemPrompt(harnessDir: File): String? =
-        File(harnessDir, "CLAUDE.md").takeIf { it.exists() }?.readText()
+    private fun readSystemPrompt(instanceDir: File): String? =
+        File(instanceDir, "CLAUDE.md").takeIf { it.exists() }?.readText()
 
     override fun interpret(
         events: List<Map<String, Any?>>,

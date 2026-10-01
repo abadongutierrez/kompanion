@@ -11,6 +11,8 @@ import com.kompanion.server.domain.model.TaskStatus
 import com.kompanion.server.domain.rule.isValidTaskTransition
 import org.springframework.jdbc.core.JdbcTemplate
 import com.kompanion.server.domain.model.AgentRuntime
+import com.kompanion.server.application.port.inbound.PrepareAgentInstance
+import com.kompanion.server.application.port.inbound.PrepareAgentInstanceCommand
 import com.kompanion.server.service.runner.AgentRunner
 import com.kompanion.server.service.runner.RunContext
 import com.kompanion.server.service.runner.TokenUsage
@@ -46,6 +48,10 @@ class RunTaskService(
     private val budgetService: BudgetService,
     private val repoWorkspaceService: RepoWorkspaceService,
     private val runEventsBus: RunEventsBus,
+    // Builds the agent instance a run works from and records it on the run.
+    // A use case, not logic of this class: this orchestrator is old layered
+    // code and does not grow new rules.
+    private val prepareAgentInstance: PrepareAgentInstance,
     // Every AgentRunner bean, keyed by the runtime it serves. Adding a
     // runtime means adding a @Component — nothing here changes.
     runnerList: List<AgentRunner>,
@@ -517,10 +523,19 @@ class RunTaskService(
 
                 val teamSnapshot = if (agent.slug == "project-manager") buildTeamSnapshot(task.teamId) else null
                 val prompt = buildPrompt(task, manifest, teamSnapshot, mentionContext)
+
+                // The harness plus the Agent's skills, laid out for this
+                // runtime and stored by hash. What the run was built from is
+                // written to its row here, before the CLI starts.
+                val prepared = prepareAgentInstance.handle(
+                    PrepareAgentInstanceCommand(agentId, agent.runtime, agent.harnessPath, runId),
+                )
+
                 val ctx = RunContext(
                     agent = agent,
                     prompt = prompt,
                     harnessDir = harnessDir,
+                    instanceDir = File(prepared.path),
                     cwdDir = workspaceDir,
                     taskWorkspaceDir = taskWorkspaceDir,
                     taskId = taskId,
