@@ -52,8 +52,9 @@ points at one by path, so the folder name carries no meaning.
 Two roots, kept apart on purpose:
 
 - **`LIBRARY_ROOT`** (default `<repo>/library/`) holds the tracked templates:
-  `harnesses/`, `hooks/` and `pi/`. The app only reads it. An Agent's
-  `harnessPath` is absolute, or relative to it (`harnesses/engineer`).
+  `harnesses/`, `skills/`, `hooks/` and `pi/`. The app only reads it. An
+  Agent's `harnessPath` and a skill's `skillPath` are absolute, or relative to
+  it (`harnesses/engineer`, `skills/handoff`).
 - **`WORKSPACE_ROOT`** (default `~/.kompanion/workspace`) holds everything the
   app generates or copies: project folders and the Task folders inside them.
   The server creates it on boot. It is outside the repo, so every checkout and
@@ -61,6 +62,35 @@ Two roots, kept apart on purpose:
 
 Data from before this split sat in `<repo>/workspace/`. `./bin/migrate-workspace`
 moves it and rewrites the matching database rows once.
+
+## Skills and agent instances
+
+A **skill** is a folder with a `SKILL.md` (frontmatter `name` and `description`,
+the name matching the folder) and any files it needs. The shared library lives in
+`library/skills/<slug>/`; a `skills` row only points at the folder. Register one
+by path or scan the library on the Skills page, then teach it to an Agent on
+the Agent's form (`agent_skills`). Unregistering is refused while an Agent still
+has the skill, and never touches the folder. A skill that ships a script must
+tell Claude Code to run it through `exec_in_folder.py` (see
+`library/skills/kompanion-context/`).
+
+At run start the server builds an **agent instance**: the harness files the
+Agent's runtime reads, plus its skills in the folder that runtime loads them
+from. It is hashed and stored once under
+`WORKSPACE_ROOT/agent-instances/<hash>/`, and the runners build their working
+directory and read the system prompt from it, so what ran is what was stored.
+Each run records the instance hash, the library's git commit and dirty flag,
+and each skill's slug, hash and outcome. Rules worth knowing:
+
+- The **harness wins** a name clash with a library skill.
+- A skill whose **folder is missing** is skipped and recorded, and the run goes on.
+- The enforcement hooks and pi's runtime files (`auth.json` and friends, which
+  may hold credentials) are **not** in the instance.
+- A harness is not a place for secrets: whatever is in a layout folder is
+  copied into the store.
+
+Per-runtime layout and the verified loading behaviour:
+[docs/agent-runtimes.md](docs/agent-runtimes.md).
 
 ## Workspaces
 

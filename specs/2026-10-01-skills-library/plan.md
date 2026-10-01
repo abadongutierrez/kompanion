@@ -18,8 +18,7 @@ tests pass. Decisions are in `requirements.md`, referenced as "D<n>".
   pi) and that `TASK_WORKSPACE_DIR` is set inside it, including in a
   subagent.
 - Write the results into `requirements.md` (D14, Risks) and
-  `docs/agent-runtimes.md`. If opencode cannot load skills, say so there and
-  set the "unsupported" rule for group 5.
+  `docs/agent-runtimes.md`.
 - Use the cheapest model for each run. pi on a local model costs nothing.
 
 ## Stage 2 — The library
@@ -107,8 +106,8 @@ tests pass. Decisions are in `requirements.md`, referenced as "D<n>".
 - Skills page: list with status, register by path, scan, unregister (shows
   the 409 message), and a read-only view of a skill's description and body.
 - "Skills" section in `AgentFormPage` (create and edit): checkboxes for the
-  library, a note when the harness already has that skill, and a message for
-  an unsupported runtime. Saving writes through `PUT /api/agents/{id}/skills`.
+  library, and a note when the harness already has that skill. Saving writes
+  through `PUT /api/agents/{id}/skills`.
   On create, it runs after the Agent exists.
 - Run view: an agent instance panel with the short hash, git commit and dirty
   flag, and each skill with its outcome.

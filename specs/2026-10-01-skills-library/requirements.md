@@ -65,7 +65,9 @@ Out (later):
 3. **A skill is valid when** its folder exists and holds a `SKILL.md` with a
    `name` and a `description` in the frontmatter (the Agent Skills standard).
    The slug is the folder name. It must be lowercase letters, digits and
-   dashes, and unique app-wide.
+   dashes, and unique app-wide. The frontmatter `name` must equal the folder
+   name, because the runtimes load a skill by that name and a mismatch would
+   make the harness-clash check and the loading disagree.
 4. **Rows cache `name` and `description`** from the frontmatter, so lists are
    fast. A scan refreshes them. A row whose folder is missing or invalid is
    shown as broken, and is never deleted by a scan.

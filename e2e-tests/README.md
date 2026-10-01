@@ -46,6 +46,14 @@ pnpm test:e2e:ui       # Playwright's interactive UI mode
   currently prevents a user from doing (negative budgets, empty comments,
   invalid status transitions, self-referential task dependencies).
 
+- `tests/skills.spec.ts` — the skills library: register by path, scan, a broken
+  skill, the read-only view, unregister refused while assigned, teaching a skill
+  in the Agent form, the "harness already has it" note, and the agent instance
+  panel on a run (the run list is stubbed, since real runs cost money). It makes
+  real folders under the repo's `library/skills/`, so it assumes the server runs
+  with its default `LIBRARY_ROOT`. It un-teaches, unregisters and deletes
+  everything it made, and puts the Agent it used back as it found it.
+
 ## Notes on test data
 
 Projects, teams, and repositories have no delete endpoint (by design, same

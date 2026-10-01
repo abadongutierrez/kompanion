@@ -19,7 +19,7 @@ CLI in a real git worktree.
 | `ui/` | React + Vite frontend. |
 | `packages/shared/` | Zod schemas and types the UI consumes. |
 | `e2e-tests/` | Playwright suite. |
-| `library/` | Tracked templates: agent harnesses, enforcement hooks and the pi extension. The app only reads it (`LIBRARY_ROOT`). |
+| `library/` | Tracked templates: agent harnesses, the shared skills library (`skills/`), enforcement hooks and the pi extension. The app only reads it (`LIBRARY_ROOT`). |
 
 Everything the app generates lives outside the repo, in `WORKSPACE_ROOT`
 (default `~/.kompanion/workspace`): project folders and their task workspaces.

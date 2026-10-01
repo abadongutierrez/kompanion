@@ -89,6 +89,38 @@ new skills spec:
   `packages/shared/package.json`, unless `specs/tech-stack.md` names it and
   gives the reason.
 
+## Results (2026-10-01)
+
+Run against a throwaway Postgres, a temporary `WORKSPACE_ROOT`, and the server
+started from this branch.
+
+| Check | Result |
+| --- | --- |
+| `./gradlew test` | 140 tests, 0 failures. Includes `contextLoads` with V22 applied, and the SQL against the real schema. |
+| `pnpm -C packages/shared test` | 37 tests, 0 failures. Typecheck clean for `shared`, `ui` and `e2e-tests`. |
+| `bin/tests/migrate-workspace.sh` | 15 passed. |
+| `bin/tests/kompanion-context.sh` | 19 passed, including through the real enforcement wrapper and the hook's allow and deny decisions. |
+| `pnpm -C e2e-tests test:e2e` | 41 passed, **3 failed**. All 9 new skills tests pass. |
+| A real run: pi and the local model, through the real server | The agent loaded `kompanion-context`, ran its script and printed the right task folder. The instance was stored in pi's layout without credential files, and the run row recorded the hash, the commit (`git_dirty` false) and the skill as `loaded`. |
+
+**The 3 failing E2E tests fail the same way on `main`, without this branch.**
+The baseline UI (`ee37e41`) was served against the same backend and gave
+identical errors, so this work did not cause them:
+
+- `task-page.spec.ts` "an unknown task id shows Task not found" and
+  `task-page-qa.spec.ts` "a task deleted while the page is open falls back to
+  Task not found". A real bug on `main`: `useTask` returns `data` as the found
+  task, but `TaskPage` checks `tasks.data && !task`, so when the task does not
+  exist `data` is `undefined` and the page stays on "Loading…". Introduced by
+  the feature-slices refactor (`0504782`).
+- `task-page.spec.ts` "a pi run is reduced with the pi reducer": a test
+  problem. `getByText("$0.0000")` matches both the run header and the
+  transcript line, so Playwright's strict mode refuses it.
+
+So "E2E suite passes" is not fully met. The failures are not in this work, and
+were left alone on purpose to keep this change to skills. They need their own
+fix before the suite can be a clean merge gate.
+
 ## Not part of the merge bar
 
 Considered and left out on purpose. They are still worth doing.

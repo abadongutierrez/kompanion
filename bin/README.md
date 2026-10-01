@@ -108,7 +108,8 @@ $ ./bin/stop
 
 #### `./bin/test`
 Runs the entire test suite: the pnpm workspace tests, `server-kotlin`'s
-Gradle tests, then the shell tests for the `bin/` scripts (`bin/tests/`).
+Gradle tests, then the shell tests in `bin/tests/` (`migrate-workspace`, and
+the `kompanion-context` skill's script).
 
 **Requires:** PostgreSQL running (`pnpm db:up`) — the Kotlin suite includes a
 Spring context-load test that connects to the database.

@@ -62,10 +62,55 @@ own tools during the run.
 | --- | --- |
 | `cwdDir` | The git worktree for the task's branch, or the task workspace when no repo is linked. Code lives here and gets committed. |
 | Task workspace | `<project workspace>/tasks/<taskId>/`. Ours and the agent's: `manifest.json`, `commands.log`, `activity.log`, `pi-sessions/`, plus plans and notes. Never committed. |
-| Harness | The Agent's template folder. Read-only input; runners copy from it, never into it. |
+| Harness | The Agent's template folder under `LIBRARY_ROOT`. Read-only input; nothing is ever written into it. |
+| Agent instance | `WORKSPACE_ROOT/agent-instances/<hash>/`. The harness plus the Agent's skills, laid out for its runtime, built at run start and stored once by hash. Runners copy their working directory from it. |
 
 `manifest.json` is written fresh before every run and is the single source of
 truth for branch, repo paths and allowed roots. It is read-only to the agent.
+
+### Agent instances and skills
+
+Before the CLI starts, `PrepareAgentInstance` builds the **agent instance** for
+the run: the harness files this runtime reads, plus the skills the Agent has
+been taught, in the layout this runtime loads them from. It is assembled in a
+staging folder, hashed (one SHA-256 over sorted relative paths and file bytes —
+timestamps and listing order do not matter) and moved into
+`agent-instances/<hash>/` only if that hash is new. Runs with the same content
+share one folder. The runners then build the working directory and read the
+system prompt from the instance, so what ran is what was stored.
+
+| Runtime | Instance holds | Library skills go in |
+| --- | --- | --- |
+| `claude_code` | `CLAUDE.md`, `.claude/` | `.claude/skills/<slug>/` |
+| `pi` | `AGENTS.md`, `CLAUDE.md`, `pi-agent/`, `.pi/skills`, `.claude/skills` | `.pi/skills/<slug>/`, passed with `--skill` |
+| `opencode` | `AGENTS.md`, `CLAUDE.md`, `.opencode/` | `.opencode/skills/<slug>/` |
+
+The instance holds only what its own runtime reads, so a change to another
+runtime's files in the same harness does not change its hash.
+
+- **The harness wins a name clash.** If the harness already carries a skill with
+  the same slug in a folder that runtime reads, the library skill is skipped for
+  that run and recorded as `skipped_harness_has_it`.
+- **A missing skill folder** does not stop the run. The skill is skipped and
+  recorded as `missing`.
+- **Not in the instance:** the enforcement hook scripts and the pi extension
+  (server code, installed after the instance is built — the library commit
+  recorded on the run covers their version), and pi's own runtime files
+  (`auth.json`, `models-store.json`, `trust.json`, `sessions/`, `npm/`). Those
+  may hold credentials and change on their own, so they are never stored;
+  `PiRunner` still copies them from the harness into the run's config folder.
+  Harnesses are not a place for secrets: anything else in a layout folder is
+  copied into the store.
+- **Verified loading** (opencode v2.0.18, pi 0.84.4): each runtime was given a
+  test skill and asked to load it. pi loads from `--skill <folder of skills>`.
+  opencode v2 loads from `.claude/skills/`, `.agents/skills/`,
+  `.opencode/skills/` and `.opencode/skill/`; Kompanion uses `.opencode/skills/`
+  because `OpencodeRunner` already owns and rebuilds `.opencode/`.
+- **Shell enforcement and skill scripts.** On Claude Code every command runs as
+  `python3 .claude/hooks/exec_in_folder.py --taskId … --folder … --command "…"`,
+  with the process environment and a cwd inside the allowed roots; the script's
+  own location is not checked, so a skill's script works. pi wraps bash calls
+  into the same script for you.
 
 ### What is recorded
 
@@ -73,6 +118,15 @@ truth for branch, repo paths and allowed roots. It is read-only to the agent.
 and the four token columns — all stamped when the run starts or finishes, not
 read back through the Agent, so replaying an old run still reflects what
 actually produced it. `task_run_events` stores the raw stdout lines.
+
+It also stores what the run was built from, written before the CLI starts so a
+run that fails halfway still has it: `instance_hash` (names the stored agent
+instance), `git_sha` and `git_dirty` (the library commit, and whether the
+harness or skill folders it used had uncommitted changes — null outside a git
+repo), and one `task_run_skills` row per assigned skill with its slug, hash and
+outcome (`loaded`, `skipped_harness_has_it`, `missing`). The instance hash is
+the exact record; the commit alone does not reproduce a run when `git_dirty` is
+true.
 
 **The prompt itself is not stored.** It survives only if the CLI echoes it in
 its event stream — pi does, Claude Code does not.
@@ -103,11 +157,12 @@ claude -p <prompt> --output-format stream-json --include-partial-messages
 - Binary from `CLAUDE_BIN`, default `claude`.
 - System prompt: the harness `CLAUDE.md`, passed as a flag so it can never
   clobber a real repository's own `CLAUDE.md`.
-- `prepareWorkspace` replaces `<cwd>/.claude/` wholesale with the harness's
-  copy (so skills and subagents don't accumulate across agents) and installs
-  the enforcement hooks.
+- `prepareWorkspace` replaces `<cwd>/.claude/` wholesale with the agent
+  instance's copy (so skills and subagents don't accumulate across agents) and
+  installs the enforcement hooks. The system prompt is read from the instance
+  too.
 - Subagents (`.claude/agents/*.md`) and skills (`.claude/skills/*/SKILL.md`)
-  work natively.
+  work natively. Library skills are added to `.claude/skills/` in the instance.
 - Events: Anthropic's streaming Messages format. Cost comes from the final
   `result` line's `total_cost_usd`; tokens from its `usage`.
 
@@ -129,6 +184,15 @@ opencode run --format json --dir <cwd> --agent kompanion --auto
   `step_finish` events; zero is a real answer for a local model and is
   reported as such.
 - Model ids carry a provider prefix — `ollama/qwen2.5-coder:7b`.
+- Skills: `prepareWorkspace` copies the instance's `.opencode/` (library skills
+  in `.opencode/skills/<slug>/`) and opencode's `skill` tool loads them.
+
+**Known problem: opencode v2.** The command above is for the opencode this
+runner was written against. The installed v2.0.18 has no `--dir` flag on
+`run` — the working folder is the current directory — and an unrecognised flag
+makes it exit with an error, so an opencode run through Kompanion is likely to
+fail until the runner is updated. Skill loading itself was checked by running
+v2.0.18 directly. This is not fixed by the skills work.
 
 ## `pi`
 
@@ -173,10 +237,11 @@ The LM Studio provider shipped in the harnesses points at
 per machine.
 
 **Skills.** pi scans skills from its config directory and from `cwd` — never
-from the harness, which is neither. `PiRunner` passes `--skill` for the
-harness's `.pi/skills` and `.claude/skills` when they exist. pi implements the
-Agent Skills standard, so a `SKILL.md` written for Claude Code loads unchanged
-and both runtimes share one definition.
+from the harness or the stored instance, which are neither. `PiRunner` passes
+`--skill` for the instance's `.pi/skills` (the harness's own plus the library
+skills) and `.claude/skills` when they exist. pi implements the Agent Skills
+standard, so a `SKILL.md` written for Claude Code loads unchanged and both
+runtimes share one definition.
 
 **Subagents.** pi has none natively. `.claude/agents/*.md` are ignored. If the
 `pi-subagents` package is ever adopted, note that it launches children as
