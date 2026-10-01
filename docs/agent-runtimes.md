@@ -199,7 +199,7 @@ it is where the enforcement code reads its own permissions from.
 
 | | claude_code | opencode | pi |
 | --- | --- | --- | --- |
-| Mechanism | `PreToolUse` hook (`workspace/hooks/`) | — | blocking `tool_call` extension (`workspace/pi/`) |
+| Mechanism | `PreToolUse` hook (`library/hooks/`) | — | blocking `tool_call` extension (`library/pi/`) |
 | File tools | confined | unconfined | confined |
 | Shell | raw Bash denied; only `exec_in_folder.py` | unconfined | rewritten to `exec_in_folder.py` |
 | Command log | `commands.log` | none | `commands.log` |
@@ -218,7 +218,7 @@ before every run.
 
 ## Harness layout
 
-One folder can serve all three runtimes. `workspace/harnesses/engineer/` is
+One folder can serve all three runtimes. `library/harnesses/engineer/` is
 the reference example.
 
 | Path | Used by |

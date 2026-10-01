@@ -107,8 +107,8 @@ $ ./bin/stop
 ### Testing
 
 #### `./bin/test`
-Runs the entire test suite: the pnpm workspace tests, then `server-kotlin`'s
-Gradle tests.
+Runs the entire test suite: the pnpm workspace tests, `server-kotlin`'s
+Gradle tests, then the shell tests for the `bin/` scripts (`bin/tests/`).
 
 **Requires:** PostgreSQL running (`pnpm db:up`) — the Kotlin suite includes a
 Spring context-load test that connects to the database.
@@ -171,6 +171,45 @@ Starting fresh database...
 Waiting for PostgreSQL...
 ✓ Database reset complete
 ```
+
+---
+
+#### `./bin/migrate-workspace`
+One-time move of runtime data from the old `<repo>/workspace/` folder into
+`WORKSPACE_ROOT` (default `~/.kompanion/workspace`), plus the database rows
+that point into the old folder.
+
+**Use case:** You have task data from before templates moved to `library/`
+and generated data moved out of the repo.
+
+**Does:**
+1. Refuses to run while the server answers on its port (stop it first).
+2. Moves `projects/` and `tasks/` from the old root to the new one. It never
+   overwrites: if a destination folder already has content, it stops and moves
+   nothing.
+3. Writes the old values of the rows it will change to
+   `migration-backup-<timestamp>.sql` in the new root. Running that file
+   undoes the database change.
+4. Rewrites `agents.harness_path` and `projects.workspace_path` values that
+   hold an absolute path inside the old root so they become relative.
+   Relative rows already work and are left alone. Absolute paths elsewhere are
+   listed, not changed.
+
+**Options:**
+- no flag: dry run. Reports what it would do and changes nothing.
+- `--apply`: do it.
+- `--skip-db`: handle files only.
+
+**Requires:** for the database step, the dev Postgres container running (it
+looks for the one publishing port 5433). Safe to run twice.
+
+**Example:**
+```bash
+$ ./bin/migrate-workspace            # look first
+$ ./bin/migrate-workspace --apply    # then do it
+```
+
+After it finishes, the old `workspace/` folder is empty and can be deleted.
 
 ---
 

@@ -31,7 +31,8 @@
 - Claude Code, opencode and pi, behind the `AgentRunner` seam.
 - Each is spawned via an argv array, never a shell string.
 - Details: `docs/agent-runtimes.md`.
-- Harnesses live in `workspace/harnesses/<slug>/`.
+- Harnesses live in `library/harnesses/<slug>/` (`LIBRARY_ROOT`). Generated
+  data lives in `WORKSPACE_ROOT`, default `~/.kompanion/workspace`.
 
 ## Tooling
 

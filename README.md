@@ -19,7 +19,12 @@ CLI in a real git worktree.
 | `ui/` | React + Vite frontend. |
 | `packages/shared/` | Zod schemas and types the UI consumes. |
 | `e2e-tests/` | Playwright suite. |
-| `workspace/` | Agent harnesses, enforcement hooks, and per-project task workspaces. |
+| `library/` | Tracked templates: agent harnesses, enforcement hooks and the pi extension. The app only reads it (`LIBRARY_ROOT`). |
+
+Everything the app generates lives outside the repo, in `WORKSPACE_ROOT`
+(default `~/.kompanion/workspace`): project folders and their task workspaces.
+Coming from an older checkout that kept this data in `workspace/`? Stop the
+server and run `./bin/migrate-workspace` once (see `bin/README.md`).
 
 ## Running it
 

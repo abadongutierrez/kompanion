@@ -45,14 +45,29 @@ inside a harness are Claude Code **subagents**, spawned within one of our
 Agents' runs. Call those subagents in prose; `Agent` (capitalized) always
 means the app entity. Harness directories on disk keep their old names
 (`engineer/`, `qa/`, `product_manager/`, `project_manager/`) — an Agent
-points at one by absolute path, so the folder name carries no meaning.
+points at one by path, so the folder name carries no meaning.
+
+## Library and workspace
+
+Two roots, kept apart on purpose:
+
+- **`LIBRARY_ROOT`** (default `<repo>/library/`) holds the tracked templates:
+  `harnesses/`, `hooks/` and `pi/`. The app only reads it. An Agent's
+  `harnessPath` is absolute, or relative to it (`harnesses/engineer`).
+- **`WORKSPACE_ROOT`** (default `~/.kompanion/workspace`) holds everything the
+  app generates or copies: project folders and the Task folders inside them.
+  The server creates it on boot. It is outside the repo, so every checkout and
+  worktree shares it.
+
+Data from before this split sat in `<repo>/workspace/`. `./bin/migrate-workspace`
+moves it and rewrites the matching database rows once.
 
 ## Workspaces
 
 A Project names a folder when it is created (`projects.workspace_path`, V21) —
-absolute, or relative to `WORKSPACE_ROOT`, the same storage rule an Agent's
-`harnessPath` follows. Leave it blank in the UI and the server uses
-`projects/<slug>-<id8>` under `WORKSPACE_ROOT` and creates it.
+absolute, or relative to `WORKSPACE_ROOT`, the same shape of rule as an
+Agent's `harnessPath` but against the other root. Leave it blank in the UI and
+the server uses `projects/<slug>-<id8>` under `WORKSPACE_ROOT` and creates it.
 
 Each Task gets `<project workspace>/tasks/<taskId>/`. That folder is:
 
@@ -92,7 +107,7 @@ does `GlobalAgentsController`'s harness validation.
 
 A harness folder can serve all three — `CLAUDE.md` + `.claude/` for Claude
 Code, `AGENTS.md` + `.opencode/` for opencode, `AGENTS.md` + `pi-agent/` for
-pi. `workspace/harnesses/engineer/` carries every layout and is the reference
+pi. `library/harnesses/engineer/` carries every layout and is the reference
 example.
 
 The full reference — exact command lines, what each CLI is sent, the event
@@ -129,10 +144,10 @@ switched to another CLI afterwards.
 ### opencode runs are not enforced
 
 **Known and accepted asymmetry, and opencode is now the only one.** Claude
-Code runs are confined by the `PreToolUse` hook in `workspace/hooks/`: raw
+Code runs are confined by the `PreToolUse` hook in `library/hooks/`: raw
 Bash is denied, everything goes through `exec_in_folder.py`, which checks
 folder membership and appends to `commands.log`. pi runs get the same
-guarantee from `workspace/pi/enforce-workspace.ts`, an extension loaded with
+guarantee from `library/pi/enforce-workspace.ts`, an extension loaded with
 `-e`: pi's `tool_call` event can block a call and mutate its input, so file
 tools are held to the roots in `manifest.json` and every `bash` call is
 rewritten to run through that same `exec_in_folder.py`.

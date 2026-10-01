@@ -12,6 +12,10 @@ Status is taken from `DESIGN.md` and the git log. Each item becomes a spec in
 - Heartbeat scheduler (off by default).
 - Budget enforcement per Team, and a Project spend rollup.
 - UI reorganised into feature slices.
+- Library and workspace roots: tracked templates in `library/`
+  (`LIBRARY_ROOT`), generated data in `WORKSPACE_ROOT` (default
+  `~/.kompanion/workspace`), and `bin/migrate-workspace` to move old data.
+  Spec: `specs/2026-09-30-library-and-workspace-roots/`.
 
 ## Next
 
@@ -30,25 +34,6 @@ its own branch. Populate `branchOrPrLink`.
 
 A distinct approval action for `in_review → done`, with an optional required
 reviewer Agent.
-
-### Library and workspace roots
-
-Split what is tracked from what is generated. Do this before the skills
-library, which builds on it.
-
-- `library/` at the repo root holds the tracked templates: `harnesses/`,
-  `skills/`, `hooks/` and `pi/`. They move out of today's `workspace/`.
-  `LIBRARY_ROOT` points at it, defaulting to the repo's `library/`.
-- `WORKSPACE_ROOT` holds every file the app generates or copies. The default
-  moves out of the repo to `$HOME/.kompanion/workspace`. It holds
-  `projects/<slug>-<id8>/tasks/<taskId>/` (task workspaces),
-  `agent-instances/<hash>/`, and the legacy `tasks/` folder.
-- `harnessPath` is stored relative to `LIBRARY_ROOT`, or absolute for a
-  harness kept elsewhere. `projects.workspace_path` stays relative to
-  `WORKSPACE_ROOT`. A migration rewrites the stored harness paths.
-- Existing task folders move to the new root, or are found through the
-  legacy fallback, as V21 did.
-- `.gitignore` drops `workspace/tasks/` and `workspace/projects/`.
 
 ### Skills library
 
