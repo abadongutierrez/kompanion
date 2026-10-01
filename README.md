@@ -32,6 +32,22 @@ pnpm -C ui dev                                   # UI on 5173, proxies /api
 Tests: `./gradlew test` (server), `pnpm -C packages/shared test`,
 `pnpm -C e2e-tests test:e2e` (needs the stack running).
 
+## Working in worktrees
+
+Do parallel or isolated work in a git worktree, not in the main checkout.
+Create every worktree inside `.worktrees/` at the root of the repo. The folder
+is in `.gitignore`.
+
+```bash
+git worktree add .worktrees/<name> -b <branch> main
+```
+
+- Base the branch on local `main`, not `origin/main`, which can be behind.
+- Keep the name short and descriptive: `roadmap-refine`, `skills-library`.
+- Do not create worktrees anywhere else, including `.claude/worktrees/`.
+- When the work is merged, remove it:
+  `git worktree remove .worktrees/<name> && git branch -d <branch>`.
+
 ## Commit format
 
 Commits follow [Conventional Commits](https://www.conventionalcommits.org/):

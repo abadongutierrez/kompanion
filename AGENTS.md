@@ -7,6 +7,13 @@
 - use plain english, no fancy working
 - always end your replies with footer: ----- Reply by <model> -----
 
+## Read the README
+
+Read [README.md](README.md) before you change anything. It covers the repo
+layout, how to run and test it, how to work in worktrees (create them inside
+`.worktrees/`), and the commit format, including the `Co-authored-by` footer
+for agent commits.
+
 ## Single backend
 
 The backend is `server-kotlin/` — a Kotlin/Spring Boot app on port `3200`

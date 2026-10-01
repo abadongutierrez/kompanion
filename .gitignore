@@ -18,6 +18,10 @@ workspace/projects/
 # the project itself. Never tracked.
 .work/
 
+# Git worktrees for parallel work, created at the repo root. See the
+# README's "Working in worktrees".
+.worktrees/
+
 # Claude Code's own per-session runtime lock for this repo, not project
 # config — recreated automatically, nothing to track.
 .claude/scheduled_tasks.lock
