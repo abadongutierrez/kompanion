@@ -95,7 +95,7 @@ Out (later):
     | --- | --- | --- |
     | `claude_code` | `CLAUDE.md`, `.claude/` | `.claude/skills/<slug>/` |
     | `pi` | `AGENTS.md` or `CLAUDE.md`, `pi-agent/`, `.pi/skills`, `.claude/skills` | `.pi/skills/<slug>/`, passed with `--skill` |
-    | `opencode` | `AGENTS.md` or `CLAUDE.md`, `.opencode/` | decided by the spike, see 14 |
+    | `opencode` | `AGENTS.md` or `CLAUDE.md`, `.opencode/` | `.opencode/skills/<slug>/` (see 14) |
 
 11. **Not in the instance:** run state and platform code.
     - The enforcement hook scripts and the pi extension are installed after
@@ -115,12 +115,18 @@ Out (later):
     live copy in the run's cwd is built from the stored instance, so what ran
     is what was stored. A run builds in a temporary folder first and moves it
     into place only when the hash is new.
-14. **opencode.** The spike checks where opencode v2 loads skills. A lead:
-    the installed binary (v2.0.18) has a compatibility mechanism that maps
-    Claude and agents folders to `<dir>/skills`, so `.claude/skills/` or
-    `.agents/skills/` may work. If the spike shows opencode loads skills, v1
-    supports it. If not, assigning a skill to an opencode Agent is refused
-    with a plain message, and the docs say so.
+14. **opencode: supported.** The spike (done 2026-10-01, opencode v2.0.18,
+    `ollama/llama3.2`) put a test skill in each candidate folder and asked the
+    model to load it with opencode's `skill` tool. It loaded from all four of
+    `.claude/skills/`, `.agents/skills/`, `.opencode/skills/` and
+    `.opencode/skill/`, and the phrase in the skill came back. The control run
+    with no skill failed to load it. v1 puts opencode's library skills in
+    `.opencode/skills/<slug>/`, because `OpencodeRunner` already owns and
+    rebuilds `.opencode/` each run, so nothing lands in the repo's own
+    folders. No "unsupported runtime" rule is needed. Skill loading was also
+    confirmed for pi (`--skill <folder>`, a read of the skill file and the
+    phrase back, none without the skill). Claude Code's `.claude/skills/` is
+    what the existing harnesses already use.
 15. **Git facts.** `git_sha` is `git rev-parse HEAD` in `LIBRARY_ROOT`'s
     repo. `git_dirty` is true when `git status --porcelain` is not empty for
     the harness and skill folders the instance used. Both are null when
@@ -178,12 +184,24 @@ Out (later):
 
 ## Risks
 
-- **opencode may not load library skills.** Covered by decision 14.
-- **A skill script may be blocked by shell enforcement.** `exec_in_folder.py`
-  allows commands inside the allowed roots, and a skill copy sits in the cwd,
-  so it should pass. The spike checks it on Claude Code and pi.
-- **`TASK_WORKSPACE_DIR` may not reach subagents or child processes.** pi
-  builds its children's argv itself. The spike checks it.
+- **The installed opencode is v2.0.18, but `OpencodeRunner` was written for
+  an older one.** `opencode run` in v2 has no `--dir` flag, and the runner
+  passes it, so an opencode run through Kompanion likely fails today. This is
+  not caused by this work and is not fixed by it. It needs its own item
+  (add it to the roadmap). Skills for opencode are built and tested at the
+  file level, and the real loading was checked with the CLI directly.
+- **A skill script and shell enforcement.** From the code: a Claude Code
+  agent runs every command as
+  `python3 .claude/hooks/exec_in_folder.py --taskId … --folder … --command "…"`.
+  That command runs with the process environment (`TASK_WORKSPACE_DIR`,
+  `TASK_ID`) and a cwd inside the allowed roots, and it never checks where
+  the script itself lives, so a skill copy works. On pi the extension rewrites
+  bash calls into the same wrapper, and opencode is not enforced. A skill
+  that ships a script must tell the agent to run it through the wrapper on
+  Claude Code. Group 7 runs it through the real wrapper to confirm.
+- **`TASK_WORKSPACE_DIR` in subagents and child processes.** Subprocesses of
+  Claude Code inherit it (the hook scripts already rely on that). pi has no
+  subagents of its own. Not verified for a pi child process.
 - **Credentials in the store.** Decision 11 keeps pi's credential files out.
   A harness that puts secrets in another file would copy them into the store.
   The docs must say harnesses are not for secrets.

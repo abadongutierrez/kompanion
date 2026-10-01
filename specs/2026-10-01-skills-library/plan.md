@@ -5,7 +5,7 @@ tests pass. Decisions are in `requirements.md`, referenced as "D<n>".
 
 ## Stage 1 — Find out how runtimes load skills
 
-### 1. Spike: how each runtime loads skills
+### 1. Spike: how each runtime loads skills (done, see D14 and Risks)
 
 - Make a throwaway skill that, when asked, replies with a fixed phrase.
 - For each runtime, put it where the plan says (D10) and check the CLI uses
@@ -51,9 +51,8 @@ tests pass. Decisions are in `requirements.md`, referenced as "D<n>".
 - Ports and use cases: `AssignSkills` (replace the set) and `ListAgentSkills`.
 - Endpoints: `PUT` and `GET /api/agents/{id}/skills`. The GET returns status
   and the "harness has it" flag (D7, D8).
-- Refuse assignment for a runtime marked unsupported by the spike (D14).
-- Tests: replace semantics, unknown skill id, unsupported runtime, the
-  harness-clash flag.
+- All three runtimes support skills (D14), so assignment has no runtime rule.
+- Tests: replace semantics, unknown skill id, the harness-clash flag.
 
 ## Stage 3 — Agent instances
 

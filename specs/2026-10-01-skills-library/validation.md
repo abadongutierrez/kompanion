@@ -25,8 +25,7 @@ Skills:
 Assignment:
 
 - `PUT` replaces the set: skills not in the list are removed, new ones added.
-- An unknown skill id is refused. Assigning for an unsupported runtime is
-  refused with a plain message.
+- An unknown skill id is refused.
 - `GET` reports status and the "harness already has it" flag.
 - The Agent response is unchanged.
 
