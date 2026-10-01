@@ -28,9 +28,11 @@ fi
 
 # Run the shell tests for the bin/ scripts
 echo -e "\n${BLUE}Running bin script tests...${NC}\n"
-if ! "$PROJECT_ROOT/bin/tests/migrate-workspace.sh"; then
-  echo -e "\n${RED}❌ Some tests failed${NC}"
-  exit 1
-fi
+for script_test in migrate-workspace kompanion-context; do
+  if ! "$PROJECT_ROOT/bin/tests/$script_test.sh"; then
+    echo -e "\n${RED}❌ Some tests failed${NC}"
+    exit 1
+  fi
+done
 
 echo -e "\n${GREEN}✅ All tests passed${NC}\n"

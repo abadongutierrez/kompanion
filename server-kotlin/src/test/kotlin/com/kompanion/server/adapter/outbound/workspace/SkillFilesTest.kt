@@ -136,6 +136,20 @@ class FileSkillsTest {
     }
 
     @Test
+    fun `the skills that ship in the repo's library are valid, and a scan finds them`(@TempDir tmp: File) {
+        // Tests run from server-kotlin/, so the repo's library is next door.
+        val shipped = File("../library").canonicalFile
+        val skills = FileSkills(ClaudeHarnessService(shipped, File(tmp, "ws")))
+
+        val found = skills.libraryFolders()
+        assertTrue("skills/kompanion-context" in found)
+        for (path in found) {
+            val inspected = skills.inspect(path)
+            assertTrue(inspected is SkillInspection.Valid) { "$path is not valid: $inspected" }
+        }
+    }
+
+    @Test
     fun `an absolute path outside the library is read as given`(@TempDir tmp: File) {
         val (skills, _) = files(tmp)
         val elsewhere = File(tmp, "elsewhere/handoff").apply { mkdirs() }
