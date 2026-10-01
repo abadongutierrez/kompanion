@@ -33,8 +33,21 @@ data class TaskRunResponse(
     val outputTokens: Long?,
     val cacheReadTokens: Long?,
     val cacheWriteTokens: Long?,
+    // What the run was built from: the stored agent instance (null for a run
+    // from before agent instances, or one refused before it started), the
+    // library commit it came from, whether anything in it was uncommitted, and
+    // what became of each skill the Agent had. gitSha and gitDirty are null
+    // when the library is not in a git repo.
+    val instanceHash: String?,
+    val gitSha: String?,
+    val gitDirty: Boolean?,
+    val skills: List<RunSkillResponse>,
     val createdAt: OffsetDateTime?,
 )
+
+// One skill as a run saw it. outcome is loaded, skipped_harness_has_it or
+// missing; hash is null when the folder was missing.
+data class RunSkillResponse(val slug: String, val hash: String?, val outcome: String)
 
 // One calendar day's spend. `day` is an ISO date computed in UTC, matching
 // the month window in TeamSpendResponse — the JDBC pool pins sessions to UTC

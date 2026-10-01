@@ -6,6 +6,7 @@ import {
   Card,
   ErrorText,
   Muted,
+  SectionHeading,
   Select,
   TextArea,
   TextInput,
@@ -15,6 +16,12 @@ import {
   useHarnessTemplate,
   useSaveAgent,
 } from "@/features/agents/index.js";
+import {
+  SkillPicker,
+  useAgentSkills,
+  useAssignSkills,
+  useSkills,
+} from "@/features/skills/index.js";
 
 // Example ids, not validation: models are free text because every CLI names
 // them differently.
@@ -50,6 +57,14 @@ export function AgentFormPage({ mode }: { mode: "create" | "edit" }) {
   const template = useHarnessTemplate(isEdit ? agentId : undefined);
   const saveAgent = useSaveAgent(isEdit ? agentId : undefined);
 
+  // The skills the Agent should learn. The Agent is saved first, and then the
+  // whole set is written in one go (the server replaces it), so the form only
+  // has to hold the selection.
+  const library = useSkills();
+  const agentSkills = useAgentSkills(isEdit ? agentId : undefined);
+  const assignSkills = useAssignSkills();
+  const [skillIds, setSkillIds] = useState<Set<string>>(new Set());
+
   const [title, setTitle] = useState("");
   const [slug, setSlug] = useState("");
   const [harnessPath, setHarnessPath] = useState("");
@@ -73,6 +88,12 @@ export function AgentFormPage({ mode }: { mode: "create" | "edit" }) {
   useEffect(() => {
     if (template.data) setHarnessTemplate(template.data.content);
   }, [template.data]);
+
+  // Seeded once, when the Agent's skills first arrive — not on every refetch,
+  // which would throw away ticks the operator has just made.
+  useEffect(() => {
+    if (agentSkills.data) setSkillIds(new Set(agentSkills.data.map((a) => a.skill.id)));
+  }, [agentSkills.isSuccess, agentId]);
 
   const backToLibrary = (
     <Link to="/agents" className="text-xs text-neutral-500 hover:text-neutral-700">
@@ -133,7 +154,19 @@ export function AgentFormPage({ mode }: { mode: "create" | "edit" }) {
               values: { title, slug, harnessPath, runtime, model },
               harnessTemplate,
             },
-            { onSuccess: () => navigate("/agents") },
+            {
+              onSuccess: (saved) => {
+                // Writing the set before the Agent's current skills have
+                // loaded would un-teach all of them, so an edit waits for
+                // them. A create with nothing ticked has nothing to write.
+                const canWrite = isEdit ? agentSkills.isSuccess : skillIds.size > 0;
+                if (!canWrite) return navigate("/agents");
+                assignSkills.mutate(
+                  { agentId: saved.id, skillIds: [...skillIds] },
+                  { onSuccess: () => navigate("/agents") },
+                );
+              },
+            },
           );
         }}
       >
@@ -189,8 +222,27 @@ export function AgentFormPage({ mode }: { mode: "create" | "edit" }) {
             onChange={(e) => setHarnessTemplate(e.target.value)}
           />
         )}
+        <section className="space-y-1 pt-2" aria-labelledby="agent-skills-heading">
+          <SectionHeading as="h3" id="agent-skills-heading">
+            Skills
+          </SectionHeading>
+          <Muted size="xs">
+            Skills this agent learns. They are added to its working folder on every
+            run. Manage the library on the Skills page.
+          </Muted>
+          {library.isError ? (
+            <ErrorText>Could not load the skills library.</ErrorText>
+          ) : (
+            <SkillPicker
+              skills={library.data ?? []}
+              selected={skillIds}
+              onChange={setSkillIds}
+              assigned={agentSkills.data ?? []}
+            />
+          )}
+        </section>
         <div className="flex gap-2">
-          <Button type="submit" disabled={saveAgent.isPending}>
+          <Button type="submit" disabled={saveAgent.isPending || assignSkills.isPending}>
             {isEdit ? "Save changes" : "Create agent"}
           </Button>
           <Link
@@ -203,6 +255,11 @@ export function AgentFormPage({ mode }: { mode: "create" | "edit" }) {
 
         {saveAgent.isError && (
           <ErrorText>{(saveAgent.error as Error).message}</ErrorText>
+        )}
+        {assignSkills.isError && (
+          <ErrorText>
+            The agent was saved, but its skills were not: {(assignSkills.error as Error).message}
+          </ErrorText>
         )}
       </Card>
     </main>

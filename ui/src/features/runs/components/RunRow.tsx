@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { AGENT_RUNTIME_LABEL, type TaskRun } from "@kompanion/shared";
+import { RunInstanceInfo } from "./RunInstanceInfo.js";
 import { RunTranscript } from "./RunTranscript.js";
 import {
   RUN_STATUS_ICON,
@@ -106,6 +107,8 @@ export function RunRow({
           </button>
         </span>
       </div>
+
+      <RunInstanceInfo run={run} />
 
       {/* Mounted only while open: every RunTranscript opens its own
           EventSource, so keeping closed rows mounted would hold one live SSE

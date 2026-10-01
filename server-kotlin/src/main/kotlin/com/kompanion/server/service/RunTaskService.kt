@@ -2,6 +2,7 @@ package com.kompanion.server.service
 
 import tools.jackson.databind.ObjectMapper
 import tools.jackson.module.kotlin.readValue
+import com.kompanion.server.dto.RunSkillResponse
 import com.kompanion.server.dto.TaskRunResponse
 import com.kompanion.server.entity.Project
 import com.kompanion.server.entity.Repository
@@ -349,9 +350,21 @@ class RunTaskService(
             outputTokens = rs.getObject("output_tokens") as Long?,
             cacheReadTokens = rs.getObject("cache_read_tokens") as Long?,
             cacheWriteTokens = rs.getObject("cache_write_tokens") as Long?,
+            instanceHash = rs.getString("instance_hash"),
+            gitSha = rs.getString("git_sha"),
+            gitDirty = rs.getObject("git_dirty") as Boolean?,
+            skills = runSkills(UUID.fromString(rs.getString("id"))),
             createdAt = rs.getObject("created_at", OffsetDateTime::class.java),
         )
     }
+
+    // One small query per run. A task has a handful of runs, so this is not
+    // worth a join that would have to be repeated in every query above.
+    private fun runSkills(runId: UUID): List<RunSkillResponse> = jdbc.query(
+        "select skill_slug, skill_hash, outcome from task_run_skills where run_id = ? order by skill_slug",
+        { rs, _ -> RunSkillResponse(rs.getString("skill_slug"), rs.getString("skill_hash"), rs.getString("outcome")) },
+        runId,
+    )
 
     private fun insertOverBudgetRun(taskId: UUID, agent: Agent, summary: String): TaskRunResponse =
         jdbc.query(

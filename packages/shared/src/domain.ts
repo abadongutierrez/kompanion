@@ -196,6 +196,56 @@ export const UpdateAgentInput = Agent.pick({
 }).partial();
 export type UpdateAgentInput = z.infer<typeof UpdateAgentInput>;
 
+// A skill: a folder on disk (SKILL.md plus files) that can be taught to
+// Agents. The row only points at it; broken is true when the folder is gone or
+// no longer valid, and problem says why. name and description are copied from
+// the SKILL.md frontmatter.
+export const Skill = z.object({
+  id: z.string(),
+  slug: z.string(),
+  name: z.string(),
+  description: z.string(),
+  skillPath: z.string(),
+  broken: z.boolean(),
+  problem: z.string().nullable(),
+  createdAt: z.string().nullable(),
+});
+export type Skill = z.infer<typeof Skill>;
+
+// GET /api/skills/:id — the skill plus the text of its SKILL.md (null when the
+// file is gone).
+export const SkillDetail = z.object({
+  skill: Skill,
+  body: z.string().nullable(),
+});
+export type SkillDetail = z.infer<typeof SkillDetail>;
+
+// POST /api/skills — register one skill folder, absolute or relative to the
+// library root.
+export const RegisterSkillInput = z.object({ path: z.string() });
+export type RegisterSkillInput = z.infer<typeof RegisterSkillInput>;
+
+// POST /api/skills/scan — what a scan did.
+export const SkillScanResult = z.object({
+  registered: z.array(Skill),
+  refreshed: z.array(Skill),
+  broken: z.array(Skill),
+});
+export type SkillScanResult = z.infer<typeof SkillScanResult>;
+
+// One skill an Agent has been taught. shadowedByHarness: the Agent's harness
+// already carries a skill with this slug, so at run time the harness copy wins
+// and this one is skipped.
+export const AgentSkill = z.object({
+  skill: Skill,
+  shadowedByHarness: z.boolean(),
+});
+export type AgentSkill = z.infer<typeof AgentSkill>;
+
+// PUT /api/agents/:agentId/skills — replaces the Agent's whole set of skills.
+export const AssignSkillsInput = z.object({ skillIds: z.array(z.string()) });
+export type AssignSkillsInput = z.infer<typeof AssignSkillsInput>;
+
 // GET/PATCH .../agents/:agentId/harness-template — the agent's CLAUDE.md
 // content, read/written as plain text (never parsed).
 export const HarnessTemplate = z.object({
@@ -276,6 +326,26 @@ export const TaskRunStatus = z.enum([
 ]);
 export type TaskRunStatus = z.infer<typeof TaskRunStatus>;
 
+// What became of one skill an Agent had when a run was built. loaded: it went
+// into the run. skipped_harness_has_it: the harness already carried a skill
+// with that slug, and the harness wins. missing: its folder was gone, so the
+// run went on without it (hash is null then).
+export const SkillOutcome = z.enum(["loaded", "skipped_harness_has_it", "missing"]);
+export type SkillOutcome = z.infer<typeof SkillOutcome>;
+
+export const SKILL_OUTCOME_LABEL: Record<SkillOutcome, string> = {
+  loaded: "loaded",
+  skipped_harness_has_it: "skipped — the harness already has it",
+  missing: "missing — folder not found",
+};
+
+export const RunSkill = z.object({
+  slug: z.string(),
+  hash: z.string().nullable(),
+  outcome: SkillOutcome,
+});
+export type RunSkill = z.infer<typeof RunSkill>;
+
 export const TaskRun = z.object({
   id: z.string(),
   taskId: z.string(),
@@ -300,6 +370,15 @@ export const TaskRun = z.object({
   outputTokens: z.number().nullable(),
   cacheReadTokens: z.number().nullable(),
   cacheWriteTokens: z.number().nullable(),
+  // What the run was built from — see RunSkill and the agent instance. null
+  // hash for a run from before agent instances existed, or one refused before
+  // it started. gitSha and gitDirty are null when the library was not in a
+  // git repo. dirty means something in the harness or the skills it used had
+  // uncommitted changes, so the commit alone would not reproduce the run.
+  instanceHash: z.string().nullable(),
+  gitSha: z.string().nullable(),
+  gitDirty: z.boolean().nullable(),
+  skills: z.array(RunSkill),
   createdAt: z.string(),
 });
 export type TaskRun = z.infer<typeof TaskRun>;
