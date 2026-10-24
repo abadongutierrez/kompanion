@@ -76,8 +76,9 @@ tell Claude Code to run it through `exec_in_folder.py` (see
 
 `preflight-check` checks a run is ready before the work starts (manifest, task
 workspace, worktrees, branch, git user). Migration `V23` registers it and
-teaches it to the Engineer (slug `engineer` or `engineer-*`);
-the engineer harness tells the agent to run it first.
+teaches it to the Engineer (slug `engineer` or `engineer-*`); `V24` teaches it
+to QA (slug `qa` or `qa-*`). The engineer and qa harnesses tell the agent to
+run it first.
 
 At run start the server builds an **agent instance**: the harness files the
 Agent's runtime reads, plus its skills in the folder that runtime loads them
