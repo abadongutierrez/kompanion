@@ -74,6 +74,11 @@ has the skill, and never touches the folder. A skill that ships a script must
 tell Claude Code to run it through `exec_in_folder.py` (see
 `library/skills/kompanion-context/`).
 
+`preflight-check` checks a run is ready before the work starts (manifest, task
+workspace, worktrees, branch, git user). Migration `V23` registers it and
+teaches it to the Engineer (slug `engineer` or `engineer-*`);
+the engineer harness tells the agent to run it first.
+
 At run start the server builds an **agent instance**: the harness files the
 Agent's runtime reads, plus its skills in the folder that runtime loads them
 from. It is hashed and stored once under
