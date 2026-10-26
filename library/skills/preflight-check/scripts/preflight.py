@@ -15,9 +15,9 @@ Checks, in order:
   - the task workspace exists and is writable
   - the current folder is inside one of the allowed roots
   - every worktree in the manifest exists and is writable
-  - repository mode only: each worktree is a git work tree, the primary one
-    is on the manifest's branch, it has a git user to commit with, and its
-    working tree is clean (dirty is only a warning)
+  - repository mode only: each worktree is a git work tree, is on the
+    manifest's branch, has a git user to commit with, and has a clean working
+    tree (dirty is only a warning)
 
 Standard library only.
 """
@@ -119,11 +119,13 @@ def check_repo(report, label, worktree, branch=None):
     else:
         report.fail("no git user.name or user.email is set, so a commit would fail.")
 
-    status, _ = git(worktree, "status", "--porcelain")
-    if status:
+    status, err = git(worktree, "status", "--porcelain")
+    if status is None:
+        report.fail(f"git status failed ({err}).")
+    elif status:
         count = len(status.splitlines())
         report.warn(f"the working tree has {count} uncommitted change(s) — check they are yours.")
-    elif status is not None:
+    else:
         report.ok("the working tree is clean")
 
 
@@ -152,18 +154,20 @@ def main(argv):
         repo_mode = bool(primary.get("repositoryLocalPath"))
         if not repo_mode:
             report.ok("scratch mode: no repository is linked")
+        branch = manifest.get("branchName") or None
         if check_folder(report, "worktree", primary["workspaceLocalPath"]) and repo_mode:
-            branch = manifest.get("branchName")
             if not branch:
                 report.fail("a repository is linked but the manifest names no branch.")
-            check_repo(report, "worktree", primary["workspaceLocalPath"], branch or None)
+            check_repo(report, "worktree", primary["workspaceLocalPath"], branch)
         for other in others:
             path = other.get("workspaceLocalPath")
             name = other.get("name") or "linked repo"
             if not path:
                 report.fail(f"{name} has no worktree path in the manifest.")
             elif check_folder(report, f"{name} worktree", path):
-                check_repo(report, f"{name} worktree", path)
+                # Linked repositories share the task's branch, so they get
+                # the same branch, git user and clean-tree checks.
+                check_repo(report, f"{name} worktree", path, branch)
 
     print()
     if report.failed:

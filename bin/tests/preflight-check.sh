@@ -67,6 +67,37 @@ OUT="$(run_in "$TMP/work/main")"; CODE=$?
 check "uncommitted changes only warn" '[ "$CODE" = 0 ] && [[ "$OUT" == *"warn  the working tree has 1"* ]]'
 
 new_repo_task
+echo "garbage" > "$TMP/work/main/.git/index"
+OUT="$(run_in "$TMP/work/main")"; CODE=$?
+check "a failing git status fails" '[ "$CODE" = 1 ] && [[ "$OUT" == *"FAIL  git status failed"* ]]'
+
+# Adds a linked repo worktree at $TMP/work/second, on the given branch.
+add_linked_repo() {
+  mkdir -p "$TMP/work/second"
+  git -C "$TMP/work/second" init -q -b "$1"
+  git -C "$TMP/work/second" config user.name "Test"
+  git -C "$TMP/work/second" config user.email "test@example.com"
+  git -C "$TMP/work/second" commit -q --allow-empty -m init
+  python3 - "$TMP/task/manifest.json" "$TMP" <<'EOF'
+import json, sys
+m = json.load(open(sys.argv[1]))
+m["otherRepos"] = [{"name": "Second", "repositoryLocalPath": sys.argv[2] + "/repos/second",
+                    "workspaceLocalPath": sys.argv[2] + "/work/second"}]
+json.dump(m, open(sys.argv[1], "w"))
+EOF
+}
+
+new_repo_task
+add_linked_repo feat/abc-do-it
+OUT="$(run_in "$TMP/work/main")"; CODE=$?
+check "a linked repo on the task's branch passes" '[ "$CODE" = 0 ] && [[ "$OUT" == *"preflight: ready"* ]]'
+
+new_repo_task
+add_linked_repo other
+OUT="$(run_in "$TMP/work/main")"; CODE=$?
+check "a linked repo on the wrong branch fails" '[ "$CODE" = 1 ] && [[ "$OUT" == *"FAIL  on branch other"* ]]'
+
+new_repo_task
 rm -rf "$TMP/work/main/.git"
 OUT="$(run_in "$TMP/work/main")"; CODE=$?
 check "a worktree that is not a git repo fails" '[ "$CODE" = 1 ] && [[ "$OUT" == *"not a git work tree"* ]]'

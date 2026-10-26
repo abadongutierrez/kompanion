@@ -113,7 +113,10 @@ class WorkspaceEnforcementService(
 
     // manifest.json is the single source of truth both enforcement paths read
     // their allowed roots from — written once, here, so the two can't drift.
-    private fun writeManifest(taskWorkspaceDir: File, manifest: WorkspaceManifest) {
+    // RunTaskService also calls it for every run, whatever the runtime, since
+    // skills such as preflight-check read it too and opencode installs no
+    // enforcement of its own. Writing it twice is harmless.
+    fun writeManifest(taskWorkspaceDir: File, manifest: WorkspaceManifest) {
         taskWorkspaceDir.mkdirs()
         File(taskWorkspaceDir, "manifest.json").writeText(
             objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(manifest),
