@@ -5,7 +5,8 @@ import { AgentCard, useAgentLibrary } from "@/features/agents/index.js";
 // The app-wide Agent library — a root-level page like Projects, reachable
 // from anywhere via the header nav, not nested inside any specific
 // project/team. This page only lists them: creating and editing happen on
-// their own routes (/agents/new and /agents/:agentId, see AgentFormPage). A
+// their own routes (/agents/new and /agents/:agentId, see AgentFormPage), and
+// /agents/:agentId/view shows the same form read-only. A
 // Team's own Agents page (inside a project) only handles
 // assigning/unassigning them.
 export function AgentsLibraryPage() {
@@ -51,12 +52,20 @@ export function AgentsLibraryPage() {
               agent={agent}
               showRuntime
               action={
-                <Link
-                  to={`/agents/${agent.id}`}
-                  className="text-xs text-neutral-400 hover:text-neutral-700"
-                >
-                  Edit
-                </Link>
+                <span className="flex gap-2">
+                  <Link
+                    to={`/agents/${agent.id}/view`}
+                    className="text-xs text-neutral-400 hover:text-neutral-700"
+                  >
+                    View
+                  </Link>
+                  <Link
+                    to={`/agents/${agent.id}`}
+                    className="text-xs text-neutral-400 hover:text-neutral-700"
+                  >
+                    Edit
+                  </Link>
+                </span>
               }
             />
           ))}

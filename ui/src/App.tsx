@@ -47,8 +47,12 @@ export function App() {
       <Routes>
         <Route path="/" element={<ProjectsPage />} />
         <Route path="/agents" element={<AgentsLibraryPage />} />
-        <Route path="/agents/new" element={<AgentFormPage mode="create" />} />
-        <Route path="/agents/:agentId" element={<AgentFormPage mode="edit" />} />
+        {/* Keyed by mode so moving between New, Edit and View remounts the
+            form: otherwise React reuses it and View could show an unsaved
+            Edit draft instead of the saved Agent. */}
+        <Route path="/agents/new" element={<AgentFormPage key="create" mode="create" />} />
+        <Route path="/agents/:agentId" element={<AgentFormPage key="edit" mode="edit" />} />
+        <Route path="/agents/:agentId/view" element={<AgentFormPage key="view" mode="view" />} />
         <Route path="/skills" element={<SkillsLibraryPage />} />
         <Route path="/projects/:projectId/tasks/:taskId" element={<TaskPage />} />
         <Route path="/projects/:projectId/:section?" element={<ProjectShell />} />

@@ -47,10 +47,19 @@ const HARNESS_TEMPLATE_PLACEHOLDER: Record<AgentRuntime, string> = {
 // only slug and the harness template are edit-only (a slug is derived from
 // the title on create, and the template lives at a path keyed by agent id,
 // so neither exists yet while creating).
-export function AgentFormPage({ mode }: { mode: "create" | "edit" }) {
+//
+// View mode (/agents/:agentId/view) is edit mode with every field locked
+// and no Save: it loads and shows exactly what Edit shows, so the two can't
+// drift apart.
+export function AgentFormPage({ mode }: { mode: "create" | "edit" | "view" }) {
   const { agentId } = useParams<{ agentId: string }>();
   const navigate = useNavigate();
-  const isEdit = mode === "edit";
+  const isView = mode === "view";
+  const isEdit = mode === "edit" || isView;
+  // Text fields are read-only rather than disabled in View, so they can still
+  // be focused and scrolled from the keyboard (a long harness template runs
+  // past its 16 rows). The shading says they can't be changed.
+  const readOnlyProps = isView ? { readOnly: true, className: "bg-neutral-100" } : {};
 
   const agentQuery = useAgent(isEdit ? agentId : undefined);
   const agent = agentQuery.data;
@@ -129,8 +138,12 @@ export function AgentFormPage({ mode }: { mode: "create" | "edit" }) {
       {backToLibrary}
 
       <div>
-        <h2 className="text-lg font-semibold">{isEdit ? "Edit agent" : "New agent"}</h2>
-        {isEdit ? (
+        <h2 className="text-lg font-semibold">
+          {isView ? agent?.title : isEdit ? "Edit agent" : "New agent"}
+        </h2>
+        {isView ? (
+          <Muted>Read-only view of this agent.</Muted>
+        ) : isEdit ? (
           <p className="text-sm text-amber-600">
             This agent is shared — editing it changes what every team it's assigned to
             sees.
@@ -148,6 +161,7 @@ export function AgentFormPage({ mode }: { mode: "create" | "edit" }) {
         className="space-y-2"
         onSubmit={(e) => {
           e.preventDefault();
+          if (isView) return;
           if (!title.trim() || !harnessPath.trim()) return;
           saveAgent.mutate(
             {
@@ -170,88 +184,116 @@ export function AgentFormPage({ mode }: { mode: "create" | "edit" }) {
           );
         }}
       >
-        <TextInput
-          placeholder="Agent title (e.g. Tech Lead)"
-          aria-label="Agent title"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-        />
-        {isEdit && (
+        <div className="space-y-2">
           <TextInput
-            placeholder="Slug"
-            aria-label="Slug"
-            value={slug}
-            onChange={(e) => setSlug(e.target.value)}
+            placeholder="Agent title (e.g. Tech Lead)"
+            aria-label="Agent title"
+            value={title}
+            {...readOnlyProps}
+            onChange={(e) => setTitle(e.target.value)}
           />
-        )}
-        <TextInput
-          placeholder="Harness folder path"
-          aria-label="Harness folder path"
-          value={harnessPath}
-          onChange={(e) => setHarnessPath(e.target.value)}
-        />
-        <div className="flex gap-2">
-          <Select
-            aria-label="Runtime"
-            fullWidth={false}
-            value={runtime}
-            onChange={(e) => setRuntime(e.target.value as AgentRuntime)}
-          >
-            {Object.entries(AGENT_RUNTIME_LABEL).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </Select>
-          <TextInput
-            aria-label="Model"
-            fullWidth={false}
-            className="min-w-0 flex-1"
-            placeholder={MODEL_PLACEHOLDER[runtime]}
-            value={model}
-            onChange={(e) => setModel(e.target.value)}
-          />
-        </div>
-        {isEdit && (
-          <TextArea
-            className="font-mono text-xs"
-            aria-label="Harness template"
-            placeholder={HARNESS_TEMPLATE_PLACEHOLDER[runtime]}
-            rows={16}
-            value={harnessTemplate}
-            onChange={(e) => setHarnessTemplate(e.target.value)}
-          />
-        )}
-        <section className="space-y-1 pt-2" aria-labelledby="agent-skills-heading">
-          <SectionHeading as="h3" id="agent-skills-heading">
-            Skills
-          </SectionHeading>
-          <Muted size="xs">
-            Skills this agent learns. They are added to its working folder on every
-            run. Manage the library on the Skills page.
-          </Muted>
-          {library.isError ? (
-            <ErrorText>Could not load the skills library.</ErrorText>
-          ) : (
-            <SkillPicker
-              skills={library.data ?? []}
-              selected={skillIds}
-              onChange={setSkillIds}
-              assigned={agentSkills.data ?? []}
+          {isEdit && (
+            <TextInput
+              placeholder="Slug"
+              aria-label="Slug"
+              value={slug}
+              {...readOnlyProps}
+              onChange={(e) => setSlug(e.target.value)}
             />
           )}
-        </section>
-        <div className="flex gap-2">
-          <Button type="submit" disabled={saveAgent.isPending || assignSkills.isPending}>
-            {isEdit ? "Save changes" : "Create agent"}
-          </Button>
-          <Link
-            to="/agents"
-            className="rounded border border-neutral-300 px-3 py-1 text-xs hover:bg-neutral-100"
-          >
-            Cancel
-          </Link>
+          <TextInput
+            placeholder="Harness folder path"
+            aria-label="Harness folder path"
+            value={harnessPath}
+            {...readOnlyProps}
+            onChange={(e) => setHarnessPath(e.target.value)}
+          />
+          <div className="flex gap-2">
+            <Select
+              aria-label="Runtime"
+              fullWidth={false}
+              disabled={isView}
+              value={runtime}
+              onChange={(e) => setRuntime(e.target.value as AgentRuntime)}
+            >
+              {Object.entries(AGENT_RUNTIME_LABEL).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </Select>
+            <TextInput
+              aria-label="Model"
+              fullWidth={false}
+              className={isView ? "min-w-0 flex-1 bg-neutral-100" : "min-w-0 flex-1"}
+              readOnly={isView}
+              placeholder={MODEL_PLACEHOLDER[runtime]}
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+            />
+          </div>
+          {isEdit && (
+            <TextArea
+              className={isView ? "bg-neutral-100 font-mono text-xs" : "font-mono text-xs"}
+              readOnly={isView}
+              aria-label="Harness template"
+              placeholder={HARNESS_TEMPLATE_PLACEHOLDER[runtime]}
+              rows={16}
+              value={harnessTemplate}
+              onChange={(e) => setHarnessTemplate(e.target.value)}
+            />
+          )}
+          <section className="space-y-1 pt-2" aria-labelledby="agent-skills-heading">
+            <SectionHeading as="h3" id="agent-skills-heading">
+              Skills
+            </SectionHeading>
+            <Muted size="xs">
+              Skills this agent learns. They are added to its working folder on every
+              run. Manage the library on the Skills page.
+            </Muted>
+            {library.isError ? (
+              <ErrorText>Could not load the skills library.</ErrorText>
+            ) : (
+              // A disabled fieldset disables every skill checkbox at once.
+              <fieldset disabled={isView}>
+                <SkillPicker
+                  skills={library.data ?? []}
+                  selected={skillIds}
+                  onChange={setSkillIds}
+                  assigned={agentSkills.data ?? []}
+                />
+              </fieldset>
+            )}
+          </section>
         </div>
+        {isView ? (
+          <div className="flex gap-2">
+            <Link
+              to={`/agents/${agentId}`}
+              className="rounded bg-neutral-900 px-3 py-1 text-xs text-white"
+            >
+              Edit
+            </Link>
+            <Link
+              to="/agents"
+              className="rounded border border-neutral-300 px-3 py-1 text-xs hover:bg-neutral-100"
+            >
+              Back
+            </Link>
+          </div>
+        ) : (
+          <div className="flex gap-2">
+            <Button type="submit" disabled={saveAgent.isPending || assignSkills.isPending}>
+              {isEdit ? "Save changes" : "Create agent"}
+            </Button>
+            <Link
+              to="/agents"
+              className="rounded border border-neutral-300 px-3 py-1 text-xs hover:bg-neutral-100"
+            >
+              Cancel
+            </Link>
+          </div>
+        )}
 
         {saveAgent.isError && (
           <ErrorText>{(saveAgent.error as Error).message}</ErrorText>
