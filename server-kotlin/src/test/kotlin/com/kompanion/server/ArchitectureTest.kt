@@ -1,6 +1,8 @@
 package com.kompanion.server
 
 import com.kompanion.server.adapter.outbound.persistence.JdbcRunInstances
+import com.tngtech.archunit.core.domain.JavaClass.Predicates.belongToAnyOf
+import com.tngtech.archunit.core.domain.JavaClass.Predicates.resideInAnyPackage
 import com.tngtech.archunit.core.domain.JavaClasses
 import com.tngtech.archunit.core.importer.ClassFileImporter
 import com.tngtech.archunit.core.importer.ImportOption
@@ -9,6 +11,9 @@ import com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses
 import com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noMethods
 import com.tngtech.archunit.library.dependencies.SlicesRuleDefinition.slices
 import org.junit.jupiter.api.Test
+import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Isolation
+import org.springframework.transaction.annotation.Propagation
 import org.springframework.transaction.annotation.Transactional
 
 // The dependency rule from ARCHITECTURE.md, enforced. The rules cover the
@@ -44,14 +49,37 @@ class ArchitectureTest {
     }
 
     @Test
+    fun `domain and application do not run processes`() {
+        // java.lang is allowed wholesale above, so the process API is banned by name.
+        noClasses().that().resideInAnyPackage(DOMAIN, APPLICATION)
+            .should().dependOnClassesThat().belongToAnyOf(
+                ProcessBuilder::class.java, Process::class.java,
+                ProcessHandle::class.java, Runtime::class.java,
+            )
+            .because("shelling out is an adapter's job, behind a port")
+            .check(classes)
+    }
+
+    @Test
     fun `application knows only domain plus Service and Transactional`() {
         classes().that().resideInAPackage(APPLICATION)
-            .should().onlyDependOnClassesThat().resideInAnyPackage(
-                DOMAIN, APPLICATION, *LANGUAGE,
-                "org.springframework.stereotype..",
-                "org.springframework.transaction.annotation..",
+            .should().onlyDependOnClassesThat(
+                resideInAnyPackage(DOMAIN, APPLICATION, *LANGUAGE)
+                    .or(belongToAnyOf(
+                        Service::class.java, Transactional::class.java,
+                        Propagation::class.java, Isolation::class.java,
+                    )),
             )
             .because("@Service / @Transactional on use cases is the only sanctioned Spring")
+            .check(classes)
+    }
+
+    @Test
+    fun `Service belongs on use cases only`() {
+        noClasses().that().resideInAPackage(APPLICATION)
+            .and().resideOutsideOfPackage("$ROOT.application.usecase..")
+            .should().beAnnotatedWith(Service::class.java)
+            .because("ports are interfaces; only use case implementations are beans")
             .check(classes)
     }
 

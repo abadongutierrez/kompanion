@@ -326,9 +326,13 @@ stricter. The rules:
 
 - `domain` depends on itself and the JDK/Kotlin basics (`java.lang`,
   `java.util`, `java.time`, `java.math`, `kotlin`) and nothing else.
-- `application` depends on `domain`, itself, those basics, and Spring's
-  `stereotype` and `transaction.annotation` packages — the `@Service` /
-  `@Transactional` exception, and no more.
+- Neither `domain` nor `application` touches the process API
+  (`ProcessBuilder`, `Process`, `ProcessHandle`, `Runtime`), which the
+  `java.lang` allowance would otherwise let through.
+- `application` depends on `domain`, itself, those basics, and exactly
+  `@Service`, `@Transactional` and its `Propagation` / `Isolation` enums —
+  the stated exception, and no more. `@Service` sits only on classes in
+  `application/usecase/`.
 - Nothing outside `adapter` and `config` depends on `adapter`.
 - Inbound and outbound adapters don't depend on each other, and the
   `adapter.*.*` slices are free of cycles.
