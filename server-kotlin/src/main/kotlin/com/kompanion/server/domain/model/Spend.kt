@@ -18,8 +18,21 @@ data class ProjectSpend(
 // One day of the current month. `day` is a plain YYYY-MM-DD string: the
 // grouping happens in the database's timezone and the value is a label, not
 // an instant anything is computed from.
+//
+// byRuntime splits the day by task_runs.runtime — the CLI the run actually
+// used, not whatever its Agent is set to now. The day's totals are summed
+// from it, so the split always adds up to them exactly.
 data class DaySpend(
     val day: String,
+    val spendUsd: BigDecimal,
+    val runCount: Int,
+    val byRuntime: List<RuntimeSpend> = emptyList(),
+)
+
+// `runtime` is free text on purpose: a runtime added later shows up here
+// before anything else in the app has heard of it.
+data class RuntimeSpend(
+    val runtime: String,
     val spendUsd: BigDecimal,
     val runCount: Int,
 )

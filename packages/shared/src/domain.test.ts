@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   AgentSkill,
   AssignSkillsInput,
+  ProjectSpend,
   RegisterSkillInput,
   RunSkill,
+  runtimeLabel,
   Skill,
   SKILL_OUTCOME_LABEL,
   SkillDetail,
@@ -116,5 +118,42 @@ describe("what a run was built from", () => {
 
   it("refuses a run whose skill has an unknown outcome", () => {
     expect(TaskRun.safeParse({ ...run, skills: [{ slug: "a", hash: null, outcome: "exploded" }] }).success).toBe(false);
+  });
+});
+
+describe("a project's spend by day", () => {
+  const spend = {
+    projectId: "p1",
+    totalSpendUsd: 2,
+    totalRunCount: 4,
+    monthSpendUsd: 1.5,
+    periodStart: "2026-10-01T00:00:00Z",
+    byDay: [
+      {
+        day: "2026-10-02",
+        spendUsd: 1.5,
+        runCount: 3,
+        byRuntime: [
+          { runtime: "claude_code", spendUsd: 1.5, runCount: 1 },
+          { runtime: "pi", spendUsd: 0, runCount: 1 },
+          { runtime: "opencode2", spendUsd: 0, runCount: 1 },
+        ],
+      },
+    ],
+  };
+
+  it("parses each day with its runtime split, including a runtime it has never heard of", () => {
+    const parsed = ProjectSpend.parse(spend);
+    expect(parsed.byDay[0].byRuntime.map((r) => r.runtime)).toEqual(["claude_code", "pi", "opencode2"]);
+  });
+
+  it("refuses a day without its split", () => {
+    const { byRuntime: _, ...bare } = spend.byDay[0];
+    expect(ProjectSpend.safeParse({ ...spend, byDay: [bare] }).success).toBe(false);
+  });
+
+  it("labels known runtimes like the Agent form and falls back to the raw value", () => {
+    expect(runtimeLabel("claude_code")).toBe("Claude Code");
+    expect(runtimeLabel("opencode2")).toBe("opencode2");
   });
 });
