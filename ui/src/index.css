@@ -1,1 +1,14 @@
 @import "tailwindcss";
+
+/* Streaming cursor for <Markdown streaming>: sits after the last block's text. */
+.markdown-streaming > :last-child::after,
+.markdown-streaming:empty::after {
+  content: "▍";
+  animation: markdown-cursor 1s step-end infinite;
+}
+
+@keyframes markdown-cursor {
+  50% {
+    opacity: 0;
+  }
+}

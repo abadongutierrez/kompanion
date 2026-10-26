@@ -145,8 +145,7 @@ export function RunTranscript({
             // Rendered as markdown even while it streams in: a half-written
             // list or code fence just shows what has arrived so far.
             <div key={i} className="text-neutral-800">
-              <Markdown>{block.text}</Markdown>
-              {!block.done && <span className="animate-pulse">▍</span>}
+              <Markdown streaming={!block.done}>{block.text}</Markdown>
             </div>
           );
         }

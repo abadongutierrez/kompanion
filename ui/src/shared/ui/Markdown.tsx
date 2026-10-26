@@ -1,5 +1,6 @@
 import type { Components } from "react-markdown";
 import ReactMarkdown from "react-markdown";
+import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 
 // Agents answer in markdown — run transcripts and the comments they post.
@@ -53,10 +54,25 @@ const components: Components = {
   input: ({ node: _node, ...props }) => <input className="mr-1 align-middle" {...props} disabled />,
 };
 
-export function Markdown({ children, className }: { children: string; className?: string }) {
+// remark-breaks keeps single newlines as line breaks: comments are typed in
+// a textarea, and agents often wrap lines without a blank line between.
+const remarkPlugins = [remarkGfm, remarkBreaks];
+
+// `streaming` shows a blinking cursor right after the last block's text,
+// rather than on a line of its own below the markdown.
+export function Markdown({
+  children,
+  className,
+  streaming = false,
+}: {
+  children: string;
+  className?: string;
+  streaming?: boolean;
+}) {
+  const classes = ["break-words", streaming && "markdown-streaming", className].filter(Boolean).join(" ");
   return (
-    <div className={className ? `break-words ${className}` : "break-words"}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+    <div className={classes}>
+      <ReactMarkdown remarkPlugins={remarkPlugins} components={components}>
         {children}
       </ReactMarkdown>
     </div>
