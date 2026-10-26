@@ -7,7 +7,9 @@ import com.kompanion.server.application.port.outbound.AgentInstances
 import com.kompanion.server.application.port.outbound.BuildInstanceRequest
 import com.kompanion.server.application.port.outbound.RunInstances
 import com.kompanion.server.application.port.outbound.SkillStore
+import com.kompanion.server.domain.model.AgentRuntime
 import org.springframework.stereotype.Service
+import java.util.UUID
 
 @Service
 class PrepareAgentInstanceUseCase(
@@ -29,4 +31,10 @@ class PrepareAgentInstanceUseCase(
         runs.record(command.runId, built.instance)
         return PreparedInstance(built.instance, built.path)
     }
+
+    // Builds (and so stores) the instance, the only way to know its hash.
+    // Harmless: the store is keyed by hash, and the run that follows a
+    // resume builds the same one again.
+    override fun currentHash(agentId: UUID, runtime: AgentRuntime, harnessPath: String): String =
+        instances.build(BuildInstanceRequest(runtime, harnessPath, skills.skillsFor(agentId))).instance.hash
 }

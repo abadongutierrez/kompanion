@@ -9,6 +9,11 @@ import java.util.UUID
 // it was built from.
 interface PrepareAgentInstance {
     fun handle(command: PrepareAgentInstanceCommand): PreparedInstance
+
+    // The hash a run would be built from right now, recorded on no run. What
+    // resume compares against the earlier run's hash: a harness or skill
+    // change since then means the session was made by a different agent.
+    fun currentHash(agentId: UUID, runtime: AgentRuntime, harnessPath: String): String
 }
 
 // Plain fields rather than an Agent: the orchestrator that calls this still

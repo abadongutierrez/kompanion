@@ -37,6 +37,19 @@ data class RunContext(
     // the pre-flight check in RunTaskService only catches "already over", and
     // without this one run can spend past the remainder.
     val remainingBudgetUsd: BigDecimal?,
+    // Set when this run continues an earlier run's CLI session instead of
+    // starting a new one. `prompt` is then the operator's follow-up, not the
+    // task prompt — the session already has that.
+    val resume: ResumeContext? = null,
+)
+
+data class ResumeContext(
+    // The CLI's own session id, as recorded on the earlier run.
+    val sessionId: String,
+    // The earlier run's raw_output, as the runner itself produced it. A CLI
+    // that reports a session-cumulative cost (Claude Code does) needs the
+    // last reported total to work out what this run alone spent.
+    val previousRawOutput: Any?,
 )
 
 // Kept apart rather than summed: cache reads bill at 0.1x input and cache
@@ -100,4 +113,35 @@ interface AgentRunner {
     // when it produced none, which is itself a failure signal worth
     // reporting rather than treating as an empty success.
     fun interpret(events: List<Map<String, Any?>>, exitCode: Int, stderr: String): Interpretation
+
+    // The same, with the run's context — what a resumed run needs, since its
+    // cost may have to be read against the session's earlier total. Runners
+    // that cannot resume never see a resume and can leave this alone.
+    fun interpret(ctx: RunContext, events: List<Map<String, Any?>>, exitCode: Int, stderr: String): Interpretation =
+        interpret(events, exitCode, stderr)
+
+    // -- Resume -------------------------------------------------------------
+    //
+    // Continuing a finished run's CLI session with a follow-up. Off by
+    // default: a runtime opts in by overriding all of the below. Claude Code
+    // does; pi and opencode have sessions too, and can join later through
+    // this same seam.
+
+    val supportsResume: Boolean get() = false
+
+    // The CLI's session id, if this streamed event carries it. Called on every
+    // event until one returns non-null; the id is then stored on the run.
+    fun sessionIdFrom(event: Map<String, Any?>): String? = null
+
+    // Where this CLI keeps its sessions for the server's current user and
+    // environment. Recorded on each run, and compared at resume time: a
+    // session written under one config directory cannot be found from
+    // another.
+    fun sessionStore(): String? = null
+
+    // null when `sessionId` can be resumed from `store`; otherwise an
+    // operator-facing reason (typically: the session file is gone). Checked
+    // just before the CLI starts, so a missing session fails the run clearly
+    // instead of quietly opening a blank one.
+    fun resumeProblem(sessionId: String, store: String): String? = null
 }
