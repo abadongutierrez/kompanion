@@ -76,10 +76,16 @@ test.describe("agent pages", () => {
     await expect(page).toHaveURL(new RegExp(`/agents/${created.id}/view$`));
 
     await expect(page.getByRole("heading", { name: created.title })).toBeVisible();
-    // Same fields as Edit, every one disabled.
-    for (const label of ["Agent title", "Slug", "Harness folder path", "Runtime", "Model", "Harness template"]) {
-      await expect(page.getByLabel(label, { exact: true })).toBeDisabled();
+    // Same fields as Edit, none of them changeable. Text fields are read-only
+    // rather than disabled so the keyboard can still reach and scroll them.
+    for (const label of ["Agent title", "Slug", "Harness folder path", "Model", "Harness template"]) {
+      const field = page.getByLabel(label, { exact: true });
+      await expect(field).not.toBeEditable();
+      await expect(field).toBeEnabled();
     }
+    await expect(page.getByLabel("Runtime", { exact: true })).toBeDisabled();
+    await page.getByLabel("Harness template").focus();
+    await expect(page.getByLabel("Harness template")).toBeFocused();
     await expect(page.getByLabel("Agent title")).toHaveValue(created.title);
     await expect(page.getByLabel("Harness folder path")).toHaveValue(harnessPath);
     await expect(page.getByRole("button", { name: "Save changes" })).toHaveCount(0);
@@ -87,6 +93,23 @@ test.describe("agent pages", () => {
     await page.getByRole("link", { name: "Edit", exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`/agents/${created.id}$`));
     await expect(page.getByRole("heading", { name: "Edit agent" })).toBeVisible();
+  });
+
+  test("going back from an unsaved Edit to View shows the saved agent, not the draft", async ({ page, request }) => {
+    const created: { id: string; title: string } = await request
+      .post("/api/agents", {
+        data: { title: `E2E UI Draft ${Date.now()}`, harnessPath },
+      })
+      .then((r) => r.json());
+
+    await page.goto(`/agents/${created.id}/view`);
+    await page.getByRole("link", { name: "Edit", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Edit agent" })).toBeVisible();
+    await page.getByLabel("Agent title").fill(`${created.title} (unsaved)`);
+
+    await page.goBack();
+    await expect(page).toHaveURL(new RegExp(`/agents/${created.id}/view$`));
+    await expect(page.getByLabel("Agent title")).toHaveValue(created.title);
   });
 
   test("an unknown agent id says so instead of showing an empty form", async ({ page }) => {

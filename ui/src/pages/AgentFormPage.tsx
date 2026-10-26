@@ -48,7 +48,7 @@ const HARNESS_TEMPLATE_PLACEHOLDER: Record<AgentRuntime, string> = {
 // the title on create, and the template lives at a path keyed by agent id,
 // so neither exists yet while creating).
 //
-// View mode (/agents/:agentId/view) is edit mode with every field disabled
+// View mode (/agents/:agentId/view) is edit mode with every field locked
 // and no Save: it loads and shows exactly what Edit shows, so the two can't
 // drift apart.
 export function AgentFormPage({ mode }: { mode: "create" | "edit" | "view" }) {
@@ -56,6 +56,10 @@ export function AgentFormPage({ mode }: { mode: "create" | "edit" | "view" }) {
   const navigate = useNavigate();
   const isView = mode === "view";
   const isEdit = mode === "edit" || isView;
+  // Text fields are read-only rather than disabled in View, so they can still
+  // be focused and scrolled from the keyboard (a long harness template runs
+  // past its 16 rows). The shading says they can't be changed.
+  const readOnlyProps = isView ? { readOnly: true, className: "bg-neutral-100" } : {};
 
   const agentQuery = useAgent(isEdit ? agentId : undefined);
   const agent = agentQuery.data;
@@ -180,13 +184,12 @@ export function AgentFormPage({ mode }: { mode: "create" | "edit" | "view" }) {
           );
         }}
       >
-        {/* A disabled fieldset disables every control inside it at once,
-            including the skill checkboxes. */}
-        <fieldset disabled={isView} className="space-y-2">
+        <div className="space-y-2">
           <TextInput
             placeholder="Agent title (e.g. Tech Lead)"
             aria-label="Agent title"
             value={title}
+            {...readOnlyProps}
             onChange={(e) => setTitle(e.target.value)}
           />
           {isEdit && (
@@ -194,6 +197,7 @@ export function AgentFormPage({ mode }: { mode: "create" | "edit" | "view" }) {
               placeholder="Slug"
               aria-label="Slug"
               value={slug}
+              {...readOnlyProps}
               onChange={(e) => setSlug(e.target.value)}
             />
           )}
@@ -201,12 +205,14 @@ export function AgentFormPage({ mode }: { mode: "create" | "edit" | "view" }) {
             placeholder="Harness folder path"
             aria-label="Harness folder path"
             value={harnessPath}
+            {...readOnlyProps}
             onChange={(e) => setHarnessPath(e.target.value)}
           />
           <div className="flex gap-2">
             <Select
               aria-label="Runtime"
               fullWidth={false}
+              disabled={isView}
               value={runtime}
               onChange={(e) => setRuntime(e.target.value as AgentRuntime)}
             >
@@ -219,7 +225,8 @@ export function AgentFormPage({ mode }: { mode: "create" | "edit" | "view" }) {
             <TextInput
               aria-label="Model"
               fullWidth={false}
-              className="min-w-0 flex-1"
+              className={isView ? "min-w-0 flex-1 bg-neutral-100" : "min-w-0 flex-1"}
+              readOnly={isView}
               placeholder={MODEL_PLACEHOLDER[runtime]}
               value={model}
               onChange={(e) => setModel(e.target.value)}
@@ -227,7 +234,8 @@ export function AgentFormPage({ mode }: { mode: "create" | "edit" | "view" }) {
           </div>
           {isEdit && (
             <TextArea
-              className="font-mono text-xs"
+              className={isView ? "bg-neutral-100 font-mono text-xs" : "font-mono text-xs"}
+              readOnly={isView}
               aria-label="Harness template"
               placeholder={HARNESS_TEMPLATE_PLACEHOLDER[runtime]}
               rows={16}
@@ -246,15 +254,18 @@ export function AgentFormPage({ mode }: { mode: "create" | "edit" | "view" }) {
             {library.isError ? (
               <ErrorText>Could not load the skills library.</ErrorText>
             ) : (
-              <SkillPicker
-                skills={library.data ?? []}
-                selected={skillIds}
-                onChange={setSkillIds}
-                assigned={agentSkills.data ?? []}
-              />
+              // A disabled fieldset disables every skill checkbox at once.
+              <fieldset disabled={isView}>
+                <SkillPicker
+                  skills={library.data ?? []}
+                  selected={skillIds}
+                  onChange={setSkillIds}
+                  assigned={agentSkills.data ?? []}
+                />
+              </fieldset>
             )}
           </section>
-        </fieldset>
+        </div>
         {isView ? (
           <div className="flex gap-2">
             <Link
