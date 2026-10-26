@@ -282,6 +282,17 @@ class RunTaskService(
         val exitCode = process.waitFor()
         killer.interrupt()
         stderrThread.join(1_000)
+
+        for (extra in runner.afterRun(ctx, events)) {
+            val json = objectMapper.writeValueAsString(extra)
+            val currentSeq = seq++
+            jdbc.update(
+                "insert into task_run_events (run_id, seq, payload) values (?, ?, ?)",
+                runId, currentSeq, json,
+            )
+            runEventsBus.publishEvent(runId, currentSeq, json)
+            events += extra
+        }
         val durationMs = (System.currentTimeMillis() - started).toInt()
 
         val interpreted = runner.interpret(events, exitCode, stderrBuilder.toString().trim())

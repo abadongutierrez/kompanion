@@ -28,6 +28,7 @@ import {
 const MODEL_PLACEHOLDER: Record<AgentRuntime, string> = {
   claude_code: "Model (optional, e.g. claude-opus-5)",
   opencode: "Model (optional, e.g. ollama/qwen2.5-coder:7b)",
+  opencode2: "Model (optional, e.g. opencode-go/deepseek-v4.1-flash)",
   pi: "Model (optional, e.g. lmstudio/qwen3.8-27b)",
 };
 
@@ -38,6 +39,7 @@ const MODEL_PLACEHOLDER: Record<AgentRuntime, string> = {
 const HARNESS_TEMPLATE_PLACEHOLDER: Record<AgentRuntime, string> = {
   claude_code: "Harness template (CLAUDE.md)",
   opencode: "Harness template (AGENTS.md)",
+  opencode2: "Harness template (AGENTS.md)",
   pi: "Harness template (AGENTS.md)",
 };
 

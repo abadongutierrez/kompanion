@@ -25,4 +25,4 @@ data class Agent(
 
 // Which CLI runs an Agent. Lowercase constants for the same reason
 // TaskStatus's are: they are the text stored in the column.
-enum class AgentRuntime { claude_code, opencode, pi }
+enum class AgentRuntime { claude_code, opencode, opencode2, pi }

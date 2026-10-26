@@ -67,12 +67,13 @@ export type Team = z.infer<typeof Team>;
 // (CLAUDE.md + .claude/ for one, AGENTS.md + .opencode/ for another, plus
 // pi-agent/ for pi), so switching runtime doesn't necessarily mean a
 // different folder.
-export const AgentRuntime = z.enum(["claude_code", "opencode", "pi"]);
+export const AgentRuntime = z.enum(["claude_code", "opencode", "opencode2", "pi"]);
 export type AgentRuntime = z.infer<typeof AgentRuntime>;
 
 export const AGENT_RUNTIME_LABEL: Record<AgentRuntime, string> = {
   claude_code: "Claude Code",
   opencode: "opencode",
+  opencode2: "opencode v2",
   pi: "pi",
 };
 

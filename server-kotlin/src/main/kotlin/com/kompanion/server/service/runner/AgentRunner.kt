@@ -96,6 +96,12 @@ interface AgentRunner {
     // from a config directory named by PI_CODING_AGENT_DIR.
     fun environment(ctx: RunContext): Map<String, String> = emptyMap()
 
+    // Extra events to add after the process exits and before interpret().
+    // They are stored and published like the CLI's own, so a live view and a
+    // replay see the same thing. Empty for most runtimes; opencode v2 needs it
+    // because its stream leaves out the last step's cost (see Opencode2Runner).
+    fun afterRun(ctx: RunContext, events: List<Map<String, Any?>>): List<Map<String, Any?>> = emptyList()
+
     // `events` is every JSON line the CLI wrote to stdout, in order. Empty
     // when it produced none, which is itself a failure signal worth
     // reporting rather than treating as an empty success.

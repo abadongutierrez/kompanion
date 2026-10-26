@@ -1,4 +1,7 @@
 import { test, expect } from "@playwright/test";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 // Creating and editing an agent each live on their own route now
 // (/agents/new and /agents/:agentId) — the library page at /agents only
@@ -36,6 +39,54 @@ test.describe("agent pages", () => {
 
     await expect(page).toHaveURL(/\/agents$/);
     await expect(page.getByText(title)).toBeVisible();
+  });
+
+  test("an agent can be created and edited with the opencode v2 runtime", async ({ page, request }) => {
+    const title = `E2E opencode2 Agent ${Date.now()}`;
+
+    await page.goto("/agents/new");
+    await page.getByLabel("Agent title").fill(title);
+    // The engineer harness carries every layout, AGENTS.md and .opencode/ included.
+    await page.getByLabel("Harness folder path").fill("harnesses/engineer");
+    await page.getByLabel("Runtime", { exact: true }).selectOption("opencode2");
+    await expect(page.getByLabel("Model", { exact: true })).toHaveAttribute(
+      "placeholder",
+      /opencode-go\/deepseek-v4\.1-flash/,
+    );
+    await page.getByLabel("Model", { exact: true }).fill("opencode-go/deepseek-v4.1-flash");
+    await page.getByRole("button", { name: "Create agent" }).click();
+    await expect(page).toHaveURL(/\/agents$/);
+
+    const agents: { id: string; title: string; runtime: string; model: string | null }[] = await request
+      .get("/api/agents")
+      .then((r) => r.json());
+    const created = agents.find((a) => a.title === title)!;
+    expect(created.runtime).toBe("opencode2");
+    expect(created.model).toBe("opencode-go/deepseek-v4.1-flash");
+
+    await page.goto(`/agents/${created.id}`);
+    await expect(page.getByLabel("Runtime", { exact: true })).toHaveValue("opencode2");
+    await page.getByLabel("Model", { exact: true }).fill("opencode-go/glm-5.3-flash");
+    await page.getByRole("button", { name: "Save changes" }).click();
+    await expect(page).toHaveURL(/\/agents$/);
+
+    const edited = (
+      (await request.get("/api/agents").then((r) => r.json())) as typeof agents
+    ).find((a) => a.id === created.id)!;
+    expect(edited.runtime).toBe("opencode2");
+    expect(edited.model).toBe("opencode-go/glm-5.3-flash");
+  });
+
+  test("an opencode v2 agent is refused a harness without .opencode/ or AGENTS.md", async ({ request }) => {
+    // A folder with only CLAUDE.md is a Claude Code harness, not an opencode one.
+    const dir = mkdtempSync(join(tmpdir(), "kompanion-e2e-claude-only-"));
+    writeFileSync(join(dir, "CLAUDE.md"), "claude only");
+
+    const res = await request.post("/api/agents", {
+      data: { title: `E2E opencode2 refused ${Date.now()}`, harnessPath: dir, runtime: "opencode2" },
+    });
+    expect(res.status()).toBe(400);
+    expect(await res.text()).toContain("isn't a valid opencode harness");
   });
 
   test("editing an agent happens on its own /agents/:agentId page", async ({ page, request }) => {
