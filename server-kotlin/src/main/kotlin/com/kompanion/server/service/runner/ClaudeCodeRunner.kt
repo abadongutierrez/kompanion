@@ -22,10 +22,13 @@ class ClaudeCodeRunner(
 
     // Subscription logins emit rate_limit_event lines; feeding them to the
     // usage cache keeps the sidebar readout current during a run without
-    // another call to the usage endpoint.
+    // another call to the usage endpoint. The readout is optional, so nothing
+    // here, parsing included, may fail the run.
     override fun observe(event: Map<String, Any?>) {
-        val window = parseRateLimitEvent(event) ?: return
-        runCatching { recordRateLimit.handle(window) }
+        runCatching {
+            val window = parseRateLimitEvent(event) ?: return
+            recordRateLimit.handle(window)
+        }
     }
 
     override fun validateHarness(harnessDir: File): String? =

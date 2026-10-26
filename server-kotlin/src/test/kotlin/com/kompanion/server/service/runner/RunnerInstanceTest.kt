@@ -106,6 +106,19 @@ class RunnerInstanceTest {
         assertTrue(File(s.cwd, ".claude/hooks/exec_in_folder.py").exists())
     }
 
+    @Test
+    fun `claude code never lets a usage event fail the run`(@TempDir tmp: File) {
+        val s = Setup(tmp)
+        val runner = ClaudeCodeRunner(s.enforcement) { error("cache is broken") }
+
+        runner.observe(
+            mapOf(
+                "type" to "rate_limit_event",
+                "rate_limit_info" to mapOf("rateLimitType" to "five_hour", "resetsAt" to Long.MAX_VALUE),
+            ),
+        )
+    }
+
     // -- opencode -------------------------------------------------------
 
     @Test

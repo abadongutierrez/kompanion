@@ -88,9 +88,10 @@ private fun Map<String, Any?>.firstOf(vararg keys: String): Any? =
 
 private fun percentOf(value: Any?): Double? = (value as? Number)?.toDouble()
 
-// ISO-8601 from the endpoint, epoch seconds from stream-json.
+// ISO-8601 from the endpoint, epoch seconds from stream-json. An epoch value
+// outside Instant's range reads as unknown, like an unparseable string.
 private fun instantOf(value: Any?): Instant? = when (value) {
-    is Number -> Instant.ofEpochSecond(value.toLong())
+    is Number -> runCatching { Instant.ofEpochSecond(value.toLong()) }.getOrNull()
     is String -> runCatching { Instant.parse(value) }.getOrNull()
         ?: runCatching { java.time.OffsetDateTime.parse(value).toInstant() }.getOrNull()
     else -> null

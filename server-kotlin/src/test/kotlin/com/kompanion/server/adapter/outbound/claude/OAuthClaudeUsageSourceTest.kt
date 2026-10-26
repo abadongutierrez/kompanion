@@ -117,6 +117,19 @@ class OAuthClaudeUsageSourceTest {
         assertNull(parseRateLimitEvent(json("""{"type":"assistant"}""")))
     }
 
+    @Test
+    fun `an out-of-range epoch reset time reads as unknown instead of throwing`() {
+        val window = parseRateLimitEvent(
+            json(
+                """{"type":"rate_limit_event","rate_limit_info":{"status":"allowed",
+                    "resetsAt":${Long.MAX_VALUE},"rateLimitType":"five_hour"}}""",
+            ),
+        )!!
+
+        assertNull(window.resetsAt)
+        assertEquals("allowed", window.status)
+    }
+
     // -- the source -------------------------------------------------------
 
     private fun credentials(dir: File, token: String?): File = File(dir, ".credentials.json").apply {

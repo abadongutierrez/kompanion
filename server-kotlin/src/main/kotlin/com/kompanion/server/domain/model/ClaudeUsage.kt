@@ -31,10 +31,12 @@ data class ClaudeUsage(
 ) {
     // A run's rate_limit_event is fresher than the last endpoint read but
     // often thinner, so it updates a window rather than replacing it: a
-    // missing percent or reset time keeps the value already known.
+    // missing percent or reset time keeps the value already known. Only while
+    // the reset boundary is the same, though: a new one means the window
+    // reset, and the old percent no longer says anything about it.
     fun withWindow(update: UsageWindow, at: Instant): ClaudeUsage {
         val existing = windows.firstOrNull { it.kind == update.kind }
-        val merged = if (existing == null) update else UsageWindow(
+        val merged = if (existing == null || !sameResetBoundary(existing.resetsAt, update.resetsAt)) update else UsageWindow(
             kind = update.kind,
             utilization = update.utilization ?: existing.utilization,
             resetsAt = update.resetsAt ?: existing.resetsAt,
@@ -48,6 +50,12 @@ data class ClaudeUsage(
         fun unavailable(reason: String, at: Instant) = ClaudeUsage(false, reason, emptyList(), at)
     }
 }
+
+// Endpoint reset times carry fractions of a second and event ones are whole
+// epoch seconds, so they are compared at second precision. Unknown on either
+// side counts as the same: there is no sign the window reset.
+fun sameResetBoundary(a: Instant?, b: Instant?): Boolean =
+    a == null || b == null || a.epochSecond == b.epochSecond
 
 // Session window first, then the weekly ones — the order the sidebar shows.
 private fun windowOrder(kind: String): Int = when (kind) {
