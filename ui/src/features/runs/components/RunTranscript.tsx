@@ -6,6 +6,7 @@ import {
   type RunEventRaw,
   type TranscriptState,
 } from "@kompanion/shared";
+import { Markdown } from "@/shared/ui/index.js";
 import { runEventsUrl } from "../hooks.js";
 
 // Same component serves a live run and a replay of a finished one: the SSE
@@ -135,16 +136,18 @@ export function RunTranscript({
               <summary className="cursor-pointer italic">
                 thinking{!block.done && "…"}
               </summary>
-              <p className="mt-1 whitespace-pre-wrap pl-2 italic">{block.text}</p>
+              <Markdown className="mt-1 pl-2 italic">{block.text}</Markdown>
             </details>
           );
         }
         if (block.kind === "text") {
           return (
-            <p key={i} className="whitespace-pre-wrap text-neutral-800">
-              {block.text}
+            // Rendered as markdown even while it streams in: a half-written
+            // list or code fence just shows what has arrived so far.
+            <div key={i} className="text-neutral-800">
+              <Markdown>{block.text}</Markdown>
               {!block.done && <span className="animate-pulse">▍</span>}
-            </p>
+            </div>
           );
         }
         if (block.kind === "tool_use") {
@@ -185,15 +188,19 @@ export function RunTranscript({
         }
         if (block.kind === "result") {
           return (
-            <p
+            <div
               key={i}
-              className={`rounded px-2 py-1 font-medium ${
+              className={`rounded px-2 py-1 ${
                 block.ok ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"
               }`}
             >
-              {block.ok ? "✅" : "❌"} {block.summary ?? "(no summary)"}
-              {block.costUsd != null && ` — $${block.costUsd.toFixed(4)}`}
-            </p>
+              <p className="font-medium">
+                {block.ok ? "✅ Done" : "❌ Failed"}
+                {block.costUsd != null && ` — $${block.costUsd.toFixed(4)}`}
+              </p>
+              {/* The summary is the agent's final message — usually markdown. */}
+              <Markdown className="mt-1">{block.summary ?? "(no summary)"}</Markdown>
+            </div>
           );
         }
         return null;
