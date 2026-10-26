@@ -201,4 +201,35 @@ test.describe("markdown rendering (QA)", () => {
     await expect(code.locator("br")).toHaveCount(0);
     expect(await code.textContent()).toContain("alpha\nbeta");
   });
+
+  // PR review fixes: renderer classes merge with GFM's own, footnote links
+  // stay in the tab, and footnote ids don't collide between comments.
+  test("task lists, language fences and footnotes", async ({ page, request }) => {
+    const taskId = await makeTask(request, `QA md footnotes ${Date.now()}`);
+    await addComment(request, taskId, "- [ ] todo\n- [x] done\n\n```ts\nconst y = 2;\n```");
+    await addComment(request, taskId, "First note[^1]\n\n[^1]: note one");
+    await addComment(request, taskId, "Second note[^1]\n\n[^1]: note two");
+
+    await page.goto(`/projects/${projectId}/tasks/${taskId}`);
+    await page.getByRole("tab", { name: /^Comments/ }).click();
+
+    const taskList = page.locator("ul.contains-task-list");
+    await expect(taskList).toBeVisible();
+    await expect(taskList).toHaveClass(/pl-5/);
+    const fence = page.locator("pre code.language-ts");
+    await expect(fence).toBeVisible();
+    await expect(fence).toHaveClass(/font-mono/);
+
+    const refs = page.locator("a[data-footnote-ref]");
+    await expect(refs).toHaveCount(2);
+    const hrefs = await refs.evaluateAll((els) => els.map((el) => el.getAttribute("href")));
+    expect(new Set(hrefs).size).toBe(2);
+    for (const ref of await refs.all()) {
+      expect(await ref.getAttribute("target")).toBeNull();
+    }
+    // Every footnote href points at an element that exists on the page.
+    for (const href of hrefs) {
+      await expect(page.locator(`[id="${href!.slice(1)}"]`)).toHaveCount(1);
+    }
+  });
 });
