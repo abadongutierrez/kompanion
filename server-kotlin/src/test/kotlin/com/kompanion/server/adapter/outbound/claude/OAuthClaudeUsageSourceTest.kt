@@ -61,6 +61,34 @@ class OAuthClaudeUsageSourceTest {
         assertEquals(12.0, windows[1].utilization)
     }
 
+    @Test
+    fun `limits kinds are mapped onto the flat window names`() {
+        val windows = parseUsageResponse(
+            json(
+                """{"five_hour":{"utilization":90,"resets_at":null},
+                    "limits":[{"kind":"session","percent":97},
+                              {"kind":"weekly_all","percent":25},
+                              {"kind":"weekly_opus","percent":5}]}""",
+            ),
+        )
+
+        assertEquals(listOf("five_hour", "seven_day", "seven_day_opus"), windows.map { it.kind })
+        assertEquals(listOf(97.0, 25.0, 5.0), windows.map { it.utilization })
+    }
+
+    @Test
+    fun `flat keys that are not windows, or have no utilization, are skipped`() {
+        val windows = parseUsageResponse(
+            json(
+                """{"seven_day":{"utilization":25},
+                    "seven_day_opus":{"utilization":null},
+                    "extra_usage":{"is_enabled":true,"utilization":40}}""",
+            ),
+        )
+
+        assertEquals(listOf("seven_day"), windows.map { it.kind })
+    }
+
     // -- parseRateLimitEvent --------------------------------------------
 
     @Test

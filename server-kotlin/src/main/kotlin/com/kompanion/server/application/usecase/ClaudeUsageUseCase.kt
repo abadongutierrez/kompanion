@@ -35,12 +35,14 @@ class ClaudeUsageUseCase(
         return fresh
     }
 
-    // Merges into what is cached and restarts its TTL: the event is newer
-    // than anything the endpoint told us.
+    // Merges into what is cached but keeps its TTL: an event only speaks for
+    // one window, so a long run sending them must not stop the endpoint from
+    // being read again for the others. With nothing cached the event starts
+    // the readout, and its TTL.
     @Synchronized
     override fun handle(window: UsageWindow) {
-        val now = clock.instant()
-        cached = (cached ?: ClaudeUsage(true, null, emptyList(), now)).withWindow(window, now)
+        val current = cached ?: ClaudeUsage(true, null, emptyList(), clock.instant())
+        cached = current.withWindow(window, current.fetchedAt)
     }
 
     companion object {

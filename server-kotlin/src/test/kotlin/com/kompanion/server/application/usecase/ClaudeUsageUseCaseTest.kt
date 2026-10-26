@@ -76,7 +76,6 @@ class ClaudeUsageUseCaseTest {
 
         clock.now = t0.plusSeconds(50)
         useCase.handle(UsageWindow("five_hour", null, null, status = "allowed_warning"))
-        clock.now = t0.plusSeconds(100) // past the original TTL, inside the event's
         val result = useCase.handle()
 
         assertEquals(1, source.calls)
@@ -85,6 +84,21 @@ class ClaudeUsageUseCaseTest {
         assertEquals(resets, fiveHour.resetsAt)
         assertEquals("allowed_warning", fiveHour.status)
         assertEquals(listOf("five_hour", "seven_day"), result.windows.map { it.kind })
+    }
+
+    @Test
+    fun `rate limit events do not keep the cache from expiring`() {
+        val clock = MovableClock(t0)
+        val source = CountingSource(UsageReading.Windows(listOf(UsageWindow("seven_day", 31.0, null))))
+        val useCase = ClaudeUsageUseCase(source, clock)
+        useCase.handle()
+
+        clock.now = t0.plusSeconds(50)
+        useCase.handle(UsageWindow("five_hour", 80.0, resets, "allowed"))
+        clock.now = t0.plusSeconds(61)
+        useCase.handle()
+
+        assertEquals(2, source.calls)
     }
 
     @Test
