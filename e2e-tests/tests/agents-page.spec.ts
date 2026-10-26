@@ -93,4 +93,50 @@ test.describe("agent pages", () => {
     await page.goto("/agents/00000000-0000-0000-0000-000000000000");
     await expect(page.getByText("Agent not found.")).toBeVisible();
   });
+
+  test("QA: the view page shows the agent's skills locked and never writes", async ({ page, request }) => {
+    const skills: { id: string; slug: string }[] = await request
+      .get("/api/skills")
+      .then((r) => r.json());
+    test.skip(skills.length === 0, "needs at least one skill in the library");
+    const skill = skills[0];
+
+    const created: { id: string; title: string } = await request
+      .post("/api/agents", {
+        data: { title: `E2E QA View ${Date.now()}`, harnessPath, model: "qa-model" },
+      })
+      .then((r) => r.json());
+    await request.put(`/api/agents/${created.id}/skills`, { data: { skillIds: [skill.id] } });
+
+    const writes: string[] = [];
+    page.on("request", (r) => {
+      if (r.url().includes("/api/") && r.method() !== "GET") writes.push(`${r.method()} ${r.url()}`);
+    });
+
+    await page.goto(`/agents/${created.id}/view`);
+    await expect(page.getByLabel("Model", { exact: true })).toHaveValue("qa-model");
+    const box = page.getByRole("checkbox", { name: skill.slug, exact: true });
+    await expect(box).toBeChecked();
+    await expect(box).toBeDisabled();
+    for (const cb of await page.getByRole("checkbox").all()) await expect(cb).toBeDisabled();
+
+    // Clicking the skill's label and pressing Enter must not change or submit anything.
+    await page.getByText(skill.slug, { exact: true }).click({ force: true });
+    await expect(box).toBeChecked();
+    await page.keyboard.press("Enter");
+    await expect(page).toHaveURL(new RegExp(`/agents/${created.id}/view$`));
+    expect(writes).toEqual([]);
+
+    // Leaving View for Edit gives back editable fields.
+    await page.getByRole("link", { name: "Edit", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Edit agent" })).toBeVisible();
+    await expect(page.getByLabel("Agent title")).toBeEnabled();
+    await expect(page.getByRole("checkbox", { name: skill.slug, exact: true })).toBeEnabled();
+  });
+
+  test("QA: an unknown agent id on the view page says so", async ({ page }) => {
+    await page.goto("/agents/00000000-0000-0000-0000-000000000000/view");
+    await expect(page.getByText("Agent not found.")).toBeVisible();
+    await expect(page.getByRole("link", { name: "Edit", exact: true })).toHaveCount(0);
+  });
 });
