@@ -62,11 +62,9 @@ points inward; the runtime call is inverted.
 
 ## Package layout
 
-One Gradle module. Boundaries are enforced by package structure and review,
-not by build wiring — the module is small enough that splitting it would
-cost more than it buys. If drift becomes a problem, the answer is an
-ArchUnit/Konsist test (see [Enforcement](#enforcement)), not a multi-module
-split.
+One Gradle module. Boundaries are enforced by package structure and an
+ArchUnit test (see [Enforcement](#enforcement)), not by build wiring — the
+module is small enough that splitting it would cost more than it buys.
 
 ```
 com.kompanion.server
@@ -319,14 +317,28 @@ migrated is not.
 
 ## Enforcement
 
-Reviewed by hand today. The dependency rule is a one-line check, so if it
-starts slipping the fix is a Konsist or ArchUnit test in `src/test/` that
-fails the build when `domain` or `application` imports
-`org.springframework.web`, `org.springframework.data`, `java.sql`, or
-`com.kompanion.server.adapter`. Add it when it earns its keep, not before —
-which means once the migration is finished, since a half-migrated tree would
-fail such a test on day one.
+`src/test/kotlin/com/kompanion/server/ArchitectureTest.kt` checks the
+dependency rule with ArchUnit, so `./gradlew build` fails when it slips. It
+covers the hexagonal packages only — the legacy `controller` / `service` /
+`repository` / `entity` / `dto` packages are held to nothing but "don't
+depend on `adapter`", because a half-migrated tree would fail anything
+stricter. The rules:
 
-Until then the same check runs as a grep over `domain/` and `application/`.
-The only sanctioned exception is `@Service` / `@Transactional` on use-case
-implementations.
+- `domain` depends on itself and the JDK/Kotlin basics (`java.lang`,
+  `java.util`, `java.time`, `java.math`, `kotlin`) and nothing else.
+- `application` depends on `domain`, itself, those basics, and Spring's
+  `stereotype` and `transaction.annotation` packages — the `@Service` /
+  `@Transactional` exception, and no more.
+- Nothing outside `adapter` and `config` depends on `adapter`.
+- Inbound and outbound adapters don't depend on each other, and the
+  `adapter.*.*` slices are free of cycles.
+- Spring Data, `spring-jdbc` and `java.sql` appear only in
+  `adapter/outbound/persistence/` (within the hexagonal packages).
+- Spring web / HTTP types never appear in `domain`, `application`, or an
+  outbound adapter.
+- `@Transactional` sits on use cases only. `JdbcRunInstances` is the one
+  named exception, because its caller is still the legacy `RunTaskService`;
+  it goes when `RunTaskUseCase` lands.
+
+When a slice moves, tighten the test with it — an exception that is no
+longer needed should be removed from the test, not left there.
