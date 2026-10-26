@@ -189,4 +189,40 @@ class ClaudeUsageUseCaseTest {
         assertEquals(88.0, fiveHour.utilization)
         assertEquals("allowed_warning", fiveHour.status)
     }
+
+    // QA (round 3): the endpoint's reset time has fractions of a second, a
+    // stream-json event's is whole epoch seconds. The same window must match.
+    @Test
+    fun `an event status survives refresh against the endpoint's fractional reset time`() {
+        val clock = MovableClock(t0)
+        val endpointResets = Instant.parse("2026-10-26T14:29:59.941140Z")
+        val source = CountingSource(UsageReading.Windows(listOf(UsageWindow("five_hour", 97.0, endpointResets))))
+        val useCase = ClaudeUsageUseCase(source, clock)
+        useCase.handle()
+
+        useCase.handle(UsageWindow("five_hour", null, Instant.ofEpochSecond(endpointResets.epochSecond), "rejected"))
+        assertEquals(97.0, useCase.handle().windows.single().utilization)
+
+        clock.now = t0.plusSeconds(61)
+        val fiveHour = useCase.handle().windows.single()
+        assertEquals(2, source.calls)
+        assertEquals("rejected", fiveHour.status)
+        assertEquals(97.0, fiveHour.utilization)
+    }
+
+    // QA (round 3): only the latest event per window counts, so a later
+    // "allowed" clears an earlier "rejected" across a refresh.
+    @Test
+    fun `a later event status replaces an earlier one across a refresh`() {
+        val clock = MovableClock(t0)
+        val source = CountingSource(UsageReading.Windows(listOf(UsageWindow("five_hour", 97.0, resets))))
+        val useCase = ClaudeUsageUseCase(source, clock)
+        useCase.handle()
+        useCase.handle(UsageWindow("five_hour", null, resets, "rejected"))
+        clock.now = t0.plusSeconds(10)
+        useCase.handle(UsageWindow("five_hour", null, resets, "allowed"))
+
+        clock.now = t0.plusSeconds(61)
+        assertEquals("allowed", useCase.handle().windows.single().status)
+    }
 }
