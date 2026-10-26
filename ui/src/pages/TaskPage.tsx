@@ -2,7 +2,8 @@ import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ProjectChrome } from "@/app/layouts/ProjectChrome.js";
 import { useCurrentTeamId } from "@/features/teams/index.js";
-import { useTask } from "@/features/tasks/index.js";
+import { CommentsThread, useTask, useTaskComments } from "@/features/tasks/index.js";
+import { useTeamAgents } from "@/features/agents/index.js";
 import { RunRow, useTaskRuns } from "@/features/runs/index.js";
 
 // The board card's "Expand" used to open a modal; it now links here, so this
@@ -101,30 +102,135 @@ export function TaskPage() {
             </p>
           )}
 
-          {teamId && runs.data && runs.data.length > 0 ? (
-            // The list scrolls, not the transcript's container — with one row
-            // per run the headers alone can outgrow the viewport, so a
-            // flex-1 transcript would squeeze them out. The open transcript
-            // gets a bounded height and scrolls internally instead.
-            <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
-              {runs.data.map((r) => (
-                <RunRow
-                  key={r.id}
-                  run={r}
-                  teamId={teamId}
-                  taskId={task.id}
-                  isOpen={r.id === openRunId}
-                  onToggle={() => toggleRun(r.id)}
-                />
-              ))}
-            </div>
-          ) : (
-            runs.data && (
-              <p className="text-sm text-neutral-400">This task has not been run yet.</p>
-            )
+          {teamId && (
+            <TaskTabs teamId={teamId} taskId={task.id} runCount={runs.data?.length}>
+              {runs.data && runs.data.length > 0 ? (
+                // The list scrolls, not the transcript's container — with one row
+                // per run the headers alone can outgrow the viewport, so a
+                // flex-1 transcript would squeeze them out. The open transcript
+                // gets a bounded height and scrolls internally instead.
+                <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
+                  {runs.data.map((r) => (
+                    <RunRow
+                      key={r.id}
+                      run={r}
+                      teamId={teamId}
+                      taskId={task.id}
+                      isOpen={r.id === openRunId}
+                      onToggle={() => toggleRun(r.id)}
+                    />
+                  ))}
+                </div>
+              ) : (
+                runs.data && (
+                  <p className="text-sm text-neutral-400">This task has not been run yet.</p>
+                )
+              )}
+            </TaskTabs>
           )}
         </>
       )}
     </div>,
+  );
+}
+
+type Tab = "runs" | "comments";
+
+// Runs and comments share the space under the description, one at a time.
+// Runs is the default so the page still opens on what the agents did.
+function TaskTabs({
+  teamId,
+  taskId,
+  runCount,
+  children,
+}: {
+  teamId: string;
+  taskId: string;
+  runCount: number | undefined;
+  children: React.ReactNode;
+}) {
+  const [tab, setTab] = useState<Tab>("runs");
+  const comments = useTaskComments(teamId, taskId);
+  const agents = useTeamAgents(teamId);
+
+  const tabs: { id: Tab; label: string; count: number | undefined }[] = [
+    { id: "runs", label: "Runs", count: runCount },
+    { id: "comments", label: "Comments", count: comments.data?.length },
+  ];
+
+  // WAI-ARIA tabs pattern: only the selected tab is in the Tab sequence
+  // (roving tabIndex); arrow keys, Home and End move between tabs and
+  // select them as they go.
+  const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const i = tabs.findIndex((t) => t.id === tab);
+    const next =
+      e.key === "ArrowRight"
+        ? (i + 1) % tabs.length
+        : e.key === "ArrowLeft"
+          ? (i - 1 + tabs.length) % tabs.length
+          : e.key === "Home"
+            ? 0
+            : e.key === "End"
+              ? tabs.length - 1
+              : null;
+    if (next === null) return;
+    e.preventDefault();
+    const id = tabs[next]!.id;
+    setTab(id);
+    document.getElementById(`task-tab-${id}`)?.focus();
+  };
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-2">
+      <div
+        role="tablist"
+        className="flex shrink-0 gap-1 border-b border-neutral-200"
+        onKeyDown={onKeyDown}
+      >
+        {tabs.map((t) => (
+          <button
+            key={t.id}
+            id={`task-tab-${t.id}`}
+            role="tab"
+            aria-selected={tab === t.id}
+            aria-controls={`task-tabpanel-${t.id}`}
+            tabIndex={tab === t.id ? 0 : -1}
+            className={
+              "-mb-px border-b-2 px-3 py-1 text-sm " +
+              (tab === t.id
+                ? "border-neutral-900 font-medium text-neutral-900"
+                : "border-transparent text-neutral-500 hover:text-neutral-700")
+            }
+            onClick={() => setTab(t.id)}
+          >
+            {t.label}
+            {t.count ? ` (${t.count})` : ""}
+          </button>
+        ))}
+      </div>
+
+      {/* Both panels stay mounted and the inactive one is only hidden, so a
+          comment draft survives a trip to the Runs tab and back. */}
+      <div
+        id="task-tabpanel-runs"
+        role="tabpanel"
+        aria-labelledby="task-tab-runs"
+        hidden={tab !== "runs"}
+        className="flex min-h-0 flex-1 flex-col"
+      >
+        {children}
+      </div>
+      <div
+        id="task-tabpanel-comments"
+        role="tabpanel"
+        aria-labelledby="task-tab-comments"
+        hidden={tab !== "comments"}
+        className="flex min-h-0 flex-1 flex-col"
+      >
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <CommentsThread teamId={teamId} taskId={taskId} agents={agents.data ?? []} />
+        </div>
+      </div>
+    </div>
   );
 }
