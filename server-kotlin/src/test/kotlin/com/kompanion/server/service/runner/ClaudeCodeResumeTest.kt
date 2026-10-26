@@ -45,7 +45,7 @@ class ClaudeCodeResumeTest {
 
     @Test
     fun `a resumed run passes --resume with the session id and the follow-up as the prompt`(@TempDir tmp: File) {
-        val args = runner.buildCommand(ctx(tmp, "What was my secret word?", ResumeContext("sess-1", null)))
+        val args = runner.buildCommand(ctx(tmp, "What was my secret word?", ResumeContext("sess-1", emptyList())))
 
         assertEquals("What was my secret word?", args[args.indexOf("-p") + 1])
         assertEquals("sess-1", args[args.indexOf("--resume") + 1])
@@ -81,10 +81,33 @@ class ClaudeCodeResumeTest {
     fun `a resumed run's cost is what it added to the session, so the budget counts it once`(@TempDir tmp: File) {
         val previous = result(0.00203532)
         val interpreted = runner.interpret(
-            ctx(tmp, "follow-up", ResumeContext("s", previous)),
+            ctx(tmp, "follow-up", ResumeContext("s", listOf(previous))),
             listOf(result(0.00348919)), 0, "",
         )
         assertEquals(0, BigDecimal("0.00145387").compareTo(interpreted.costUsd))
+    }
+
+    // Measured: run 1 reported 0.00230381, its resume 0.00254244, a second
+    // resume failed (session file missing) without a total, and resuming that
+    // failed run reported 0.00275144. The baseline is the newest total, not
+    // the failed run's missing one, or runs 1-2 would count twice.
+    @Test
+    fun `a resume after a run that reported no total takes the newest earlier total`(@TempDir tmp: File) {
+        val failed = mapOf("error" to "Claude Code session was not found")
+        val interpreted = runner.interpret(
+            ctx(tmp, "follow-up", ResumeContext("s", listOf(failed, result(0.00254244), result(0.00230381)))),
+            listOf(result(0.00275144)), 0, "",
+        )
+        assertEquals(0, BigDecimal("0.00020900").compareTo(interpreted.costUsd))
+    }
+
+    @Test
+    fun `a resume with no earlier total takes the reported figure`(@TempDir tmp: File) {
+        val interpreted = runner.interpret(
+            ctx(tmp, "follow-up", ResumeContext("s", listOf(null, mapOf("error" to "timed out")))),
+            listOf(result(0.3)), 0, "",
+        )
+        assertEquals(0, BigDecimal("0.3").compareTo(interpreted.costUsd))
     }
 
     @Test
@@ -96,7 +119,7 @@ class ClaudeCodeResumeTest {
     @Test
     fun `a total below the previous one is taken as this run's own`(@TempDir tmp: File) {
         val interpreted = runner.interpret(
-            ctx(tmp, "p", ResumeContext("s", result(0.9))),
+            ctx(tmp, "p", ResumeContext("s", listOf(result(0.9)))),
             listOf(result(0.2)), 0, "",
         )
         assertEquals(0, BigDecimal("0.2").compareTo(interpreted.costUsd))

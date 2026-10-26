@@ -116,7 +116,7 @@ class ClaudeCodeRunner(
     ): Interpretation {
         val base = interpret(events, exitCode, stderr)
         val resume = ctx.resume ?: return base
-        return base.copy(costUsd = base.costUsd?.let { costOfThisRun(it, resume.previousRawOutput) })
+        return base.copy(costUsd = base.costUsd?.let { costOfThisRun(it, resume.previousRawOutputs) })
     }
 
     // Measured against Claude Code: on --resume, total_cost_usd is the
@@ -124,12 +124,18 @@ class ClaudeCodeRunner(
     // $0.0015 on a session that had cost $0.0020 reported $0.0035. Stored as
     // is, the earlier turns would count toward the budget twice. The previous
     // run's raw result holds the total as of its end, so the difference is
-    // what this run spent. If the CLI did not carry the total over (it
-    // reports less than the previous total), the figure already is this run's.
+    // what this run spent. The newest earlier run that reported a total is
+    // the baseline, not just the run being resumed: a run that failed, timed
+    // out or was killed reports none, and falling back to the full total
+    // then would count every turn before it again. Whatever such a run spent
+    // unreported lands in this run's difference, so it too counts once. If
+    // the CLI did not carry the total over (it reports less than the
+    // previous total), the figure already is this run's.
     @Suppress("UNCHECKED_CAST")
-    private fun costOfThisRun(reported: BigDecimal, previousRawOutput: Any?): BigDecimal {
-        val previous = ((previousRawOutput as? Map<String, Any?>)?.get("total_cost_usd") as? Number)
-            ?.let { BigDecimal.valueOf(it.toDouble()) }
+    private fun costOfThisRun(reported: BigDecimal, previousRawOutputs: List<Any?>): BigDecimal {
+        val previous = previousRawOutputs.firstNotNullOfOrNull {
+            ((it as? Map<String, Any?>)?.get("total_cost_usd") as? Number)
+        }?.let { BigDecimal.valueOf(it.toDouble()) }
             ?: return reported
         return if (reported >= previous) reported - previous else reported
     }

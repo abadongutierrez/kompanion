@@ -35,13 +35,13 @@ class RunNotFoundException : RuntimeException("run not found")
 class ResumeRefusedException(reason: String) : RuntimeException(reason)
 
 // What a resumed run continues from: the run it resumes, that run's CLI
-// session, the operator's follow-up, and the run's raw output (see
-// ResumeContext).
+// session, the operator's follow-up, and the raw output of every earlier run
+// of that session, newest first (see ResumeContext).
 private data class ResumeSource(
     val fromRunId: UUID,
     val sessionId: String,
     val followUp: String,
-    val previousRawOutput: Any?,
+    val previousRawOutputs: List<Any?>,
 )
 
 private data class RunResult(
@@ -483,12 +483,11 @@ class RunTaskService(
         val instanceHash: String?,
         val sessionId: String?,
         val sessionStore: String?,
-        val rawOutput: Any?,
     )
 
     private fun findRun(taskId: UUID, runId: UUID): ResumableRun? = jdbc.query(
         """
-        select id, status, agent_id, runtime, instance_hash, session_id, session_store, raw_output
+        select id, status, agent_id, runtime, instance_hash, session_id, session_store
         from task_runs where id = ? and task_id = ?
         """.trimIndent(),
         { rs, _ ->
@@ -500,7 +499,6 @@ class RunTaskService(
                 instanceHash = rs.getString("instance_hash"),
                 sessionId = rs.getString("session_id"),
                 sessionStore = rs.getString("session_store"),
-                rawOutput = rs.getString("raw_output")?.let { objectMapper.readValue<Any>(it) },
             )
         },
         runId, taskId,
@@ -558,9 +556,18 @@ class RunTaskService(
         refusalFor(task, agent, run)?.let { throw ResumeRefusedException(it) }
         return startRun(
             task, agent!!, mentionContext = null,
-            resume = ResumeSource(run.id, run.sessionId!!, message.trim(), run.rawOutput),
+            resume = ResumeSource(run.id, run.sessionId!!, message.trim(), sessionRawOutputs(task.id, run.sessionId)),
         )
     }
+
+    // Every earlier run of one CLI session, newest first. A session never
+    // spans tasks, and only the newest run is ever resumed, so this is the
+    // session's whole history in order.
+    private fun sessionRawOutputs(taskId: UUID, sessionId: String): List<Any?> = jdbc.query(
+        "select raw_output from task_runs where task_id = ? and session_id = ? order by created_at desc",
+        { rs, _ -> rs.getString("raw_output")?.let { objectMapper.readValue<Any>(it) } },
+        taskId, sessionId,
+    )
 
     private fun startRun(task: Task, agent: Agent, mentionContext: String?, resume: ResumeSource?): TaskRunResponse {
         val taskId = task.id!!
@@ -684,7 +691,7 @@ class RunTaskService(
                     // Only meaningful when the team has a budget; the gate
                     // above already refused if the remainder were negative.
                     remainingBudgetUsd = spend.monthlyBudgetUsd?.minus(spend.spendUsd),
-                    resume = resume?.let { ResumeContext(it.sessionId, it.previousRawOutput) },
+                    resume = resume?.let { ResumeContext(it.sessionId, it.previousRawOutputs) },
                 )
 
                 // A session the CLI can't find would otherwise start a blank

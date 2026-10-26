@@ -46,10 +46,12 @@ data class RunContext(
 data class ResumeContext(
     // The CLI's own session id, as recorded on the earlier run.
     val sessionId: String,
-    // The earlier run's raw_output, as the runner itself produced it. A CLI
-    // that reports a session-cumulative cost (Claude Code does) needs the
-    // last reported total to work out what this run alone spent.
-    val previousRawOutput: Any?,
+    // The raw_output of every earlier run of this session, newest first, as
+    // the runner itself produced them. A CLI that reports a session-cumulative
+    // cost (Claude Code does) needs the last reported total to work out what
+    // this run alone spent — and the run being resumed may not have one (it
+    // failed before the CLI reported, timed out, or was killed).
+    val previousRawOutputs: List<Any?>,
 )
 
 // Kept apart rather than summed: cache reads bill at 0.1x input and cache
