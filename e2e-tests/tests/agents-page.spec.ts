@@ -157,6 +157,63 @@ test.describe("agent pages", () => {
     await expect(page.getByRole("checkbox", { name: skill.slug, exact: true })).toBeEnabled();
   });
 
+  test("QA: read-only view fields take focus in order, ignore typing and Enter, and never write", async ({ page, request }) => {
+    const created: { id: string; title: string } = await request
+      .post("/api/agents", {
+        data: { title: `E2E QA Keys ${Date.now()}`, harnessPath, model: "qa-model" },
+      })
+      .then((r) => r.json());
+
+    const writes: string[] = [];
+    page.on("request", (r) => {
+      if (r.url().includes("/api/") && r.method() !== "GET") writes.push(`${r.method()} ${r.url()}`);
+    });
+
+    await page.goto(`/agents/${created.id}/view`);
+    await expect(page.getByLabel("Agent title")).toHaveValue(created.title);
+
+    // Tab walks the read-only text fields in form order; the disabled
+    // runtime select is skipped.
+    await page.getByLabel("Agent title").focus();
+    for (const label of ["Slug", "Harness folder path", "Model", "Harness template"]) {
+      await page.keyboard.press("Tab");
+      await expect(page.getByLabel(label, { exact: true })).toBeFocused();
+    }
+
+    // Typing into a read-only field changes nothing; Enter submits the form,
+    // which must stay a no-op in View.
+    await page.getByLabel("Agent title").focus();
+    await page.keyboard.type("xyz");
+    await expect(page.getByLabel("Agent title")).toHaveValue(created.title);
+    await page.keyboard.press("Enter");
+    await page.getByLabel("Model", { exact: true }).focus();
+    await page.keyboard.press("Enter");
+    await expect(page).toHaveURL(new RegExp(`/agents/${created.id}/view$`));
+    await expect(page.getByRole("button", { name: "Save changes" })).toHaveCount(0);
+    expect(writes).toEqual([]);
+  });
+
+  test("QA: View → Edit (unsaved) → Back → Edit starts again from the saved values", async ({ page, request }) => {
+    const created: { id: string; title: string } = await request
+      .post("/api/agents", {
+        data: { title: `E2E QA Reedit ${Date.now()}`, harnessPath, model: "saved-model" },
+      })
+      .then((r) => r.json());
+
+    await page.goto(`/agents/${created.id}/view`);
+    await page.getByRole("link", { name: "Edit", exact: true }).click();
+    await page.getByLabel("Agent title").fill("draft title");
+    await page.getByLabel("Model", { exact: true }).fill("draft-model");
+
+    await page.goBack();
+    await expect(page.getByLabel("Model", { exact: true })).toHaveValue("saved-model");
+    await page.getByRole("link", { name: "Edit", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Edit agent" })).toBeVisible();
+    await expect(page.getByLabel("Agent title")).toHaveValue(created.title);
+    await expect(page.getByLabel("Model", { exact: true })).toHaveValue("saved-model");
+    await expect(page.getByLabel("Agent title")).toBeEditable();
+  });
+
   test("QA: an unknown agent id on the view page says so", async ({ page }) => {
     await page.goto("/agents/00000000-0000-0000-0000-000000000000/view");
     await expect(page.getByText("Agent not found.")).toBeVisible();
