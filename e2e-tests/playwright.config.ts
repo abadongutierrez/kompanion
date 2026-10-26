@@ -4,6 +4,12 @@ import { defineConfig, devices } from "@playwright/test";
 // to (see ui/vite.config.ts's /api proxy target — server-kotlin on :3200).
 // It assumes Postgres and that backend are already running (see README.md);
 // it only takes responsibility for the UI dev server itself.
+//
+// UI_PORT and API_URL let a worktree test its own UI and server next to the
+// ones already on :5173 and :3200.
+const uiPort = process.env.UI_PORT ?? "5173";
+const baseURL = `http://localhost:${uiPort}`;
+
 export default defineConfig({
   testDir: "./tests",
   fullyParallel: false,
@@ -12,7 +18,7 @@ export default defineConfig({
   workers: 1,
   reporter: [["list"]],
   use: {
-    baseURL: "http://localhost:5173",
+    baseURL,
     trace: "on-first-retry",
     screenshot: "only-on-failure",
   },
@@ -23,9 +29,9 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: "pnpm --filter @kompanion/ui dev",
+    command: `pnpm --filter @kompanion/ui dev --port ${uiPort} --strictPort`,
     cwd: "..",
-    url: "http://localhost:5173",
+    url: baseURL,
     reuseExistingServer: true,
     timeout: 30_000,
   },

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { AGENT_RUNTIME_LABEL, type TaskRun } from "@kompanion/shared";
+import { ResumeRun } from "./ResumeRun.js";
 import { RunInstanceInfo } from "./RunInstanceInfo.js";
 import { RunTranscript } from "./RunTranscript.js";
 import {
@@ -24,12 +25,18 @@ export function RunRow({
   taskId,
   isOpen,
   onToggle,
+  isLatest = false,
+  taskRunning = false,
 }: {
   run: TaskRun;
   teamId: string;
   taskId: string;
   isOpen: boolean;
   onToggle: () => void;
+  // The task's newest run (budget refusals aside) — the only one that may
+  // be resumed, so the only one that asks.
+  isLatest?: boolean;
+  taskRunning?: boolean;
 }) {
   const logsId = `run-logs-${run.id}`;
   const tokensIn = totalInputTokens(run);
@@ -57,6 +64,9 @@ export function RunRow({
           {RUN_STATUS_ICON[run.status]} {run.agentTitle ?? "Unknown agent"}
         </span>
         <span>· {run.status.replace("_", " ")}</span>
+        {run.resumedFromRunId && (
+          <span title="Continued the previous run's conversation">· ↻ resumed</span>
+        )}
         <span>· {new Date(run.createdAt).toLocaleString()}</span>
         {run.durationMs != null && <span>· {(run.durationMs / 1000).toFixed(1)}s</span>}
         <span>· {formatRunCost(run.costUsd)}</span>
@@ -109,6 +119,10 @@ export function RunRow({
       </div>
 
       <RunInstanceInfo run={run} />
+
+      {isLatest && (
+        <ResumeRun run={run} teamId={teamId} taskId={taskId} taskRunning={taskRunning} />
+      )}
 
       {/* Mounted only while open: every RunTranscript opens its own
           EventSource, so keeping closed rows mounted would hold one live SSE

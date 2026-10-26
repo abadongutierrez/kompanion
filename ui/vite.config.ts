@@ -14,8 +14,10 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    // API_URL lets a second checkout (a worktree) point its UI at its own
+    // server on another port, next to the one already on :3200.
     proxy: {
-      "/api": "http://localhost:3200",
+      "/api": process.env.API_URL ?? "http://localhost:3200",
     },
   },
 });
