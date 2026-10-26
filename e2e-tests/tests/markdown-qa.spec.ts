@@ -110,6 +110,44 @@ test.describe("markdown rendering (QA)", () => {
     await expect(page.getByRole("listitem").filter({ hasText: "s1" })).toBeVisible();
   });
 
+  // While a text block streams (no content_block_stop yet), the cursor is the
+  // ::after of the last block, i.e. inline after the last word, not a line below.
+  test("streaming cursor follows the last word of the text", async ({ page, request }) => {
+    const taskId = await makeTask(request, `QA md stream ${Date.now()}`);
+    const runId = "33333333-3333-3333-3333-333333333333";
+    await page.route(`**/api/teams/${teamId}/tasks/${taskId}/runs`, (route) =>
+      route.fulfill({
+        json: [
+          {
+            id: runId, taskId, agentId: null, agentTitle: "Engineer", runtime: "claude_code",
+            model: null, status: "running", summary: null, rawOutput: null, costUsd: null,
+            durationMs: null, inputTokens: null, outputTokens: null, cacheReadTokens: null,
+            cacheWriteTokens: null, createdAt: "2026-10-26T12:00:00.000Z",
+          },
+        ],
+      }),
+    );
+    const payload = {
+      type: "stream_event",
+      event: { type: "content_block_start", index: 0, content_block: { type: "text", text: "Working on **it** now" } },
+    };
+    await page.route(`**/runs/${runId}/events`, (route) =>
+      route.fulfill({ contentType: "text/event-stream", body: `data: ${JSON.stringify({ seq: 0, payload })}\n\n` }),
+    );
+
+    await page.goto(`/projects/${projectId}/tasks/${taskId}`);
+    const p = page.locator("p", { hasText: "Working on" });
+    await expect(p).toBeVisible();
+    const after = await p.evaluate((el) => {
+      const s = getComputedStyle(el, "::after");
+      return { content: s.content, display: s.display };
+    });
+    expect(after.content).toBe('"▍"');
+    expect(after.display).toBe("inline");
+    // No leftover standalone cursor element on its own line.
+    await expect(page.locator("span", { hasText: /^▍$/ })).toHaveCount(0);
+  });
+
   test("comment bodies render markdown and keep HTML/script as text", async ({ page, request }) => {
     const taskId = await makeTask(request, `QA md comment ${Date.now()}`);
     await addComment(request, taskId, "### Comment title\n\n1. one\n2. two\n\n`code here`");
@@ -148,5 +186,19 @@ test.describe("markdown rendering (QA)", () => {
       return new Set(Array.from(r.getClientRects()).map((c) => Math.round(c.top))).size;
     });
     expect(lines).toBeGreaterThan(1);
+  });
+
+  // remark-breaks must not touch code fences: newlines there stay literal, no <br>.
+  test("code fences keep their newlines without <br>", async ({ page, request }) => {
+    const taskId = await makeTask(request, `QA md fence ${Date.now()}`);
+    await addComment(request, taskId, "```\nalpha\nbeta\n```");
+
+    await page.goto(`/projects/${projectId}/tasks/${taskId}`);
+    await page.getByRole("tab", { name: /^Comments/ }).click();
+
+    const code = page.locator("pre code", { hasText: "alpha" });
+    await expect(code).toBeVisible();
+    await expect(code.locator("br")).toHaveCount(0);
+    expect(await code.textContent()).toContain("alpha\nbeta");
   });
 });
