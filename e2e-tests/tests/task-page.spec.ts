@@ -355,6 +355,36 @@ test.describe("task page", () => {
     await expect(page.getByRole("dialog")).toHaveCount(0);
   });
 
+  test("runs and comments sit in tabs, runs first, and a comment can be added", async ({
+    page,
+    request,
+  }) => {
+    const title = `E2E tabs ${Date.now()}`;
+    const taskId = await makeTask(request, title);
+
+    await page.goto(`/projects/${projectId}/tasks/${taskId}`);
+    await expect(page.getByRole("heading", { name: title })).toBeVisible();
+
+    const runsTab = page.getByRole("tab", { name: /^Runs/ });
+    const commentsTab = page.getByRole("tab", { name: /^Comments/ });
+    await expect(runsTab).toHaveAttribute("aria-selected", "true");
+    await expect(commentsTab).toHaveAttribute("aria-selected", "false");
+    await expect(page.getByText("This task has not been run yet.")).toBeVisible();
+
+    await commentsTab.click();
+    await expect(commentsTab).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByText("This task has not been run yet.")).toHaveCount(0);
+
+    const body = `tab comment ${Date.now()}`;
+    await page.getByPlaceholder(/Add a comment/).fill(body);
+    await page.getByRole("button", { name: "Comment", exact: true }).click();
+    await expect(page.getByText(body)).toBeVisible();
+    await expect(commentsTab).toHaveText("Comments (1)");
+
+    await runsTab.click();
+    await expect(page.getByText("This task has not been run yet.")).toBeVisible();
+  });
+
   test("an unknown task id shows Task not found, not a spinner forever", async ({ page }) => {
     await page.goto(`/projects/${projectId}/tasks/00000000-0000-0000-0000-000000000000`);
     await expect(page.getByText("Task not found.")).toBeVisible({ timeout: 10_000 });

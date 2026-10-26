@@ -1,4 +1,5 @@
 export { TaskBoard } from "./components/TaskBoard.js";
+export { CommentsThread } from "./components/CommentsSection.js";
 export {
   useTasks,
   useTask,
