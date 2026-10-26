@@ -120,7 +120,8 @@ class ArchitectureTest {
 
     @Test
     fun `web types live only in the web adapter`() {
-        noClasses().that().resideInAnyPackage(DOMAIN, APPLICATION, "$ROOT.adapter.outbound..")
+        noClasses().that().resideInAnyPackage(DOMAIN, APPLICATION, ADAPTER)
+            .and().resideOutsideOfPackage("$ROOT.adapter.inbound.web..")
             .should().dependOnClassesThat().resideInAnyPackage(
                 "org.springframework.web..", "org.springframework.http..",
             )
