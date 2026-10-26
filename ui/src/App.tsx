@@ -49,6 +49,7 @@ export function App() {
         <Route path="/agents" element={<AgentsLibraryPage />} />
         <Route path="/agents/new" element={<AgentFormPage mode="create" />} />
         <Route path="/agents/:agentId" element={<AgentFormPage mode="edit" />} />
+        <Route path="/agents/:agentId/view" element={<AgentFormPage mode="view" />} />
         <Route path="/skills" element={<SkillsLibraryPage />} />
         <Route path="/projects/:projectId/tasks/:taskId" element={<TaskPage />} />
         <Route path="/projects/:projectId/:section?" element={<ProjectShell />} />

@@ -64,6 +64,31 @@ test.describe("agent pages", () => {
     await expect(page.getByText(renamed)).toBeVisible();
   });
 
+  test("viewing an agent shows the edit fields read-only on /agents/:agentId/view", async ({ page, request }) => {
+    const created: { id: string; title: string } = await request
+      .post("/api/agents", {
+        data: { title: `E2E UI View ${Date.now()}`, harnessPath },
+      })
+      .then((r) => r.json());
+
+    await page.goto("/agents");
+    await page.locator(`a[href="/agents/${created.id}/view"]`).click();
+    await expect(page).toHaveURL(new RegExp(`/agents/${created.id}/view$`));
+
+    await expect(page.getByRole("heading", { name: created.title })).toBeVisible();
+    // Same fields as Edit, every one disabled.
+    for (const label of ["Agent title", "Slug", "Harness folder path", "Runtime", "Model", "Harness template"]) {
+      await expect(page.getByLabel(label, { exact: true })).toBeDisabled();
+    }
+    await expect(page.getByLabel("Agent title")).toHaveValue(created.title);
+    await expect(page.getByLabel("Harness folder path")).toHaveValue(harnessPath);
+    await expect(page.getByRole("button", { name: "Save changes" })).toHaveCount(0);
+
+    await page.getByRole("link", { name: "Edit", exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`/agents/${created.id}$`));
+    await expect(page.getByRole("heading", { name: "Edit agent" })).toBeVisible();
+  });
+
   test("an unknown agent id says so instead of showing an empty form", async ({ page }) => {
     await page.goto("/agents/00000000-0000-0000-0000-000000000000");
     await expect(page.getByText("Agent not found.")).toBeVisible();
