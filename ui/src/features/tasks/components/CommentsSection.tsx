@@ -6,6 +6,7 @@ import {
   useTaskComments,
   useUpdateTaskComment,
 } from "../hooks.js";
+import { Markdown } from "@/shared/ui/index.js";
 
 // The board card's collapsible take on a task's comments. The task page shows
 // the same thread, uncollapsed, in its Comments tab.
@@ -107,7 +108,7 @@ export function CommentsThread({
             </form>
           ) : (
             <>
-              <p className="whitespace-pre-wrap text-neutral-700">{comment.body}</p>
+              <Markdown className="text-neutral-700">{comment.body}</Markdown>
               {/* Only Operator comments are editable — an agent's comment is
                   the record of what its run reported. */}
               {comment.agentId === null && (
