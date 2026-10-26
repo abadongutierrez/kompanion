@@ -1,5 +1,7 @@
 package com.kompanion.server.service.runner
 
+import com.kompanion.server.adapter.outbound.claude.parseRateLimitEvent
+import com.kompanion.server.application.port.inbound.RecordClaudeRateLimit
 import com.kompanion.server.domain.model.AgentRuntime
 import com.kompanion.server.service.WorkspaceEnforcementService
 import com.kompanion.server.service.WorkspaceManifest
@@ -13,9 +15,18 @@ import java.math.RoundingMode
 @Component
 class ClaudeCodeRunner(
     private val workspaceEnforcementService: WorkspaceEnforcementService,
+    private val recordRateLimit: RecordClaudeRateLimit,
 ) : AgentRunner {
 
     override val runtime = AgentRuntime.claude_code
+
+    // Subscription logins emit rate_limit_event lines; feeding them to the
+    // usage cache keeps the sidebar readout current during a run without
+    // another call to the usage endpoint.
+    override fun observe(event: Map<String, Any?>) {
+        val window = parseRateLimitEvent(event) ?: return
+        runCatching { recordRateLimit.handle(window) }
+    }
 
     override fun validateHarness(harnessDir: File): String? =
         if (File(harnessDir, ".claude").exists()) null

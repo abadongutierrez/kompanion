@@ -277,6 +277,7 @@ class RunTaskService(
             )
             runEventsBus.publishEvent(runId, currentSeq, trimmed)
             events += parsed
+            runner.observe(parsed)
         }
 
         val exitCode = process.waitFor()
