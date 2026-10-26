@@ -232,4 +232,28 @@ test.describe("markdown rendering (QA)", () => {
       await expect(page.locator(`[id="${href!.slice(1)}"]`)).toHaveCount(1);
     }
   });
+
+  // Clicking a footnote ref jumps within the page (no popup); a normal
+  // external link in the same comment still opens in a new tab.
+  test("footnote click stays in the tab, external links still open a new one", async ({ page, request }) => {
+    const taskId = await makeTask(request, `QA md footnote click ${Date.now()}`);
+    await addComment(request, taskId, "See [docs](https://example.com) and a note[^a]\n\n[^a]: the note");
+
+    await page.goto(`/projects/${projectId}/tasks/${taskId}`);
+    await page.getByRole("tab", { name: /^Comments/ }).click();
+
+    const ext = page.getByRole("link", { name: "docs" });
+    expect(await ext.getAttribute("target")).toBe("_blank");
+    expect(await ext.getAttribute("rel")).toContain("noopener");
+
+    let popups = 0;
+    page.on("popup", () => popups++);
+    const ref = page.locator("a[data-footnote-ref]");
+    const href = (await ref.getAttribute("href"))!;
+    await ref.click();
+    await expect(page).toHaveURL(new RegExp(`${href}$`));
+    const back = page.locator("a[data-footnote-backref]");
+    expect(await back.getAttribute("target")).toBeNull();
+    expect(popups).toBe(0);
+  });
 });
