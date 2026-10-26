@@ -158,9 +158,35 @@ function TaskTabs({
     { id: "comments", label: "Comments", count: comments.data?.length },
   ];
 
+  // WAI-ARIA tabs pattern: only the selected tab is in the Tab sequence
+  // (roving tabIndex); arrow keys, Home and End move between tabs and
+  // select them as they go.
+  const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const i = tabs.findIndex((t) => t.id === tab);
+    const next =
+      e.key === "ArrowRight"
+        ? (i + 1) % tabs.length
+        : e.key === "ArrowLeft"
+          ? (i - 1 + tabs.length) % tabs.length
+          : e.key === "Home"
+            ? 0
+            : e.key === "End"
+              ? tabs.length - 1
+              : null;
+    if (next === null) return;
+    e.preventDefault();
+    const id = tabs[next]!.id;
+    setTab(id);
+    document.getElementById(`task-tab-${id}`)?.focus();
+  };
+
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
-      <div role="tablist" className="flex shrink-0 gap-1 border-b border-neutral-200">
+      <div
+        role="tablist"
+        className="flex shrink-0 gap-1 border-b border-neutral-200"
+        onKeyDown={onKeyDown}
+      >
         {tabs.map((t) => (
           <button
             key={t.id}
@@ -168,6 +194,7 @@ function TaskTabs({
             role="tab"
             aria-selected={tab === t.id}
             aria-controls={`task-tabpanel-${t.id}`}
+            tabIndex={tab === t.id ? 0 : -1}
             className={
               "-mb-px border-b-2 px-3 py-1 text-sm " +
               (tab === t.id
@@ -182,19 +209,27 @@ function TaskTabs({
         ))}
       </div>
 
+      {/* Both panels stay mounted and the inactive one is only hidden, so a
+          comment draft survives a trip to the Runs tab and back. */}
       <div
-        id={`task-tabpanel-${tab}`}
+        id="task-tabpanel-runs"
         role="tabpanel"
-        aria-labelledby={`task-tab-${tab}`}
+        aria-labelledby="task-tab-runs"
+        hidden={tab !== "runs"}
         className="flex min-h-0 flex-1 flex-col"
       >
-        {tab === "runs" ? (
-          children
-        ) : (
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            <CommentsThread teamId={teamId} taskId={taskId} agents={agents.data ?? []} />
-          </div>
-        )}
+        {children}
+      </div>
+      <div
+        id="task-tabpanel-comments"
+        role="tabpanel"
+        aria-labelledby="task-tab-comments"
+        hidden={tab !== "comments"}
+        className="flex min-h-0 flex-1 flex-col"
+      >
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <CommentsThread teamId={teamId} taskId={taskId} agents={agents.data ?? []} />
+        </div>
       </div>
     </div>
   );

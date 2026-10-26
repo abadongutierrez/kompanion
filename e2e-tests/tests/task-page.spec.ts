@@ -373,7 +373,14 @@ test.describe("task page", () => {
 
     await commentsTab.click();
     await expect(commentsTab).toHaveAttribute("aria-selected", "true");
-    await expect(page.getByText("This task has not been run yet.")).toHaveCount(0);
+    await expect(page.getByText("This task has not been run yet.")).toBeHidden();
+
+    // An unsent draft survives a trip to the Runs tab and back.
+    const draft = `draft ${Date.now()}`;
+    await page.getByPlaceholder(/Add a comment/).fill(draft);
+    await runsTab.click();
+    await commentsTab.click();
+    await expect(page.getByPlaceholder(/Add a comment/)).toHaveValue(draft);
 
     const body = `tab comment ${Date.now()}`;
     await page.getByPlaceholder(/Add a comment/).fill(body);
@@ -383,6 +390,19 @@ test.describe("task page", () => {
 
     await runsTab.click();
     await expect(page.getByText("This task has not been run yet.")).toBeVisible();
+
+    // Keyboard: only the selected tab is tabbable; arrows move and select.
+    await expect(runsTab).toHaveAttribute("tabindex", "0");
+    await expect(commentsTab).toHaveAttribute("tabindex", "-1");
+    await runsTab.focus();
+    await page.keyboard.press("ArrowRight");
+    await expect(commentsTab).toBeFocused();
+    await expect(commentsTab).toHaveAttribute("aria-selected", "true");
+    await page.keyboard.press("ArrowRight");
+    await expect(runsTab).toBeFocused();
+    await expect(runsTab).toHaveAttribute("aria-selected", "true");
+    await page.keyboard.press("End");
+    await expect(commentsTab).toBeFocused();
   });
 
   test("an unknown task id shows Task not found, not a spinner forever", async ({ page }) => {
