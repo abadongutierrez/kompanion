@@ -28,7 +28,7 @@ test.describe("Resume a run", () => {
     return task.id;
   }
 
-  const run = (over: Record<string, unknown>) => ({
+  const run = (over: { id: string } & Record<string, unknown>) => ({
     taskId, agentId: "dddddddd-0000-0000-0000-000000000000", agentTitle: "Engineer",
     runtime: "claude_code", model: null, status: "succeeded", summary: "done", rawOutput: null,
     costUsd: 0.01, durationMs: 1000, inputTokens: null, outputTokens: null, cacheReadTokens: null,
