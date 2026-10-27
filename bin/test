@@ -28,7 +28,7 @@ fi
 
 # Run the shell tests for the bin/ scripts
 echo -e "\n${BLUE}Running bin script tests...${NC}\n"
-for script_test in migrate-workspace kompanion-context preflight-check; do
+for script_test in migrate-workspace kompanion-context preflight-check preflight-check-no-repo; do
   if ! "$PROJECT_ROOT/bin/tests/$script_test.sh"; then
     echo -e "\n${RED}❌ Some tests failed${NC}"
     exit 1

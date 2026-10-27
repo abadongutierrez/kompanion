@@ -2,8 +2,7 @@
 # QA tests for the Operator's requirement on the preflight-check skill: a task
 # with no repository linked must fail preflight. The manifests below are the
 # exact shape RunTaskService writes when a task has no linked repository.
-# Not wired into bin/test yet: it fails until preflight.py treats a task
-# without a repo as a failure. Needs python3. Run directly.
+# Needs python3. Run directly or through bin/test.
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SCRIPT="$ROOT/library/skills/preflight-check/scripts/preflight.py"

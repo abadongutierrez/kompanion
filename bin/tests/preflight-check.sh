@@ -54,7 +54,7 @@ check "it reports the branch" '[[ "$OUT" == *"ok    on branch feat/abc-do-it"* ]
 
 new_scratch_task
 OUT="$(run_in "$TMP/task")"; CODE=$?
-check "a ready scratch task passes without git" '[ "$CODE" = 0 ] && [[ "$OUT" == *"scratch mode"* ]]'
+check "a task without a repository fails" '[ "$CODE" = 1 ] && [[ "$OUT" == *"FAIL  no repository is linked"* ]]'
 
 new_repo_task
 git -C "$TMP/work/main" checkout -q -b other

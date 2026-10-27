@@ -14,10 +14,11 @@ Checks, in order:
     and has the fields this script needs
   - the task workspace exists and is writable
   - the current folder is inside one of the allowed roots
+  - a repository is linked to the task (a task without one fails)
   - every worktree in the manifest exists and is writable
-  - repository mode only: each worktree is a git work tree, is on the
-    manifest's branch, has a git user to commit with, and has a clean working
-    tree (dirty is only a warning)
+  - each worktree is a git work tree, is on the manifest's branch, has a git
+    user to commit with, and has a clean working tree (dirty is only a
+    warning)
 
 Standard library only.
 """
@@ -153,7 +154,7 @@ def main(argv):
 
         repo_mode = bool(primary.get("repositoryLocalPath"))
         if not repo_mode:
-            report.ok("scratch mode: no repository is linked")
+            report.fail("no repository is linked to this task, so there is nowhere to commit the work.")
         branch = manifest.get("branchName") or None
         if check_folder(report, "worktree", primary["workspaceLocalPath"]) and repo_mode:
             if not branch:

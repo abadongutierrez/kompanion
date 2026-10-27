@@ -75,7 +75,8 @@ tell Claude Code to run it through `exec_in_folder.py` (see
 `library/skills/kompanion-context/`).
 
 `preflight-check` checks a run is ready before the work starts (manifest, task
-workspace, worktrees, branch, git user). Migration `V23` registers it and
+workspace, worktrees, branch, git user). A task with no linked repository
+fails it, so an agent with this skill cannot work a scratch task. Migration `V23` registers it and
 teaches it to the Engineer (slug `engineer` or `engineer-*`); `V24` teaches it
 to QA (slug `qa` or `qa-*`). The engineer and qa harnesses tell the agent to
 run it first.

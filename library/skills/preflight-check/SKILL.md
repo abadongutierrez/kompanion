@@ -25,8 +25,9 @@ arguments and prints one line per check, starting with `ok`, `warn` or
   loaded from: `python3 <skill folder>/scripts/preflight.py`.
 
 It checks the manifest, the task workspace, that the current folder is an
-allowed root, every worktree, and in repository mode the branch, the git
-user and whether the working tree is clean.
+allowed root, that a repository is linked to the task, and for every worktree
+the branch, the git user and whether the working tree is clean. A task with no
+repository fails: there is nowhere to commit the work.
 
 ## 2. Check the task yourself
 
@@ -34,8 +35,8 @@ The script cannot read your prompt. Check these by hand:
 
 - The prompt has a `Task:` title and a `Description:` that says what to do.
   Acceptance criteria help but are not required.
-- The `Workspace:` line agrees with the script: a repository when it found
-  one, scratch when it did not.
+- The `Workspace:` line says this is a real git repository, and names the
+  same branch the script found.
 - Read the task workspace. If an earlier note or a QA verdict says the task is
   blocked or done, take that into account.
 
