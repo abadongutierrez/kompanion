@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { ensureClaudeRuntime, type SeededRuntime } from "./fixtures.js";
 
 // Creating and editing an agent each live on their own route now
 // (/agents/new and /agents/:agentId) — the library page at /agents only
@@ -7,6 +8,7 @@ import { test, expect } from "@playwright/test";
 // same screens would.
 test.describe("agent pages", () => {
   let harnessPath: string;
+  let runtime: SeededRuntime;
 
   test.beforeAll(async ({ request }) => {
     // Reuse an existing agent's harness folder: it is a real directory on
@@ -15,6 +17,7 @@ test.describe("agent pages", () => {
       .get("/api/agents")
       .then((r) => r.json());
     harnessPath = agents[0].harnessPath;
+    runtime = await ensureClaudeRuntime(request);
   });
 
   test("creating an agent happens on /agents/new and returns to the library", async ({ page }) => {
@@ -32,10 +35,122 @@ test.describe("agent pages", () => {
 
     await page.getByLabel("Agent title").fill(title);
     await page.getByLabel("Harness folder path").fill(harnessPath);
+    // Not whatever the form preselects: that depends on the order of the
+    // runtimes in Settings, and the reused harness only suits Claude Code.
+    await page.getByLabel("Runtime", { exact: true }).selectOption(runtime.id);
     await page.getByRole("button", { name: "Create agent" }).click();
 
     await expect(page).toHaveURL(/\/agents$/);
     await expect(page.getByText(title)).toBeVisible();
+  });
+
+  test("the Runtime select lists the runtimes from Settings and saves the choice", async ({ page, request }) => {
+    const all: SeededRuntime[] = await request.get("/api/runtimes").then((r) => r.json());
+    const title = `E2E UI Runtime ${Date.now()}`;
+
+    await page.goto("/agents/new");
+    const select = page.getByLabel("Runtime", { exact: true });
+    // One option per configured runtime — nothing hardcoded, no separate kind
+    // picker.
+    await expect(select.locator("option:not([disabled])")).toHaveCount(all.length);
+    await expect(page.getByLabel("Runtime instance")).toHaveCount(0);
+
+    await page.getByLabel("Agent title").fill(title);
+    await page.getByLabel("Harness folder path").fill(harnessPath);
+    await select.selectOption(runtime.id);
+    await page.getByRole("button", { name: "Create agent" }).click();
+    await expect(page).toHaveURL(/\/agents$/);
+
+    // The kind follows the chosen runtime, and the card shows its name.
+    const agents: { title: string; runtime: string; runtimeId: string | null }[] = await request
+      .get("/api/agents")
+      .then((r) => r.json());
+    const saved = agents.find((a) => a.title === title);
+    expect(saved?.runtimeId).toBe(runtime.id);
+    expect(saved?.runtime).toBe(runtime.kind);
+    await expect(page.getByText(runtime.name).first()).toBeVisible();
+  });
+
+  test("editing an agent keeps its saved runtime when another of the same kind exists", async ({ page, request }) => {
+    // Two runtimes of one kind: the form must not fall back to the first one
+    // the API lists (it orders by name). So the Agent gets the last Claude
+    // runtime of the re-fetched list, which is never the first.
+    const claudeRuntimes = async (): Promise<SeededRuntime[]> =>
+      (await request.get("/api/runtimes").then((r) => r.json()) as SeededRuntime[]).filter(
+        (r) => r.kind === "claude_code",
+      );
+    if ((await claudeRuntimes()).length < 2) {
+      await request.post("/api/runtimes", {
+        data: { name: `E2E Claude B ${Date.now()}`, kind: "claude_code" },
+      });
+    }
+    const claude = await claudeRuntimes();
+    const second = claude[claude.length - 1];
+    expect(second.id).not.toBe(claude[0].id);
+    const created: { id: string; title: string } = await request
+      .post("/api/agents", {
+        data: { title: `E2E UI Keep ${Date.now()}`, harnessPath, runtimeId: second.id },
+      })
+      .then((r) => r.json());
+
+    await page.goto(`/agents/${created.id}`);
+    await expect(page.getByLabel("Agent title")).toHaveValue(created.title);
+    await expect(page.getByLabel("Runtime", { exact: true })).toHaveValue(second.id);
+
+    await page.getByLabel("Agent title").fill(`${created.title} (renamed)`);
+    await page.getByRole("button", { name: "Save changes" }).click();
+    await expect(page).toHaveURL(/\/agents$/);
+
+    const agents: { id: string; runtimeId: string | null }[] = await request
+      .get("/api/agents")
+      .then((r) => r.json());
+    expect(agents.find((a) => a.id === created.id)?.runtimeId).toBe(second.id);
+  });
+
+  test("moving from one agent's edit page to a legacy agent's preselects a runtime", async ({ page, request }) => {
+    const withRuntime: { id: string } = await request
+      .post("/api/agents", {
+        data: { title: `E2E UI Nav A ${Date.now()}`, harnessPath, runtimeId: runtime.id },
+      })
+      .then((r) => r.json());
+    const legacy: { id: string } = await request
+      .post("/api/agents", { data: { title: `E2E UI Nav B ${Date.now()}`, harnessPath } })
+      .then((r) => r.json());
+
+    await page.goto(`/agents/${withRuntime.id}`);
+    await expect(page.getByLabel("Runtime", { exact: true })).toHaveValue(runtime.id);
+
+    // Client-side navigation: the form is not remounted, so the previous
+    // agent's runtime is still in its state when the next agent loads.
+    await page.evaluate((id) => {
+      history.pushState({}, "", `/agents/${id}`);
+      dispatchEvent(new PopStateEvent("popstate"));
+    }, legacy.id);
+
+    await expect(page.getByLabel("Runtime", { exact: true })).not.toHaveValue("");
+    await expect(page.getByRole("button", { name: "Save changes" })).toBeEnabled();
+  });
+
+  test("a runtimes load failure is shown with a retry, and Save stays disabled", async ({ page }) => {
+    await page.route("**/api/runtimes", (route) => route.fulfill({ status: 500, body: "{}" }));
+
+    await page.goto("/agents/new");
+    await expect(page.getByText("Could not load the runtimes.")).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole("button", { name: "Retry" })).toBeVisible();
+    await expect(page.getByLabel("Runtime", { exact: true })).toContainText("Could not load runtimes");
+    await expect(page.getByRole("button", { name: "Create agent" })).toBeDisabled();
+  });
+
+  test("viewing an agent from before runtimes shows its kind, not a prompt", async ({ page, request }) => {
+    const created: { id: string } = await request
+      .post("/api/agents", { data: { title: `E2E UI Legacy ${Date.now()}`, harnessPath } })
+      .then((r) => r.json());
+
+    await page.goto(`/agents/${created.id}/view`);
+    const select = page.getByLabel("Runtime", { exact: true });
+    await expect(select).toBeDisabled();
+    await expect(select).toContainText("Claude Code (no runtime selected)");
+    await expect(select).not.toContainText("Select a runtime");
   });
 
   test("editing an agent happens on its own /agents/:agentId page", async ({ page, request }) => {

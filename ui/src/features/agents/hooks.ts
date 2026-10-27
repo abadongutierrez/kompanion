@@ -102,7 +102,6 @@ export type AgentFormValues = {
   harnessPath: string;
   runtime: Agent["runtime"];
   model: string;
-  // "" = the kind's default runtime.
   runtimeId: string;
 };
 
@@ -123,7 +122,7 @@ export function useSaveAgent(agentId: string | undefined) {
           harnessPath,
           runtime,
           model,
-          runtimeId: runtimeId || null,
+          runtimeId,
         });
       }
       const [saved] = await Promise.all([
