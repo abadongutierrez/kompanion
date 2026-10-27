@@ -493,6 +493,27 @@ export const TeamSpend = z.object({
 });
 export type TeamSpend = z.infer<typeof TeamSpend>;
 
+// The Claude subscription usage windows for the account the server runs
+// as — server-wide, not per project. `utilization` is a percent (0–100) and
+// may be null when only a run's rate_limit_event status is known.
+// `available: false` means "can't tell" (API-key setup, no credentials, the
+// undocumented endpoint failed), with `reason` saying which.
+export const UsageWindow = z.object({
+  kind: z.string(),
+  utilization: z.number().nullable(),
+  resetsAt: z.string().nullable(),
+  status: z.string().nullable(),
+});
+export type UsageWindow = z.infer<typeof UsageWindow>;
+
+export const ClaudeUsage = z.object({
+  available: z.boolean(),
+  reason: z.string().nullable(),
+  windows: z.array(UsageWindow),
+  fetchedAt: z.string(),
+});
+export type ClaudeUsage = z.infer<typeof ClaudeUsage>;
+
 // What a whole project has cost, across every team under it. The total is
 // all-time — the question the Budget tab asks — while monthSpendUsd and
 // byDay cover the current month, which is the window the per-team budget

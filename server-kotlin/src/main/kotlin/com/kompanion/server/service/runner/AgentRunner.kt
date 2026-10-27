@@ -105,6 +105,12 @@ interface AgentRunner {
     // from a config directory named by PI_CODING_AGENT_DIR.
     fun environment(ctx: RunContext): Map<String, String> = emptyMap()
 
+    // Sees each JSON line as it arrives, before the run ends. For side
+    // signals that are worth acting on live — Claude Code's
+    // rate_limit_event — not for anything that decides the run's outcome;
+    // that is interpret's job. Must not throw.
+    fun observe(event: Map<String, Any?>) {}
+
     // Extra events to add after the process exits and before interpret().
     // They are stored and published like the CLI's own, so a live view and a
     // replay see the same thing. Empty for most runtimes; opencode v2 needs it
