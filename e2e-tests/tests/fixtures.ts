@@ -87,7 +87,7 @@ export type SeededRuntime = { id: string; name: string; kind: string };
 // no way to tell a real setup from a test one, and a duplicate adds nothing).
 export async function ensureRuntime(
   request: APIRequestContext,
-  kind: "claude_code" | "opencode" | "pi",
+  kind: "claude_code" | "opencode" | "opencode2" | "pi",
 ): Promise<SeededRuntime> {
   const runtimes = await json<SeededRuntime[]>(await request.get("/api/runtimes"));
   return (

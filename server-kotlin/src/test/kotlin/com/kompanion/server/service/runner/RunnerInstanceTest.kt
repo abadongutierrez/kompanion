@@ -126,6 +126,18 @@ class RunnerInstanceTest {
     }
 
     @Test
+    fun `opencode2 builds the same dot-opencode as opencode`(@TempDir tmp: File) {
+        val s = Setup(tmp)
+        s.write(s.instance, ".opencode/skills/handoff/SKILL.md", "from the instance")
+        s.write(s.instance, "AGENTS.md", "v2 prompt from the instance")
+
+        Opencode2Runner().prepareWorkspace(s.ctx(AgentRuntime.opencode2), s.manifest)
+
+        assertEquals("from the instance", File(s.cwd, ".opencode/skills/handoff/SKILL.md").readText())
+        assertTrue(File(s.cwd, ".opencode/agents/kompanion.md").readText().contains("v2 prompt from the instance"))
+    }
+
+    @Test
     fun `opencode falls back to CLAUDE md in the instance when there is no AGENTS md`(@TempDir tmp: File) {
         val s = Setup(tmp)
         s.write(s.instance, "CLAUDE.md", "claude text in the instance")

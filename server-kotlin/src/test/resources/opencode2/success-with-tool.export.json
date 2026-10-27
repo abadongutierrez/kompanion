@@ -1,0 +1,29 @@
+{
+  "info": {
+    "id": "ses_e85a03aa5ffeyR8Tk4c5aOBbB4",
+    "projectID": "f90d68f4a8c406a9c364665e01c043f265c40345",
+    "model": {
+      "id": "deepseek-v4.1-flash",
+      "providerID": "opencode-go",
+      "variant": "default"
+    },
+    "cost": 0.001100564,
+    "tokens": {
+      "input": 7053,
+      "output": 57,
+      "reasoning": 15,
+      "cache": {
+        "read": 9088,
+        "write": 0
+      }
+    },
+    "outcome": "succeeded",
+    "time": {
+      "created": 1793054459751,
+      "updated": 1793054462028,
+      "idle": 1793054462033
+    },
+    "title": "Shell command request and PONG response"
+  },
+  "messages": []
+}

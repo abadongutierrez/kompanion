@@ -71,12 +71,14 @@ class ProcessRuntimeProbe : RuntimeProbe {
     private fun envVar(kind: AgentRuntime) = when (kind) {
         AgentRuntime.claude_code -> "CLAUDE_BIN"
         AgentRuntime.opencode -> "OPENCODE_BIN"
+        AgentRuntime.opencode2 -> "OPENCODE2_BIN"
         AgentRuntime.pi -> "PI_BIN"
     }
 
     private fun defaultCommand(kind: AgentRuntime) = when (kind) {
         AgentRuntime.claude_code -> "claude"
         AgentRuntime.opencode -> "opencode"
+        AgentRuntime.opencode2 -> "opencode2"
         AgentRuntime.pi -> "pi"
     }
 }
