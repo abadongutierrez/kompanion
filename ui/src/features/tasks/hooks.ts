@@ -184,7 +184,8 @@ export function useReplyAsAgent(teamId: string, taskId: string) {
   );
 }
 
-// Fetched only while the Diff tab is open — every call shells out to git.
+// Every call shells out to git; the task page fetches it up front so the Diff
+// tab can show the changed-file count.
 // Polled while an agent is running so the reader watches the change grow,
 // and refetched once when the run ends — the last poll may predate the
 // agent's final edits.

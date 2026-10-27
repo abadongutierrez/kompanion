@@ -472,12 +472,81 @@ export const ProjectDailySpend = DailySpend.extend({
 });
 export type ProjectDailySpend = z.infer<typeof ProjectDailySpend>;
 
+// One configured Runtime's month-to-date spend. runtimeId is null for runs
+// that recorded no Runtime — their Agent named none (CLI defaults), or they
+// predate the column — and those come one row per kind. runtimeName is null
+// when the Runtime has been deleted since.
+export const ConfiguredRuntimeSpend = z.object({
+  runtimeId: z.string().nullable(),
+  runtime: z.string(),
+  runtimeName: z.string().nullable(),
+  spendUsd: z.number(),
+  runCount: z.number().int(),
+});
+export type ConfiguredRuntimeSpend = z.infer<typeof ConfiguredRuntimeSpend>;
+
+// Month-to-date spend per runtime kind, biggest spender first.
+export function monthSpendByRuntime(byDay: ProjectDailySpend[]): RuntimeSpend[] {
+  const totals = new Map<string, RuntimeSpend>();
+  for (const day of byDay) {
+    for (const r of day.byRuntime) {
+      const t = totals.get(r.runtime) ?? { runtime: r.runtime, spendUsd: 0, runCount: 0 };
+      t.spendUsd += r.spendUsd;
+      t.runCount += r.runCount;
+      totals.set(r.runtime, t);
+    }
+  }
+  return [...totals.values()].sort(
+    (a, b) => b.spendUsd - a.spendUsd || a.runtime.localeCompare(b.runtime),
+  );
+}
+
 // A runtime's display name: the Agent form's label when there is one, the
 // raw value otherwise.
 export function runtimeLabel(runtime: string): string {
   return Object.hasOwn(AGENT_RUNTIME_LABEL, runtime)
     ? (AGENT_RUNTIME_LABEL as Record<string, string>)[runtime]
     : runtime;
+}
+
+export type RuntimeSpendRow = {
+  key: string;
+  runtime: string;
+  label: string;
+  spendUsd: number;
+  runCount: number;
+};
+
+// The sidebar's rows: every configured Runtime by name, at $0 if idle, then
+// whatever else spent money this month — a deleted Runtime, or runs that
+// recorded none. Biggest spender first.
+export function spendPerConfiguredRuntime(
+  spent: readonly ConfiguredRuntimeSpend[],
+  configured: readonly Pick<Runtime, "id" | "name" | "kind">[],
+): RuntimeSpendRow[] {
+  const rows = new Map<string, RuntimeSpendRow>();
+  for (const r of configured) {
+    rows.set(r.id, { key: r.id, runtime: r.kind, label: r.name, spendUsd: 0, runCount: 0 });
+  }
+  for (const s of spent) {
+    const key = s.runtimeId ?? `kind:${s.runtime}`;
+    const row = rows.get(key) ?? {
+      key,
+      runtime: s.runtime,
+      label:
+        s.runtimeId === null
+          ? `${runtimeLabel(s.runtime)} (unattributed)`
+          : (s.runtimeName ?? `${runtimeLabel(s.runtime)} (deleted)`),
+      spendUsd: 0,
+      runCount: 0,
+    };
+    row.spendUsd += s.spendUsd;
+    row.runCount += s.runCount;
+    rows.set(key, row);
+  }
+  return [...rows.values()].sort(
+    (a, b) => b.spendUsd - a.spendUsd || a.label.localeCompare(b.label),
+  );
 }
 
 export const UpdateTeamBudgetInput = z.object({
@@ -525,6 +594,7 @@ export const ProjectSpend = z.object({
   monthSpendUsd: z.number(),
   periodStart: z.string(),
   byDay: z.array(ProjectDailySpend),
+  byConfiguredRuntime: z.array(ConfiguredRuntimeSpend).default([]),
 });
 export type ProjectSpend = z.infer<typeof ProjectSpend>;
 

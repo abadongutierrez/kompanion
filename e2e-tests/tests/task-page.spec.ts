@@ -401,11 +401,11 @@ test.describe("task page", () => {
     await page.keyboard.press("ArrowRight");
     await expect(commentsTab).toBeFocused();
     await expect(commentsTab).toHaveAttribute("aria-selected", "true");
-    await page.keyboard.press("ArrowRight");
+    await page.keyboard.press("ArrowLeft");
     await expect(runsTab).toBeFocused();
     await expect(runsTab).toHaveAttribute("aria-selected", "true");
     await page.keyboard.press("End");
-    await expect(commentsTab).toBeFocused();
+    await expect(page.getByRole("tab", { name: /^Diff/ })).toBeFocused();
   });
 
   test("an unknown task id shows Task not found, not a spinner forever", async ({ page }) => {

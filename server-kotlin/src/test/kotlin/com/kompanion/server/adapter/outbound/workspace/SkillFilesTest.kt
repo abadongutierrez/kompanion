@@ -143,6 +143,7 @@ class FileSkillsTest {
 
         val found = skills.libraryFolders()
         assertTrue("skills/kompanion-context" in found)
+        assertTrue("skills/preflight-check" in found)
         for (path in found) {
             val inspected = skills.inspect(path)
             assertTrue(inspected is SkillInspection.Valid) { "$path is not valid: $inspected" }

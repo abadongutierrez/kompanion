@@ -52,7 +52,7 @@ test.describe("Budget tab: daily spend split by runtime", () => {
     const table = page.getByRole("table", { name: "Spend by day" });
     await expect(table.getByRole("columnheader", { name: "Day (UTC)" })).toBeVisible();
     // Agent-form labels for known runtimes, the raw value for a new one.
-    for (const label of ["Claude Code", "opencode", "pi", "opencode2"]) {
+    for (const label of ["Claude Code", "opencode", "pi", "opencode v2"]) {
       await expect(table.getByRole("columnheader", { name: label, exact: true })).toBeVisible();
     }
 
@@ -67,7 +67,7 @@ test.describe("Budget tab: daily spend split by runtime", () => {
 
     const mtd = page.getByRole("list", { name: "Month to date by runtime" });
     await expect(mtd.locator('[data-runtime="claude_code"]')).toHaveText("Claude Code $1.8500 3 runs");
-    await expect(mtd.locator('[data-runtime="opencode2"]')).toHaveText("opencode2 $0.0100 1 run");
+    await expect(mtd.locator('[data-runtime="opencode2"]')).toHaveText("opencode v2 $0.0100 1 run");
     await expect(mtd.locator('[data-runtime="pi"]')).toHaveText("pi $0.0000 1 run");
     await expect(mtd.getByRole("listitem")).toHaveCount(4);
   });

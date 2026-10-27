@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { Link } from "react-router-dom";
 import {
   TASK_STATUS_TRANSITIONS,
@@ -9,7 +8,7 @@ import {
 } from "@kompanion/shared";
 import { Card, ErrorText } from "@/shared/ui/index.js";
 import { useTeamSpend } from "@/features/budget/index.js";
-import { RunTranscript, useRunTask, useTaskRuns } from "@/features/runs/index.js";
+import { useRunTask, useTaskRuns } from "@/features/runs/index.js";
 import { CommentsSection } from "./CommentsSection.js";
 import { DependenciesSection } from "./DependenciesSection.js";
 
@@ -62,15 +61,12 @@ export function TaskCard({
   const runCount = runs.data?.length ?? 0;
   // over_budget refusals already have cost_usd: 0 and a still-running run
   // has cost_usd: null (excluded via ?? 0) — both fall out correctly here
-  // with no special-casing.
+  // with no special-casing. The in-flight run's live cost estimate lives on
+  // the task page (Expand), alongside its transcript.
   const totalCostUsd = (runs.data ?? []).reduce(
     (sum, r) => sum + (r.costUsd ?? 0),
     0,
   );
-  // The in-flight run contributes nothing to the sum above (its cost_usd is
-  // still null), so the transcript hands us its live estimate to add on.
-  const [liveCostUsd, setLiveCostUsd] = useState<number | null>(null);
-  const displayedCostUsd = totalCostUsd + (liveCostUsd ?? 0);
 
   return (
     <Card tone="soft" className="space-y-2">
@@ -128,10 +124,9 @@ export function TaskCard({
           {task.branchOrPrLink && ` @ ${task.branchOrPrLink}`}
         </p>
       )}
-      {displayedCostUsd > 0 && (
+      {totalCostUsd > 0 && (
         <p className="text-xs text-neutral-400">
-          💰 {liveCostUsd !== null && "≈"}${displayedCostUsd.toFixed(4)} spent
-          {liveCostUsd !== null && " (running)"}
+          💰 ${totalCostUsd.toFixed(4)} spent
         </p>
       )}
 
@@ -179,16 +174,8 @@ export function TaskCard({
             <ErrorText>{(runTask.error as Error).message}</ErrorText>
           )}
 
-          {latestRun && isRunning && latestRun.status === "running" && (
-            <RunTranscript
-              teamId={teamId}
-              taskId={task.id}
-              runId={latestRun.id}
-              runtime={latestRun.runtime}
-              onCostChange={setLiveCostUsd}
-            />
-          )}
-
+          {/* A run's messages are read on the task page (Expand); the
+              board only shows that it's running. */}
           {latestRun && !isRunning && latestRun.status === "over_budget" && (
             <p className="text-xs text-amber-700">{latestRun.summary}</p>
           )}

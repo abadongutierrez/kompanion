@@ -1,33 +1,16 @@
-import { runtimeLabel, type ProjectDailySpend } from "@kompanion/shared";
-
-type RuntimeTotal = { runtime: string; spendUsd: number; runCount: number };
+import { monthSpendByRuntime, runtimeLabel, type ProjectDailySpend } from "@kompanion/shared";
 
 function runs(n: number) {
   return `${n} ${n === 1 ? "run" : "runs"}`;
 }
 
-// One column per runtime that ran this month, biggest spender first. Built
-// from the data, not from AgentRuntime, so a runtime added later gets a
-// column (under its raw name) without touching this file.
-function monthTotals(byDay: ProjectDailySpend[]): RuntimeTotal[] {
-  const totals = new Map<string, RuntimeTotal>();
-  for (const day of byDay) {
-    for (const r of day.byRuntime) {
-      const t = totals.get(r.runtime) ?? { runtime: r.runtime, spendUsd: 0, runCount: 0 };
-      t.spendUsd += r.spendUsd;
-      t.runCount += r.runCount;
-      totals.set(r.runtime, t);
-    }
-  }
-  return [...totals.values()].sort(
-    (a, b) => b.spendUsd - a.spendUsd || a.runtime.localeCompare(b.runtime),
-  );
-}
-
 // Zero-cost runs (local models on pi and opencode) are shown as $0.0000
 // with their run count rather than hidden: they still ran.
 export function DailySpendByRuntime({ byDay }: { byDay: ProjectDailySpend[] }) {
-  const totals = monthTotals(byDay);
+  // One column per runtime that ran this month. Built from the data, not
+  // from AgentRuntime, so a runtime added later gets a column (under its raw
+  // name) without touching this file.
+  const totals = monthSpendByRuntime(byDay);
 
   return (
     <div className="space-y-2">
