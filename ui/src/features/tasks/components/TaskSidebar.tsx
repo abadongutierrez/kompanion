@@ -15,73 +15,134 @@ function formatDuration(ms: number): string {
 // Runs still in progress are left out entirely — not even the live estimate
 // the board card shows. Only finished runs count.
 //
+// A finished run can still have a null cost when the CLI exited without
+// reporting one. Those runs are never treated as free: the total and the
+// affected Agent rows get a trailing "+" (the figure is a lower bound) and a
+// note says how many runs it leaves out; when nothing at all is known the
+// figure reads "Unknown" rather than $0.
+//
 // Below the lg breakpoint each Agent row drops its cost and progress bar and
-// keeps only its time and percentage.
-export function TaskSidebar({ runs }: { runs: TaskRun[] | undefined }) {
-  const finished = (runs ?? []).filter((r) => r.status !== "running");
-  const runningCount = (runs ?? []).length - finished.length;
-  const totalCostUsd = finished.reduce((sum, r) => sum + (r.costUsd ?? 0), 0);
+// keeps only its time and percentage. Below md the sidebar stacks under the
+// task column instead of squeezing it, capped in height (scrolling inside) so
+// a long Agent list can't crowd the runs out of the page's fixed height.
+export function TaskSidebar({
+  runs,
+  isError = false,
+}: {
+  runs: TaskRun[] | undefined;
+  isError?: boolean;
+}) {
+  return (
+    <aside
+      aria-label="Task details"
+      className="max-h-40 w-full shrink-0 space-y-4 overflow-y-auto rounded border border-neutral-200 p-3 md:max-h-none md:w-36 md:self-start md:overflow-visible lg:w-56"
+    >
+      <section>
+        <h3 className="text-xs font-medium uppercase tracking-wide text-neutral-500">
+          Spent so far
+        </h3>
+        {/* Until the runs arrive there is nothing to sum — showing $0 here
+            would read as "never run" for a task that has paid runs. */}
+        {runs ? (
+          <Spend runs={runs} />
+        ) : (
+          <p className="mt-1 text-xs text-neutral-400" data-testid="task-spent-status">
+            {isError ? "Spend unavailable" : "Loading…"}
+          </p>
+        )}
+      </section>
+    </aside>
+  );
+}
+
+function money(costUsd: number, known: number, unknown: number): string {
+  if (known === 0 && unknown > 0) return "Unknown";
+  return `$${costUsd.toFixed(4)}${unknown > 0 ? "+" : ""}`;
+}
+
+function Spend({ runs }: { runs: TaskRun[] }) {
+  const finished = runs.filter((r) => r.status !== "running");
+  const runningCount = runs.length - finished.length;
   const runCount = finished.length;
 
-  const byAgent = new Map<string, { costUsd: number; durationMs: number }>();
+  let totalCostUsd = 0;
+  let unknownCount = 0;
+  const byAgent = new Map<
+    string,
+    { costUsd: number; durationMs: number; known: number; unknown: number }
+  >();
   for (const r of finished) {
     const name = r.agentTitle ?? "Unknown agent";
-    const row = byAgent.get(name) ?? { costUsd: 0, durationMs: 0 };
-    row.costUsd += r.costUsd ?? 0;
+    const row = byAgent.get(name) ?? { costUsd: 0, durationMs: 0, known: 0, unknown: 0 };
+    if (r.costUsd == null) {
+      row.unknown += 1;
+      unknownCount += 1;
+    } else {
+      row.costUsd += r.costUsd;
+      row.known += 1;
+      totalCostUsd += r.costUsd;
+    }
     row.durationMs += r.durationMs ?? 0;
     byAgent.set(name, row);
   }
   const agents = [...byAgent.entries()].sort((a, b) => b[1].costUsd - a[1].costUsd);
 
   return (
-    <aside
-      aria-label="Task details"
-      className="w-36 shrink-0 space-y-4 self-start rounded border border-neutral-200 p-3 lg:w-56"
-    >
-      <section>
-        <h3 className="text-xs font-medium uppercase tracking-wide text-neutral-500">
-          Spent so far
-        </h3>
-        <p className="mt-1 text-lg font-medium" data-testid="task-spent">
-          ${totalCostUsd.toFixed(4)}
+    <>
+      <p className="mt-1 text-lg font-medium" data-testid="task-spent">
+        {money(totalCostUsd, runCount - unknownCount, unknownCount)}
+      </p>
+      <p className="text-xs text-neutral-400">
+        {runCount === 0 ? "Not run yet" : `across ${runCount} run${runCount === 1 ? "" : "s"}`}
+      </p>
+      {unknownCount > 0 && (
+        <p className="text-xs text-amber-600">
+          {unknownCount} run{unknownCount === 1 ? "" : "s"} with unknown cost
         </p>
+      )}
+      {runningCount > 0 && (
         <p className="text-xs text-neutral-400">
-          {runCount === 0 ? "Not run yet" : `across ${runCount} run${runCount === 1 ? "" : "s"}`}
+          {runningCount} running, not counted
         </p>
-        {runningCount > 0 && (
-          <p className="text-xs text-neutral-400">
-            {runningCount} running, not counted
-          </p>
-        )}
+      )}
 
-        {agents.length > 0 && (
-          <ul className="mt-3 space-y-2" aria-label="Spend by agent">
-            {agents.map(([name, a]) => {
-              const pct = totalCostUsd > 0 ? Math.round((a.costUsd / totalCostUsd) * 100) : 0;
-              return (
-                <li key={name} data-testid="task-spent-agent">
-                  <div className="truncate text-xs font-medium text-neutral-700">{name}</div>
-                  <div className="flex gap-2 text-xs text-neutral-500">
-                    <span className="hidden lg:inline">${a.costUsd.toFixed(4)}</span>
-                    <span>{formatDuration(a.durationMs)}</span>
-                    <span className="ml-auto">{pct}%</span>
-                  </div>
-                  <div
-                    className="mt-1 hidden h-1.5 rounded bg-neutral-100 lg:block"
-                    role="progressbar"
-                    aria-label={`${name} share of spend`}
-                    aria-valuenow={pct}
-                    aria-valuemin={0}
-                    aria-valuemax={100}
-                  >
-                    <div className="h-full rounded bg-neutral-500" style={{ width: `${pct}%` }} />
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </section>
-    </aside>
+      {agents.length > 0 && (
+        <ul className="mt-3 space-y-2" aria-label="Spend by agent">
+          {agents.map(([name, a]) => {
+            // A share of an unknown is meaningless, so an Agent whose every
+            // run lacks a cost gets "—" instead of 0%.
+            const pct =
+              a.known === 0
+                ? null
+                : totalCostUsd > 0
+                  ? Math.round((a.costUsd / totalCostUsd) * 100)
+                  : 0;
+            return (
+              <li key={name} data-testid="task-spent-agent">
+                <div className="truncate text-xs font-medium text-neutral-700">{name}</div>
+                <div className="flex gap-2 text-xs text-neutral-500">
+                  <span className="hidden lg:inline">{money(a.costUsd, a.known, a.unknown)}</span>
+                  <span>{formatDuration(a.durationMs)}</span>
+                  <span className="ml-auto">
+                    {pct === null ? "—" : `${pct}%${a.unknown > 0 ? "+" : ""}`}
+                  </span>
+                </div>
+                <div
+                  className="mt-1 hidden h-1.5 rounded bg-neutral-100 lg:block"
+                  role="progressbar"
+                  aria-label={`${name} share of spend`}
+                  aria-valuenow={pct ?? undefined}
+                  aria-valuetext={pct === null ? "unknown" : undefined}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                >
+                  <div className="h-full rounded bg-neutral-500" style={{ width: `${pct ?? 0}%` }} />
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </>
   );
 }

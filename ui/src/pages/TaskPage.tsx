@@ -82,8 +82,10 @@ export function TaskPage() {
   }
 
   return framed(
-    <div className="flex h-[calc(100vh-13rem)] w-full max-w-6xl gap-4">
-      <div className="flex min-w-0 max-w-4xl flex-1 flex-col gap-3">
+    // Side by side from md up; below that the sidebar stacks under the task
+    // column, which would otherwise be squeezed to nothing on a phone.
+    <div className="flex h-[calc(100vh-13rem)] w-full max-w-6xl flex-col gap-4 md:flex-row">
+      <div className="flex min-h-0 min-w-0 max-w-4xl flex-1 flex-col gap-3">
       {backToBoard}
 
       {!task ? (
@@ -137,7 +139,7 @@ export function TaskPage() {
         </>
       )}
       </div>
-      {task && <TaskSidebar runs={runs.data} />}
+      {task && <TaskSidebar runs={runs.data} isError={runs.isError} />}
     </div>,
   );
 }
