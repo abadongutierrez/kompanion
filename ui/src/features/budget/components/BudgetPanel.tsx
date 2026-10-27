@@ -1,6 +1,7 @@
 import { SectionHeading } from "@/shared/ui/index.js";
 import { useTeams } from "@/features/teams/index.js";
 import { useProjectSpend } from "../hooks.js";
+import { DailySpendByRuntime } from "./DailySpendByRuntime.js";
 import { TeamBudgetRow } from "./TeamBudgetRow.js";
 
 // Scoped to the project, not to a team: a project can have several teams,
@@ -45,26 +46,12 @@ export function BudgetPanel({ projectId }: { projectId: string }) {
       </div>
 
       <SectionHeading as="h3" className="pt-2">
-        By day this month
+        By day this month (UTC)
       </SectionHeading>
       {byDay.length === 0 ? (
         <p className="text-xs text-neutral-400">No runs yet this month.</p>
       ) : (
-        <table className="w-full max-w-md text-xs">
-          <tbody>
-            {byDay.map((d) => (
-              <tr key={d.day} className="border-b border-neutral-100 last:border-0">
-                <td className="py-1 text-neutral-600">{d.day}</td>
-                <td className="py-1 text-neutral-400">
-                  {d.runCount} {d.runCount === 1 ? "run" : "runs"}
-                </td>
-                <td className="py-1 text-right tabular-nums text-neutral-700">
-                  ${d.spendUsd.toFixed(4)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <DailySpendByRuntime byDay={byDay} />
       )}
     </div>
   );

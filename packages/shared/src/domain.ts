@@ -454,6 +454,32 @@ export const DailySpend = z.object({
 });
 export type DailySpend = z.infer<typeof DailySpend>;
 
+// One runtime's share of a day. `runtime` is task_runs.runtime — what the
+// run actually used — and a plain string rather than AgentRuntime, so a
+// runtime added later parses before the UI has a label for it.
+export const RuntimeSpend = z.object({
+  runtime: z.string(),
+  spendUsd: z.number(),
+  runCount: z.number().int(),
+});
+export type RuntimeSpend = z.infer<typeof RuntimeSpend>;
+
+// The project's days carry the runtime split; the legacy per-team daily
+// endpoint does not, so it keeps the plain DailySpend. The day's totals are
+// summed server-side from byRuntime, so the two always add up.
+export const ProjectDailySpend = DailySpend.extend({
+  byRuntime: z.array(RuntimeSpend),
+});
+export type ProjectDailySpend = z.infer<typeof ProjectDailySpend>;
+
+// A runtime's display name: the Agent form's label when there is one, the
+// raw value otherwise.
+export function runtimeLabel(runtime: string): string {
+  return Object.hasOwn(AGENT_RUNTIME_LABEL, runtime)
+    ? (AGENT_RUNTIME_LABEL as Record<string, string>)[runtime]
+    : runtime;
+}
+
 export const UpdateTeamBudgetInput = z.object({
   monthlyBudgetUsd: z.number().positive().nullable(),
 });
@@ -477,7 +503,7 @@ export const ProjectSpend = z.object({
   totalRunCount: z.number().int(),
   monthSpendUsd: z.number(),
   periodStart: z.string(),
-  byDay: z.array(DailySpend),
+  byDay: z.array(ProjectDailySpend),
 });
 export type ProjectSpend = z.infer<typeof ProjectSpend>;
 
