@@ -19,6 +19,7 @@ data class AgentRow(
     val harnessPath: String,
     val runtime: AgentRuntime = AgentRuntime.claude_code,
     val model: String? = null,
+    val runtimeId: UUID? = null,
     @ReadOnlyProperty val createdAt: OffsetDateTime? = null,
 )
 
@@ -34,6 +35,7 @@ fun AgentRow.toDomain(): Agent = Agent(
     harnessPath = harnessPath,
     runtime = runtime,
     model = model,
+    runtimeId = runtimeId,
     createdAt = createdAt,
 )
 
@@ -44,5 +46,6 @@ fun Agent.toRow(): AgentRow = AgentRow(
     harnessPath = harnessPath,
     runtime = runtime,
     model = model,
+    runtimeId = runtimeId,
     createdAt = createdAt,
 )

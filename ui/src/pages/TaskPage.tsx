@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ProjectChrome } from "@/app/layouts/ProjectChrome.js";
 import { useCurrentTeamId } from "@/features/teams/index.js";
-import { CommentsThread, useTask, useTaskComments } from "@/features/tasks/index.js";
+import { CommentsThread, TaskDiff, useTask, useTaskComments } from "@/features/tasks/index.js";
 import { useTeamAgents } from "@/features/agents/index.js";
 import { RunRow, useTaskRuns } from "@/features/runs/index.js";
 
@@ -107,7 +107,12 @@ export function TaskPage() {
           )}
 
           {teamId && (
-            <TaskTabs teamId={teamId} taskId={task.id} runCount={runs.data?.length}>
+            <TaskTabs
+              teamId={teamId}
+              taskId={task.id}
+              runCount={runs.data?.length}
+              isRunning={!!task.runningSince}
+            >
               {runs.data && runs.data.length > 0 ? (
                 // The list scrolls, not the transcript's container — with one row
                 // per run the headers alone can outgrow the viewport, so a
@@ -140,19 +145,22 @@ export function TaskPage() {
   );
 }
 
-type Tab = "runs" | "comments";
+type Tab = "runs" | "comments" | "diff";
 
-// Runs and comments share the space under the description, one at a time.
+// Runs, comments and the diff share the space under the description, one at
+// a time.
 // Runs is the default so the page still opens on what the agents did.
 function TaskTabs({
   teamId,
   taskId,
   runCount,
+  isRunning,
   children,
 }: {
   teamId: string;
   taskId: string;
   runCount: number | undefined;
+  isRunning: boolean;
   children: React.ReactNode;
 }) {
   const [tab, setTab] = useState<Tab>("runs");
@@ -162,6 +170,7 @@ function TaskTabs({
   const tabs: { id: Tab; label: string; count: number | undefined }[] = [
     { id: "runs", label: "Runs", count: runCount },
     { id: "comments", label: "Comments", count: comments.data?.length },
+    { id: "diff", label: "Diff", count: undefined },
   ];
 
   // WAI-ARIA tabs pattern: only the selected tab is in the Tab sequence
@@ -235,6 +244,17 @@ function TaskTabs({
       >
         <div className="min-h-0 flex-1 overflow-y-auto">
           <CommentsThread teamId={teamId} taskId={taskId} agents={agents.data ?? []} />
+        </div>
+      </div>
+      <div
+        id="task-tabpanel-diff"
+        role="tabpanel"
+        aria-labelledby="task-tab-diff"
+        hidden={tab !== "diff"}
+        className="flex min-h-0 flex-1 flex-col"
+      >
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <TaskDiff teamId={teamId} taskId={taskId} active={tab === "diff"} isRunning={isRunning} />
         </div>
       </div>
     </div>

@@ -3,6 +3,7 @@ package com.kompanion.server.adapter.outbound.persistence
 import com.kompanion.server.application.port.outbound.SpendStore
 import com.kompanion.server.domain.model.DaySpend
 import com.kompanion.server.domain.model.ProjectSpend
+import com.kompanion.server.domain.model.RuntimeSpend
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.stereotype.Component
 import java.math.BigDecimal
@@ -49,10 +50,14 @@ class JdbcSpendStore(private val jdbc: JdbcTemplate) : SpendStore {
         projectId,
     ).first()
 
+    // Grouped by day and runtime in one query, then folded into days here:
+    // the day's total is the sum of its runtime rows, so the two can never
+    // disagree. Days are cut in the session timezone, which is UTC.
     override fun projectDailySpend(projectId: UUID): List<DaySpend> = jdbc.query(
         """
         select
           to_char(date_trunc('day', tr.created_at), 'YYYY-MM-DD') as day,
+          tr.runtime as runtime,
           coalesce(sum(tr.cost_usd), 0) as spend_usd,
           count(*) as run_count
         from task_runs tr
@@ -60,16 +65,23 @@ class JdbcSpendStore(private val jdbc: JdbcTemplate) : SpendStore {
         join teams tm on tm.id = t.team_id
         where tm.project_id = ?
           and tr.created_at >= date_trunc('month', now())
-        group by 1
-        order by 1 desc
+        group by 1, 2
+        order by 1 desc, 2
         """.trimIndent(),
         { rs, _ ->
-            DaySpend(
-                day = rs.getString("day"),
+            rs.getString("day") to RuntimeSpend(
+                runtime = rs.getString("runtime"),
                 spendUsd = rs.getBigDecimal("spend_usd") ?: BigDecimal.ZERO,
                 runCount = rs.getInt("run_count"),
             )
         },
         projectId,
-    )
+    ).groupBy({ it.first }, { it.second }).map { (day, byRuntime) ->
+        DaySpend(
+            day = day,
+            spendUsd = byRuntime.fold(BigDecimal.ZERO) { acc, r -> acc + r.spendUsd },
+            runCount = byRuntime.sumOf { it.runCount },
+            byRuntime = byRuntime,
+        )
+    }
 }

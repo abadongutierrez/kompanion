@@ -16,6 +16,7 @@ import org.springframework.jdbc.core.JdbcTemplate
 import com.kompanion.server.domain.model.AgentRuntime
 import com.kompanion.server.application.port.inbound.PrepareAgentInstance
 import com.kompanion.server.application.port.inbound.PrepareAgentInstanceCommand
+import com.kompanion.server.application.port.outbound.RuntimeStore
 import com.kompanion.server.service.runner.AgentRunner
 import com.kompanion.server.service.runner.ResumeContext
 import com.kompanion.server.service.runner.RunContext
@@ -68,6 +69,8 @@ class RunTaskService(
     // A use case, not logic of this class: this orchestrator is old layered
     // code and does not grow new rules.
     private val prepareAgentInstance: PrepareAgentInstance,
+    // Resolves the Agent's configured Runtime (binary, config dir) per run.
+    private val runtimeStore: RuntimeStore,
     // Every AgentRunner bean, keyed by the runtime it serves. Adding a
     // runtime means adding a @Component — nothing here changes.
     runnerList: List<AgentRunner>,
@@ -293,6 +296,7 @@ class RunTaskService(
             )
             runEventsBus.publishEvent(runId, currentSeq, trimmed)
             events += parsed
+            runner.observe(parsed)
             // Stored on the run as soon as the CLI names it, not dug out of
             // the events later: resume reads it straight off the row, and a
             // run killed by the timeout still has a session worth resuming.
@@ -307,6 +311,17 @@ class RunTaskService(
         val exitCode = process.waitFor()
         killer.interrupt()
         stderrThread.join(1_000)
+
+        for (extra in runner.afterRun(ctx, events)) {
+            val json = objectMapper.writeValueAsString(extra)
+            val currentSeq = seq++
+            jdbc.update(
+                "insert into task_run_events (run_id, seq, payload) values (?, ?, ?)",
+                runId, currentSeq, json,
+            )
+            runEventsBus.publishEvent(runId, currentSeq, json)
+            events += extra
+        }
         val durationMs = (System.currentTimeMillis() - started).toInt()
 
         val interpreted = runner.interpret(ctx, events, exitCode, stderrBuilder.toString().trim())
@@ -542,7 +557,10 @@ class RunTaskService(
                 taskAgentRuntime = agent?.runtime?.name,
                 currentInstanceHash = currentHash,
                 runtimeSupportsResume = supports,
-                currentSessionStore = if (supports) runner?.sessionStore() else null,
+                // The task's Agent may have moved to another runtime, and so
+                // another config dir, since the run: its session isn't there.
+                currentSessionStore =
+                    if (supports) runner?.sessionStore(agent?.runtimeId?.let { runtimeStore.findById(it) }) else null,
             ),
         )
     }
@@ -611,12 +629,17 @@ class RunTaskService(
         )
         if (claimed == 0) throw TaskAlreadyRunningException()
 
+        // Looked up once: the run row records the session store it implies,
+        // and the run itself launches through it. A runtime deleted since the
+        // Agent was loaded fails the run below, where the context is built.
+        val configuredRuntime = agent.runtimeId?.let { runtimeStore.findById(it) }
+
         // The run row is created now, at status "running", rather than only
         // at the end — task_run_events needs a run_id to attach to from the
         // very first streamed line.
         val (runId, resume) = try {
             val source = resolveResume?.invoke()
-            insertRunningRun(taskId, agent, runner.sessionStore(), source) to source
+            insertRunningRun(taskId, agent, runner.sessionStore(configuredRuntime), source) to source
         } catch (e: Exception) {
             // Nothing below runs, so release the claim here — a task must
             // never be left frozen by a run that never started.
@@ -705,6 +728,14 @@ class RunTaskService(
                     // above already refused if the remainder were negative.
                     remainingBudgetUsd = spend.monthlyBudgetUsd?.minus(spend.spendUsd),
                     resume = resume?.let { ResumeContext(it.sessionId, it.previousRawOutputs) },
+                    // An Agent with no runtime uses the CLI defaults. One that
+                    // names a runtime must get it: falling back would quietly
+                    // run the wrong binary, or the wrong Claude account, if the
+                    // runtime was deleted after the Agent was loaded.
+                    runtime = agent.runtimeId?.let {
+                        configuredRuntime
+                            ?: throw IllegalStateException("the runtime selected for this Agent no longer exists")
+                    },
                 )
 
                 // A session the CLI can't find would otherwise start a blank
@@ -712,7 +743,7 @@ class RunTaskService(
                 // run here, plainly, and leave the task's status alone: no
                 // work happened.
                 if (resume != null) {
-                    val problem = runner.sessionStore()?.let { runner.resumeProblem(resume.sessionId, it) }
+                    val problem = runner.sessionStore(ctx.runtime)?.let { runner.resumeProblem(resume.sessionId, it) }
                     if (problem != null) {
                         val run = updateRunToTerminal(runId, "failed", problem, null, null, 0, agent.title, TokenUsage.NONE)
                         runEventsBus.publishEnd(runId)

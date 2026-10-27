@@ -1,7 +1,7 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { ensureProjectAndTeam, ensureAgents, deleteTask } from "./fixtures.js";
+import { ensureProjectAndTeam, ensureAgents, ensureRuntime, deleteTask } from "./fixtures.js";
 
 // The skills library, end to end. A skill is a folder on disk, so these tests
 // make real folders under the repo's library/skills/ — which is where the
@@ -11,17 +11,19 @@ import { ensureProjectAndTeam, ensureAgents, deleteTask } from "./fixtures.js";
 //
 // The Agent they teach is one that already exists (agents cannot be deleted,
 // and this suite must not leave a new one behind each run). Its skills are put
-// back to what they were.
+// back to what they were, and so is its runtime: saving through the Agent form
+// links it to one.
 const SKILLS_DIR = fileURLToPath(new URL("../../library/skills/", import.meta.url));
 
 type SkillRow = { id: string; slug: string; broken: boolean; problem: string | null };
-type AgentRow = { id: string; title: string };
+type AgentRow = { id: string; title: string; runtime: "claude_code" | "opencode" | "pi"; runtimeId: string | null };
 
 test.describe("skills library", () => {
   const stamp = Date.now();
   let created: string[] = [];
   let agent: AgentRow;
   let agentOriginalSkillIds: string[];
+  let agentOriginalRuntimeId: string | null;
 
   function slugFor(name: string) {
     const slug = `e2e-${name}-${stamp}`;
@@ -50,7 +52,12 @@ test.describe("skills library", () => {
     const { teamId } = await ensureProjectAndTeam(request);
     await ensureAgents(request, teamId);
     const agents: AgentRow[] = await request.get("/api/agents").then((r) => r.json());
-    agent = agents[0];
+    // The form only offers runtimes of an Agent's own kind and will not save
+    // without one, so prefer a Claude Code Agent and make sure its kind has a
+    // runtime to pick.
+    agent = agents.find((a) => a.runtime === "claude_code") ?? agents[0];
+    agentOriginalRuntimeId = agent.runtimeId;
+    await ensureRuntime(request, agent.runtime);
     const before: { skill: { id: string } }[] = await request
       .get(`/api/agents/${agent.id}/skills`)
       .then((r) => r.json());
@@ -79,6 +86,11 @@ test.describe("skills library", () => {
     // The Agent ends with the skills it started with, and nothing of ours is
     // left in the library.
     await assign(request, agentOriginalSkillIds);
+    // "" clears the runtime, which is what an Agent from before runtimes has.
+    const restored = await request.patch(`/api/agents/${agent.id}`, {
+      data: { runtimeId: agentOriginalRuntimeId ?? "" },
+    });
+    expect(restored.ok()).toBe(true);
     expect((await skills(request)).filter((s) => s.slug.startsWith(`e2e-`) && s.slug.endsWith(`-${stamp}`))).toEqual([]);
   });
 

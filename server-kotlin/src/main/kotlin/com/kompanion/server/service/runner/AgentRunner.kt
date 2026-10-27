@@ -2,6 +2,7 @@ package com.kompanion.server.service.runner
 
 import com.kompanion.server.entity.Agent
 import com.kompanion.server.domain.model.AgentRuntime
+import com.kompanion.server.domain.model.Runtime
 import com.kompanion.server.service.WorkspaceManifest
 import java.io.File
 import java.math.BigDecimal
@@ -41,7 +42,15 @@ data class RunContext(
     // starting a new one. `prompt` is then the operator's follow-up, not the
     // task prompt — the session already has that.
     val resume: ResumeContext? = null,
-)
+    // The configured Runtime the Agent launches through, or null for an Agent
+    // with none: the CLI then comes from its *_BIN env var, then PATH.
+    val runtime: Runtime? = null,
+) {
+    // The command to start: the Runtime's binary, else the env var, else the
+    // bare command name.
+    fun binary(envVar: String, default: String): String =
+        runtime?.binaryPath ?: System.getenv(envVar) ?: default
+}
 
 data class ResumeContext(
     // The CLI's own session id, as recorded on the earlier run.
@@ -111,6 +120,18 @@ interface AgentRunner {
     // from a config directory named by PI_CODING_AGENT_DIR.
     fun environment(ctx: RunContext): Map<String, String> = emptyMap()
 
+    // Sees each JSON line as it arrives, before the run ends. For side
+    // signals that are worth acting on live — Claude Code's
+    // rate_limit_event — not for anything that decides the run's outcome;
+    // that is interpret's job. Must not throw.
+    fun observe(event: Map<String, Any?>) {}
+
+    // Extra events to add after the process exits and before interpret().
+    // They are stored and published like the CLI's own, so a live view and a
+    // replay see the same thing. Empty for most runtimes; opencode v2 needs it
+    // because its stream leaves out the last step's cost (see Opencode2Runner).
+    fun afterRun(ctx: RunContext, events: List<Map<String, Any?>>): List<Map<String, Any?>> = emptyList()
+
     // `events` is every JSON line the CLI wrote to stdout, in order. Empty
     // when it produced none, which is itself a failure signal worth
     // reporting rather than treating as an empty success.
@@ -135,11 +156,11 @@ interface AgentRunner {
     // event until one returns non-null; the id is then stored on the run.
     fun sessionIdFrom(event: Map<String, Any?>): String? = null
 
-    // Where this CLI keeps its sessions for the server's current user and
-    // environment. Recorded on each run, and compared at resume time: a
-    // session written under one config directory cannot be found from
-    // another.
-    fun sessionStore(): String? = null
+    // Where this CLI keeps its sessions when launched through `runtime` (null
+    // for an Agent with none) by the server's current user and environment.
+    // Recorded on each run, and compared at resume time: a session written
+    // under one config directory cannot be found from another.
+    fun sessionStore(runtime: Runtime?): String? = null
 
     // null when `sessionId` can be resumed from `store`; otherwise an
     // operator-facing reason (typically: the session file is gone). Checked

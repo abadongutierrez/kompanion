@@ -1,22 +1,43 @@
-# Agent runtimes — how Claude Code, opencode and pi are driven
+# Agent runtimes — how Claude Code, opencode (v1 and v2) and pi are driven
 
 An Agent names the CLI it runs on (`agents.runtime`) and optionally a model
-(`agents.model`). Three runtimes exist: `claude_code`, `opencode` and `pi`.
-This document covers what all three share, what each one needs specifically,
+(`agents.model`). Four runtimes exist: `claude_code`, `opencode` (opencode v1),
+`opencode2` (opencode v2) and `pi`. This document covers what they all share, what each one needs specifically,
 and what is deliberately different between them.
 
 The seam is `AgentRunner`
 (`server-kotlin/src/main/kotlin/com/kompanion/server/service/runner/AgentRunner.kt`).
 `RunTaskService` owns everything runtime-agnostic — the budget gate,
 worktrees, the manifest, status transitions, persisting events, the SSE relay,
-the timeout — and a runner owns only the five things that genuinely differ per
+the timeout — and a runner owns only the things that genuinely differ per
 CLI: what a valid harness looks like, what gets materialized into the
-workspace, the command line, extra environment, and how to read the resulting
+workspace, the command line, extra environment, an optional post-run step
+(`afterRun`, used by opencode2), and how to read the resulting
 event stream.
 
 ---
 
-## Common to all three
+## Configured runtimes (Settings page)
+
+A **runtime** is one installed CLI plus how to launch it, kept in the
+`runtimes` table and managed on the Settings page. An Agent may point at one
+(`agents.runtime_id`); the runtime's kind then decides `agents.runtime`.
+
+- `binary_path` overrides the command. Without it a run uses `CLAUDE_BIN` /
+  `OPENCODE_BIN` / `OPENCODE2_BIN` / `PI_BIN`, then the bare command on PATH. An Agent with no
+  runtime behaves exactly as before.
+- `config_dir` (Claude Code only) is passed as `CLAUDE_CONFIG_DIR`, so two
+  Claude runtimes can run as two accounts. A leading `~/` is expanded at run
+  time. Only the path is stored; credentials stay in that folder and are never
+  read by us.
+- **Test** runs `<bin> --version` with the same binary and config dir. It
+  proves the CLI starts and the folder exists, not that the login works.
+- A runtime cannot be deleted while an Agent uses it. Changing an Agent's kind
+  by hand drops its runtime, since that binary belongs to the other CLI.
+
+---
+
+## Common to all runtimes
 
 ### The call
 
@@ -83,7 +104,7 @@ system prompt from the instance, so what ran is what was stored.
 | --- | --- | --- |
 | `claude_code` | `CLAUDE.md`, `.claude/` | `.claude/skills/<slug>/` |
 | `pi` | `AGENTS.md`, `CLAUDE.md`, `pi-agent/`, `.pi/skills`, `.claude/skills` | `.pi/skills/<slug>/`, passed with `--skill` |
-| `opencode` | `AGENTS.md`, `CLAUDE.md`, `.opencode/` | `.opencode/skills/<slug>/` |
+| `opencode`, `opencode2` | `AGENTS.md`, `CLAUDE.md`, `.opencode/` | `.opencode/skills/<slug>/` |
 
 The instance holds only what its own runtime reads, so a change to another
 runtime's files in the same harness does not change its hash.
@@ -141,7 +162,8 @@ persists and relays them, and the UI reconstructs blocks client-side.
 
 A pre-flight gate refuses a run once the team is over its monthly budget,
 recording an `over_budget` run row. Only Claude Code can additionally enforce
-a ceiling mid-run (`--max-budget-usd`); opencode and pi have no such flag.
+a ceiling mid-run (`--max-budget-usd`); opencode (v1 and v2) and pi have no
+such flag.
 
 ### Resuming a run
 
@@ -221,12 +243,96 @@ opencode run --format json --dir <cwd> --agent kompanion --auto
 - Skills: `prepareWorkspace` copies the instance's `.opencode/` (library skills
   in `.opencode/skills/<slug>/`) and opencode's `skill` tool loads them.
 
-**Known problem: opencode v2.** The command above is for the opencode this
-runner was written against. The installed v2.0.18 has no `--dir` flag on
-`run` — the working folder is the current directory — and an unrecognised flag
-makes it exit with an error, so an opencode run through Kompanion is likely to
-fail until the runner is updated. Skill loading itself was checked by running
-v2.0.18 directly. This is not fixed by the skills work.
+This runtime is for opencode v1 (verified on 1.18.23) and is kept as it is.
+opencode v2 removed `run --dir`, so this command line fails on v2. Use the
+`opencode2` runtime for v2.
+
+## `opencode2`
+
+```
+opencode2 run --standalone --format json --auto --agent kompanion
+              [-m <provider/model#variant>] <prompt>
+```
+
+Verified against opencode v2.0.26 (2026-10-26). `Opencode2Runner` is a runner
+of its own, so `OpencodeRunner` and v1 Agents are untouched.
+
+- Binary from `OPENCODE2_BIN`, default `opencode2` (`~/.opencode/bin/opencode2`
+  is a two-line wrapper around the v2 `opencode`).
+- **No `--dir`.** v2 removed it. The working folder is the process cwd, and
+  `RunTaskService` already starts the process in the worktree or scratch folder.
+- **`--standalone`.** By default v2 talks to a shared background service
+  (`opencode service`). `--standalone` gives each run a private server
+  (`opencode serve --stdio`, spawned and stopped by the CLI), so a run neither
+  depends on nor changes the user's service.
+- Workspace and harness: shared with v1 (`OpencodeWorkspace`). The same
+  `.opencode/` rebuild, the same `.opencode/agents/kompanion.md`, the same
+  harness check (`.opencode/` or `AGENTS.md`), and the same `SkillLayout`
+  entries. `--agent kompanion` was checked to pick up that file on v2.
+
+**Events.** The success events are v1's, plus a top-level `sessionID` on every
+line:
+
+| `type` | `part` holds |
+| --- | --- |
+| `step_start` | `type: "step-start"` |
+| `tool_use` | `tool`, `state: {status, input, output, title}` (born completed) |
+| `step_finish` | `reason`, `cost`, `tokens: {input, output, reasoning, cache: {read, write}}` |
+| `text` | `text` |
+| `error` | no part: `error: {type, message}` (flat, unlike v1's `{name, data.message}`) |
+
+Recorded fixtures: `server-kotlin/src/test/resources/opencode2/`.
+
+**The last step has no `step_finish`.** In every run we recorded, the final
+step (the one that writes the answer) ends without a `step_finish`, so the
+step sum is short. One real run: the steps add up to $0.001856, but the session
+cost is $0.002037. So `Opencode2Runner.afterRun` runs
+`opencode2 session export --standalone <sessionID>` once the process exits. It
+keeps only the session's `info.cost`, `info.tokens` and `info.outcome`, and adds
+them as one `session_summary` event (ours, not opencode's). That event is
+stored and sent over SSE like the others. Cost and tokens on the run come from
+it, and the step sum is only the fallback if the export fails. The reducer
+does the same: it shows the step sum live, then switches to the session total
+when the summary arrives. Zero stays a real cost.
+
+**Errors.** An `error` event fails the run, and its `message` is the summary.
+Both shapes we saw end the process with exit code 1:
+
+- `provider.no-route`: `Model unavailable: opencode-go/deepseek-v4-flash`
+- `provider.auth`: `Incorrect API key provided: …` (with `status: 401`)
+
+### How a `--standalone` run finds providers and credentials
+
+A standalone server reads the same places as the background service:
+
+- credentials from `~/.local/share/opencode/auth.json` (`opencode auth login`;
+  `auth list` shows them as `stored`), plus provider keys in the process
+  environment (`OPENAI_API_KEY` and friends; `auth list` shows them as
+  `environment`). The CLI inherits the Kompanion server's environment.
+- config from `~/.config/opencode/` and `~/.opencode/` (`opencode debug config`
+  lists the sources; `opencode debug paths` shows the folders).
+
+So nothing has to be copied into the run. Two things looked like a credentials
+problem but are not:
+
+- **`opencode-go/deepseek-v4-flash` fails because the model is gone.** The
+  OpenCode Go catalogue no longer has it. It lists `opencode-go/deepseek-v4.1-flash`
+  (and `deepseek-v4-pro`), and that id runs fine with `--standalone` using the
+  stored OpenCode Go key. The same old id also fails through the background
+  service, with the same `provider.no-route`. Fix: change the existing
+  "Engineer (opencode)" Agent's model, for example to
+  `opencode-go/deepseek-v4.1-flash`, and use the v2 runtime.
+- **With no `-m`, v2 picks OpenAI.** `OPENAI_API_KEY` is in the environment, so
+  OpenAI is a configured provider and becomes the default. That key is bad, so
+  the run fails with `provider.auth`. Set a model on opencode2 Agents, or set
+  `model` in `~/.config/opencode/opencode.json`.
+- **`opencode models --standalone` prints nothing** on 2.0.26 (we did not find
+  out why). Use `opencode models` (through the service) to list
+  model ids. They are the same ids a standalone run accepts.
+
+**Gaps, same as v1.** No workspace enforcement hook and no command log
+(opencode's extension points are JS/TS plugins the server can't install as a
+hook). No cost-cap flag: a team budget is only checked by the pre-flight gate.
 
 ## `pi`
 
@@ -296,16 +402,17 @@ Claude Code and pi runs are confined to the roots in `manifest.json` — the
 repo worktrees plus the task workspace. `manifest.json` itself is read-only:
 it is where the enforcement code reads its own permissions from.
 
-| | claude_code | opencode | pi |
+| | claude_code | opencode / opencode2 | pi |
 | --- | --- | --- | --- |
 | Mechanism | `PreToolUse` hook (`library/hooks/`) | — | blocking `tool_call` extension (`library/pi/`) |
 | File tools | confined | unconfined | confined |
 | Shell | raw Bash denied; only `exec_in_folder.py` | unconfined | rewritten to `exec_in_folder.py` |
 | Command log | `commands.log` | none | `commands.log` |
 
-opencode is the one unenforced runtime: its extension points are JS/TS plugins
-and a per-agent permission config, with no equivalent the server can install.
-An opencode run is scoped by `--dir` and nothing else. Prefer Claude Code or
+opencode (v1 and v2) is the one unenforced runtime: its extension points are
+JS/TS plugins and a per-agent permission config, with no equivalent the server
+can install. A v1 run is scoped by `--dir` and a v2 run by its cwd, and
+nothing else. Prefer Claude Code or
 pi for agents working in real repositories.
 
 Residual gap, stated rather than hidden: a shell command routed through
@@ -317,7 +424,7 @@ before every run.
 
 ## Harness layout
 
-One folder can serve all three runtimes. `library/harnesses/engineer/` is
+One folder can serve every runtime. `library/harnesses/engineer/` is
 the reference example.
 
 | Path | Used by |
@@ -326,7 +433,7 @@ the reference example.
 | `AGENTS.md` | opencode and pi system prompt (in `qa/` it is a symlink to `CLAUDE.md`) |
 | `.claude/` | Claude Code: skills, subagents, hooks, settings |
 | `.claude/skills/` | also passed to pi with `--skill` |
-| `.opencode/` | copied into `<cwd>/.opencode/` for opencode runs |
+| `.opencode/` | copied into `<cwd>/.opencode/` for opencode and opencode2 runs |
 | `pi-agent/` | pi config directory: `models.json`, `settings.json`; copied per run, and the enforcement extension is added to `pi-agent/extensions/` |
 
 `pi-agent/.gitignore` excludes `auth.json`, `models-store.json`, `trust.json`,

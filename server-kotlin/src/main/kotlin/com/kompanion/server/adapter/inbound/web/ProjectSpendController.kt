@@ -42,6 +42,13 @@ data class DaySpendResponse(
     val day: String,
     val spendUsd: BigDecimal,
     val runCount: Int,
+    val byRuntime: List<RuntimeSpendResponse>,
+)
+
+data class RuntimeSpendResponse(
+    val runtime: String,
+    val spendUsd: BigDecimal,
+    val runCount: Int,
 )
 
 // Domain -> wire. Separate types on purpose, same as TaskStatusController's:
@@ -55,4 +62,9 @@ private fun ProjectSpendView.toResponse() = ProjectSpendResponse(
     byDay = byDay.map { it.toResponse() },
 )
 
-private fun DaySpend.toResponse() = DaySpendResponse(day, spendUsd, runCount)
+private fun DaySpend.toResponse() = DaySpendResponse(
+    day = day,
+    spendUsd = spendUsd,
+    runCount = runCount,
+    byRuntime = byRuntime.map { RuntimeSpendResponse(it.runtime, it.spendUsd, it.runCount) },
+)

@@ -1,6 +1,7 @@
 package com.kompanion.server.service.runner
 
 import com.kompanion.server.domain.model.AgentRuntime
+import com.kompanion.server.domain.model.Runtime
 import com.kompanion.server.entity.Agent
 import com.kompanion.server.service.ClaudeHarnessService
 import com.kompanion.server.service.WorkspaceEnforcementService
@@ -21,7 +22,7 @@ import java.util.UUID
 class ClaudeCodeResumeTest {
 
     private val enforcement = WorkspaceEnforcementService(JsonMapper.builder().build(), ClaudeHarnessService())
-    private val runner = ClaudeCodeRunner(enforcement)
+    private val runner = ClaudeCodeRunner(enforcement) {}
 
     private fun ctx(tmp: File, prompt: String, resume: ResumeContext?) = RunContext(
         agent = Agent(id = UUID.randomUUID(), title = "Eng", slug = "eng", harnessPath = "h", runtime = AgentRuntime.claude_code),
@@ -156,5 +157,13 @@ class ClaudeCodeResumeTest {
         assertTrue(problem.contains("sess-2") && problem.contains("not found"), problem)
         // No projects folder at all is the same answer, not a crash.
         assertTrue(runner.resumeProblem("sess-1", File(tmp, "nowhere").path)!!.contains("not found"))
+    }
+
+    @Test
+    fun `a runtime's config dir is where its sessions live`() {
+        val runtime = Runtime(name = "work", kind = AgentRuntime.claude_code, configDir = "/srv/claude-work")
+        assertEquals("/srv/claude-work", runner.sessionStore(runtime))
+        // A runtime without one leaves the CLI on its inherited default.
+        assertEquals(runner.sessionStore(null), runner.sessionStore(runtime.copy(configDir = null)))
     }
 }

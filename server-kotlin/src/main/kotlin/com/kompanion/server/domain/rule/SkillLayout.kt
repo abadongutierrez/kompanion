@@ -22,7 +22,7 @@ object SkillLayout {
         AgentRuntime.pi -> ".pi/skills"
         // opencode also reads .claude/ and .agents/, but .opencode/ is the
         // folder its runner already owns and rebuilds every run.
-        AgentRuntime.opencode -> ".opencode/skills"
+        AgentRuntime.opencode, AgentRuntime.opencode2 -> ".opencode/skills"
     }
 
     // Folders in the harness where it may already carry skills of its own.
@@ -30,7 +30,7 @@ object SkillLayout {
     fun harnessSkillDirs(runtime: AgentRuntime): List<String> = when (runtime) {
         AgentRuntime.claude_code -> listOf(".claude/skills")
         AgentRuntime.pi -> listOf(".pi/skills", ".claude/skills")
-        AgentRuntime.opencode -> listOf(".opencode/skills", ".opencode/skill")
+        AgentRuntime.opencode, AgentRuntime.opencode2 -> listOf(".opencode/skills", ".opencode/skill")
     }
 
     // What of the harness goes into the instance. Both system-prompt files are
@@ -38,7 +38,7 @@ object SkillLayout {
     fun harnessEntries(runtime: AgentRuntime): List<String> = when (runtime) {
         AgentRuntime.claude_code -> listOf("CLAUDE.md", ".claude")
         AgentRuntime.pi -> listOf("AGENTS.md", "CLAUDE.md", "pi-agent", ".pi/skills", ".claude/skills")
-        AgentRuntime.opencode -> listOf("AGENTS.md", "CLAUDE.md", ".opencode")
+        AgentRuntime.opencode, AgentRuntime.opencode2 -> listOf("AGENTS.md", "CLAUDE.md", ".opencode")
     }
 
     // pi writes these into whatever config folder it is pointed at. They may

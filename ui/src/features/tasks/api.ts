@@ -2,6 +2,7 @@ import type {
   CreateTaskCommentInput,
   CreateTaskDependencyInput,
   CreateTaskInput,
+  RepositoryDiff,
   TaskComment,
   TaskDependency,
   TaskStatus,
@@ -67,6 +68,9 @@ export const tasksApi = {
     fetch(`${apiBase}/teams/${teamId}/tasks/${taskId}/dependencies/${dependencyId}`, {
       method: "DELETE",
     }),
+
+  getTaskDiff: (teamId: string, taskId: string) =>
+    request<RepositoryDiff[]>(`${apiBase}/teams/${teamId}/tasks/${taskId}/diff`),
 
   listTaskComments: (teamId: string, taskId: string) =>
     request<TaskComment[]>(`${apiBase}/teams/${teamId}/tasks/${taskId}/comments`),

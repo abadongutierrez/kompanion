@@ -11,3 +11,14 @@ export function useHeartbeatStatus() {
     refetchInterval: 10_000,
   });
 }
+
+// Polled once a minute; the server caches for the same minute, so open tabs
+// don't multiply calls to the usage endpoint. A finished run also
+// invalidates this (see useRunTask).
+export function useClaudeUsage() {
+  return useQuery({
+    queryKey: systemKeys.claudeUsage,
+    queryFn: systemApi.getClaudeUsage,
+    refetchInterval: 60_000,
+  });
+}
