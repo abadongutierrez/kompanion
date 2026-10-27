@@ -69,13 +69,21 @@ test.describe("agent pages", () => {
   });
 
   test("editing an agent keeps its saved runtime when another of the same kind exists", async ({ page, request }) => {
-    // Two runtimes of one kind: the form must not fall back to the first.
-    const all: SeededRuntime[] = await request.get("/api/runtimes").then((r) => r.json());
-    const second =
-      all.find((r) => r.kind === "claude_code" && r.id !== runtime.id) ??
-      (await request
-        .post("/api/runtimes", { data: { name: `E2E Claude B ${Date.now()}`, kind: "claude_code" } })
-        .then((r) => r.json()));
+    // Two runtimes of one kind: the form must not fall back to the first one
+    // the API lists (it orders by name). So the Agent gets the last Claude
+    // runtime of the re-fetched list, which is never the first.
+    const claudeRuntimes = async (): Promise<SeededRuntime[]> =>
+      (await request.get("/api/runtimes").then((r) => r.json()) as SeededRuntime[]).filter(
+        (r) => r.kind === "claude_code",
+      );
+    if ((await claudeRuntimes()).length < 2) {
+      await request.post("/api/runtimes", {
+        data: { name: `E2E Claude B ${Date.now()}`, kind: "claude_code" },
+      });
+    }
+    const claude = await claudeRuntimes();
+    const second = claude[claude.length - 1];
+    expect(second.id).not.toBe(claude[0].id);
     const created: { id: string; title: string } = await request
       .post("/api/agents", {
         data: { title: `E2E UI Keep ${Date.now()}`, harnessPath, runtimeId: second.id },
