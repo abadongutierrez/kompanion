@@ -102,6 +102,8 @@ export type AgentFormValues = {
   harnessPath: string;
   runtime: Agent["runtime"];
   model: string;
+  // "" = the kind's default runtime.
+  runtimeId: string;
 };
 
 export function useSaveAgent(agentId: string | undefined) {
@@ -115,8 +117,14 @@ export function useSaveAgent(agentId: string | undefined) {
       harnessTemplate: string;
     }): Promise<Agent> => {
       if (!agentId) {
-        const { title, harnessPath, runtime, model } = values;
-        return agentsApi.createAgent({ title, harnessPath, runtime, model });
+        const { title, harnessPath, runtime, model, runtimeId } = values;
+        return agentsApi.createAgent({
+          title,
+          harnessPath,
+          runtime,
+          model,
+          runtimeId: runtimeId || null,
+        });
       }
       const [saved] = await Promise.all([
         agentsApi.updateAgent(agentId, values),

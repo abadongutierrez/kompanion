@@ -4,6 +4,7 @@ import com.kompanion.server.application.port.inbound.CreateAgent
 import com.kompanion.server.application.port.inbound.CreateAgentCommand
 import com.kompanion.server.application.port.outbound.AgentStore
 import com.kompanion.server.application.port.outbound.Harnesses
+import com.kompanion.server.application.port.outbound.RuntimeStore
 import com.kompanion.server.domain.error.DomainException
 import com.kompanion.server.domain.model.Agent
 import com.kompanion.server.domain.model.AgentRuntime
@@ -14,11 +15,20 @@ import org.springframework.transaction.annotation.Transactional
 class CreateAgentUseCase(
     private val agents: AgentStore,
     private val harnesses: Harnesses,
+    private val runtimes: RuntimeStore,
 ) : CreateAgent {
 
     @Transactional
     override fun handle(command: CreateAgentCommand): Agent {
-        val runtime = command.runtime ?: AgentRuntime.claude_code
+        // A chosen Runtime decides the kind; naming a different kind as well
+        // is a contradiction, not something to pick between.
+        val chosen = command.runtimeId?.let {
+            runtimes.findById(it) ?: throw DomainException.Invalid("runtime not found")
+        }
+        if (chosen != null && command.runtime != null && command.runtime != chosen.kind) {
+            throw DomainException.Invalid("runtime \"${chosen.name}\" is ${chosen.kind}, not ${command.runtime}")
+        }
+        val runtime = chosen?.kind ?: command.runtime ?: AgentRuntime.claude_code
 
         // No scaffolding happens here — the operator is expected to have
         // created the harness directory already. We only check it is really
@@ -31,6 +41,7 @@ class CreateAgentUseCase(
                 slug = uniqueSlug(agents, command.title),
                 harnessPath = harnesses.normalizePath(command.harnessPath),
                 runtime = runtime,
+                runtimeId = chosen?.id,
                 // Blank is the same as absent on create: no model means
                 // "whatever the CLI defaults to".
                 model = command.model?.ifBlank { null },
