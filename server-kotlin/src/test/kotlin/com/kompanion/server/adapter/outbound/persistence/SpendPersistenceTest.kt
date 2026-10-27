@@ -93,4 +93,59 @@ class SpendPersistenceTest(
         // A runtime nothing else knows about yet still comes through.
         assertEquals(listOf("claude_code", "opencode2"), d2.byRuntime.map(RuntimeSpend::runtime))
     }
+
+    @Test
+    fun `the month is split per configured runtime, so two of one kind stay apart`() {
+        val projectId = jdbc.queryForObject(
+            "insert into projects (name, workspace_path) values (?, ?) returning id",
+            UUID::class.java, "p-$suffix", "projects/p-$suffix",
+        )!!.also { projectIds += it }
+        val teamId = jdbc.queryForObject(
+            "insert into teams (project_id, name) values (?, 't') returning id", UUID::class.java, projectId,
+        )!!
+        val taskId = jdbc.queryForObject(
+            "insert into tasks (team_id, title, type) values (?, 'task', 'story') returning id", UUID::class.java, teamId,
+        )!!
+        val agentId = jdbc.queryForObject(
+            "insert into agents (title, slug, harness_path, runtime) values ('E', ?, 'harnesses/engineer', 'claude_code') returning id",
+            UUID::class.java, "e-$suffix",
+        )!!.also { agentIds += it }
+        fun runtime(name: String) = jdbc.queryForObject(
+            "insert into runtimes (name, kind) values (?, 'claude_code') returning id", UUID::class.java, name,
+        )!!
+        val work = runtime("Work $suffix")
+        val personal = runtime("Personal $suffix")
+        val gone = UUID.randomUUID() // a Runtime deleted since its runs
+
+        fun run(runtimeId: UUID?, cost: String) = jdbc.update(
+            "insert into task_runs (task_id, agent_id, status, runtime, runtime_id, cost_usd) values (?, ?, 'succeeded', 'claude_code', ?, ?)",
+            taskId, agentId, runtimeId, BigDecimal(cost),
+        )
+
+        try {
+            run(work, "1.0000")
+            run(work, "0.5000")
+            run(personal, "0.2500")
+            run(gone, "0.1000")
+            run(null, "0.0500")
+
+            val rows = spend.projectMonthSpendByConfiguredRuntime(projectId)
+
+            assertEquals(
+                listOf(
+                    Triple(work, "Work $suffix", 2),
+                    Triple(personal, "Personal $suffix", 1),
+                    Triple(gone, null, 1),
+                    Triple(null, null, 1),
+                ),
+                rows.map { Triple(it.runtimeId, it.runtimeName, it.runCount) },
+            )
+            assertEquals(0, BigDecimal("1.5").compareTo(rows.first().spendUsd))
+            rows.forEach { assertEquals("claude_code", it.runtime) }
+        } finally {
+            projectIds.remove(projectId)
+            jdbc.update("delete from projects where id = ?", projectId)
+            jdbc.update("delete from runtimes where id in (?, ?)", work, personal)
+        }
+    }
 }

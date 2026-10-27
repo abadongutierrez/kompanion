@@ -18,6 +18,7 @@ import com.kompanion.server.application.port.outbound.TaskStore
 import com.kompanion.server.domain.model.Agent
 import com.kompanion.server.domain.model.AgentInstance
 import com.kompanion.server.domain.model.AgentRuntime
+import com.kompanion.server.domain.model.ConfiguredRuntimeSpend
 import com.kompanion.server.domain.model.DaySpend
 import com.kompanion.server.domain.model.ProjectSpend
 import com.kompanion.server.domain.model.Runtime
@@ -86,6 +87,7 @@ class FakeHarnesses(var problem: String? = null) : Harnesses {
 class InMemorySpendStore(
     private val spend: ProjectSpend? = null,
     private val byDay: List<DaySpend> = emptyList(),
+    private val byConfiguredRuntime: List<ConfiguredRuntimeSpend> = emptyList(),
 ) : SpendStore {
     val asked = mutableListOf<UUID>()
 
@@ -95,6 +97,8 @@ class InMemorySpendStore(
     }
 
     override fun projectDailySpend(projectId: UUID): List<DaySpend> = byDay
+
+    override fun projectMonthSpendByConfiguredRuntime(projectId: UUID): List<ConfiguredRuntimeSpend> = byConfiguredRuntime
 }
 
 class InMemoryProjectStore(vararg seed: UUID) : ProjectStore {

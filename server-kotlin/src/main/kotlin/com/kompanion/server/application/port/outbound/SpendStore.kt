@@ -1,5 +1,6 @@
 package com.kompanion.server.application.port.outbound
 
+import com.kompanion.server.domain.model.ConfiguredRuntimeSpend
 import com.kompanion.server.domain.model.DaySpend
 import com.kompanion.server.domain.model.ProjectSpend
 import java.util.UUID
@@ -13,4 +14,8 @@ interface SpendStore {
     // Current month only, newest day first — the window the Budget tab
     // breaks down, as opposed to the all-time totals above.
     fun projectDailySpend(projectId: UUID): List<DaySpend>
+
+    // Current month, one row per configured Runtime that ran (plus one per
+    // kind for runs with no Runtime recorded), biggest spender first.
+    fun projectMonthSpendByConfiguredRuntime(projectId: UUID): List<ConfiguredRuntimeSpend>
 }

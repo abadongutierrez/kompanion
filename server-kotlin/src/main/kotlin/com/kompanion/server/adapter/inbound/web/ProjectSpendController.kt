@@ -36,6 +36,16 @@ data class ProjectSpendResponse(
     val monthSpendUsd: BigDecimal,
     val periodStart: OffsetDateTime,
     val byDay: List<DaySpendResponse>,
+    // Month to date, per configured Runtime — what the sidebar lists.
+    val byConfiguredRuntime: List<ConfiguredRuntimeSpendResponse>,
+)
+
+data class ConfiguredRuntimeSpendResponse(
+    val runtimeId: UUID?,
+    val runtime: String,
+    val runtimeName: String?,
+    val spendUsd: BigDecimal,
+    val runCount: Int,
 )
 
 data class DaySpendResponse(
@@ -60,6 +70,9 @@ private fun ProjectSpendView.toResponse() = ProjectSpendResponse(
     monthSpendUsd = spend.monthSpendUsd,
     periodStart = spend.periodStart,
     byDay = byDay.map { it.toResponse() },
+    byConfiguredRuntime = byConfiguredRuntime.map {
+        ConfiguredRuntimeSpendResponse(it.runtimeId, it.runtime, it.runtimeName, it.spendUsd, it.runCount)
+    },
 )
 
 private fun DaySpend.toResponse() = DaySpendResponse(

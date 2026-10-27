@@ -27,6 +27,7 @@ class GetProjectSpendUseCase(
         return ProjectSpendView(
             spend = spend.projectSpend(query.projectId),
             byDay = spend.projectDailySpend(query.projectId),
+            byConfiguredRuntime = spend.projectMonthSpendByConfiguredRuntime(query.projectId),
         )
     }
 }

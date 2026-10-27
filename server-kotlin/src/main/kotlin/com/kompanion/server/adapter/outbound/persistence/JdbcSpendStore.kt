@@ -1,6 +1,7 @@
 package com.kompanion.server.adapter.outbound.persistence
 
 import com.kompanion.server.application.port.outbound.SpendStore
+import com.kompanion.server.domain.model.ConfiguredRuntimeSpend
 import com.kompanion.server.domain.model.DaySpend
 import com.kompanion.server.domain.model.ProjectSpend
 import com.kompanion.server.domain.model.RuntimeSpend
@@ -84,4 +85,36 @@ class JdbcSpendStore(private val jdbc: JdbcTemplate) : SpendStore {
             byRuntime = byRuntime,
         )
     }
+
+    // Grouped by runtime_id *and* kind: runs with no runtime_id are split per
+    // kind rather than lumped together. Left join, so a deleted Runtime's
+    // spend still shows, just without a name.
+    override fun projectMonthSpendByConfiguredRuntime(projectId: UUID): List<ConfiguredRuntimeSpend> = jdbc.query(
+        """
+        select
+          tr.runtime_id as runtime_id,
+          tr.runtime as runtime,
+          r.name as runtime_name,
+          coalesce(sum(tr.cost_usd), 0) as spend_usd,
+          count(*) as run_count
+        from task_runs tr
+        join tasks t on t.id = tr.task_id
+        join teams tm on tm.id = t.team_id
+        left join runtimes r on r.id = tr.runtime_id
+        where tm.project_id = ?
+          and tr.created_at >= date_trunc('month', now())
+        group by tr.runtime_id, tr.runtime, r.name
+        order by spend_usd desc, runtime_name nulls last, runtime
+        """.trimIndent(),
+        { rs, _ ->
+            ConfiguredRuntimeSpend(
+                runtimeId = rs.getObject("runtime_id", UUID::class.java),
+                runtime = rs.getString("runtime"),
+                runtimeName = rs.getString("runtime_name"),
+                spendUsd = rs.getBigDecimal("spend_usd") ?: BigDecimal.ZERO,
+                runCount = rs.getInt("run_count"),
+            )
+        },
+        projectId,
+    )
 }

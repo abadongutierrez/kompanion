@@ -170,7 +170,10 @@ minutes) is the ceiling to raise if runs get killed mid-answer.
 `task_runs` stores `runtime` and `model` as well, stamped when the run
 starts. That is not redundant with the Agent: replaying a stored transcript
 means picking the reducer that matches the event shape, and an Agent can be
-switched to another CLI afterwards.
+switched to another CLI afterwards. It also stamps `runtime_id` (V30), the
+configured Runtime the run used, so the sidebar's Spent card can tell two
+runtimes of one kind apart. It is null when the Agent names no runtime, and
+for older runs.
 
 ### opencode runs are not enforced
 
