@@ -29,9 +29,14 @@ test.describe("task page sidebar", () => {
     return task.id;
   }
 
-  const run = (id: string, taskId: string, costUsd: number | null) => ({
+  const run = (
+    id: string,
+    taskId: string,
+    costUsd: number | null,
+    extra: { status?: string; agentTitle?: string; durationMs?: number | null } = {},
+  ) => ({
     id, taskId, agentId: null, agentTitle: "Engineer", status: "succeeded",
-    createdAt: "2026-08-26T12:00:00.000Z", durationMs: 1000, costUsd,
+    createdAt: "2026-08-26T12:00:00.000Z", durationMs: 1000, costUsd, ...extra,
   });
 
   async function stubRuns(page: Page, taskId: string, runs: unknown[]) {
@@ -81,6 +86,64 @@ test.describe("task page sidebar", () => {
     const sidebar = page.getByRole("complementary", { name: "Task details" });
     await expect(sidebar.getByTestId("task-spent")).toHaveText("$0.0000");
     await expect(sidebar.getByText("Not run yet")).toBeVisible();
+  });
+
+  test("leaves out runs still in progress", async ({ page, request }) => {
+    const taskId = await makeTask(request, `E2E sidebar running ${Date.now()}`);
+    await stubRuns(page, taskId, [
+      run("eeeeeeee-5555-5555-5555-555555555555", taskId, 0.4),
+      // A running run that somehow already carries a cost must still not count.
+      run("ffffffff-6666-6666-6666-666666666666", taskId, 9, { status: "running", durationMs: null }),
+    ]);
+
+    await page.goto(`/projects/${projectId}/tasks/${taskId}`);
+    const sidebar = page.getByRole("complementary", { name: "Task details" });
+    await expect(sidebar.getByTestId("task-spent")).toHaveText("$0.4000");
+    await expect(sidebar.getByText("across 1 run", { exact: true })).toBeVisible();
+    await expect(sidebar.getByText("1 running, not counted")).toBeVisible();
+  });
+
+  async function stubTwoAgents(page: Page, taskId: string) {
+    await stubRuns(page, taskId, [
+      run("11111111-aaaa-aaaa-aaaa-aaaaaaaaaaaa", taskId, 0.75, { agentTitle: "Engineer", durationMs: 200_000 }),
+      run("22222222-bbbb-bbbb-bbbb-bbbbbbbbbbbb", taskId, 0.25, { agentTitle: "QA", durationMs: 42_000 }),
+    ]);
+  }
+
+  test("splits spend by agent with time, percentage and a bar", async ({ page, request }) => {
+    await page.setViewportSize({ width: 1400, height: 900 });
+    const taskId = await makeTask(request, `E2E sidebar agents ${Date.now()}`);
+    await stubTwoAgents(page, taskId);
+
+    await page.goto(`/projects/${projectId}/tasks/${taskId}`);
+    const rows = page
+      .getByRole("complementary", { name: "Task details" })
+      .getByTestId("task-spent-agent");
+    await expect(rows).toHaveCount(2);
+    await expect(rows.nth(0)).toContainText("Engineer");
+    await expect(rows.nth(0)).toContainText("$0.7500");
+    await expect(rows.nth(0)).toContainText("3m 20s");
+    await expect(rows.nth(0)).toContainText("75%");
+    await expect(rows.nth(0).getByRole("progressbar")).toBeVisible();
+    await expect(rows.nth(1)).toContainText("QA");
+    await expect(rows.nth(1)).toContainText("42s");
+    await expect(rows.nth(1)).toContainText("25%");
+  });
+
+  test("on a small screen shows only time and percentage, no bars", async ({ page, request }) => {
+    await page.setViewportSize({ width: 800, height: 900 });
+    const taskId = await makeTask(request, `E2E sidebar small ${Date.now()}`);
+    await stubTwoAgents(page, taskId);
+
+    await page.goto(`/projects/${projectId}/tasks/${taskId}`);
+    const row = page
+      .getByRole("complementary", { name: "Task details" })
+      .getByTestId("task-spent-agent")
+      .first();
+    await expect(row.getByText("3m 20s")).toBeVisible();
+    await expect(row.getByText("75%")).toBeVisible();
+    await expect(row.getByText("$0.7500")).toBeHidden();
+    await expect(row.getByRole("progressbar", { includeHidden: true })).toBeHidden();
   });
 
   test("no sidebar when the task does not exist", async ({ page }) => {

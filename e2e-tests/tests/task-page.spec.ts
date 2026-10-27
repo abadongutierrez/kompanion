@@ -74,7 +74,8 @@ test.describe("task page", () => {
     const rows = page.getByRole("button", { name: /logs$/ });
     await expect(rows).toHaveCount(3);
     await expect(page.getByText("QA", { exact: false }).first()).toBeVisible();
-    await expect(page.getByText("$0.2500")).toBeVisible();
+    // Scoped to the run row: the sidebar also shows $0.2500 for the Engineer.
+    await expect(page.getByText("· $0.2500")).toBeVisible();
     // A run that never finished has no cost, and must not read as free.
     await expect(page.getByText("cost unknown")).toBeVisible();
 
