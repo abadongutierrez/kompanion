@@ -2,6 +2,7 @@ package com.kompanion.server.service.runner
 
 import com.kompanion.server.entity.Agent
 import com.kompanion.server.domain.model.AgentRuntime
+import com.kompanion.server.domain.model.Runtime
 import com.kompanion.server.service.WorkspaceManifest
 import java.io.File
 import java.math.BigDecimal
@@ -37,7 +38,15 @@ data class RunContext(
     // the pre-flight check in RunTaskService only catches "already over", and
     // without this one run can spend past the remainder.
     val remainingBudgetUsd: BigDecimal?,
-)
+    // The configured Runtime the Agent launches through, or null for an Agent
+    // with none: the CLI then comes from its *_BIN env var, then PATH.
+    val runtime: Runtime? = null,
+) {
+    // The command to start: the Runtime's binary, else the env var, else the
+    // bare command name.
+    fun binary(envVar: String, default: String): String =
+        runtime?.binaryPath ?: System.getenv(envVar) ?: default
+}
 
 // Kept apart rather than summed: cache reads bill at 0.1x input and cache
 // writes at 1.25x, and on Claude Code `input` alone counts only what wasn't

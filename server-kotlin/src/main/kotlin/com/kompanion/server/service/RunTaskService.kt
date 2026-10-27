@@ -14,6 +14,7 @@ import org.springframework.jdbc.core.JdbcTemplate
 import com.kompanion.server.domain.model.AgentRuntime
 import com.kompanion.server.application.port.inbound.PrepareAgentInstance
 import com.kompanion.server.application.port.inbound.PrepareAgentInstanceCommand
+import com.kompanion.server.application.port.outbound.RuntimeStore
 import com.kompanion.server.service.runner.AgentRunner
 import com.kompanion.server.service.runner.RunContext
 import com.kompanion.server.service.runner.TokenUsage
@@ -53,6 +54,8 @@ class RunTaskService(
     // A use case, not logic of this class: this orchestrator is old layered
     // code and does not grow new rules.
     private val prepareAgentInstance: PrepareAgentInstance,
+    // Resolves the Agent's configured Runtime (binary, config dir) per run.
+    private val runtimeStore: RuntimeStore,
     // Every AgentRunner bean, keyed by the runtime it serves. Adding a
     // runtime means adding a @Component — nothing here changes.
     runnerList: List<AgentRunner>,
@@ -555,6 +558,7 @@ class RunTaskService(
                     // Only meaningful when the team has a budget; the gate
                     // above already refused if the remainder were negative.
                     remainingBudgetUsd = spend.monthlyBudgetUsd?.minus(spend.spendUsd),
+                    runtime = agent.runtimeId?.let { runtimeStore.findById(it) },
                 )
                 runner.prepareWorkspace(ctx, manifest)
 

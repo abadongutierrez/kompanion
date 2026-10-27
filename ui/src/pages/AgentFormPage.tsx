@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { AGENT_RUNTIME_LABEL, type AgentRuntime } from "@kompanion/shared";
+import { useRuntimes } from "@/features/runtimes/index.js";
 import {
   Button,
   Card,
@@ -79,6 +80,8 @@ export function AgentFormPage({ mode }: { mode: "create" | "edit" | "view" }) {
   const [harnessPath, setHarnessPath] = useState("");
   const [runtime, setRuntime] = useState<AgentRuntime>("claude_code");
   const [model, setModel] = useState("");
+  const [runtimeId, setRuntimeId] = useState("");
+  const runtimes = useRuntimes();
   const [harnessTemplate, setHarnessTemplate] = useState("");
 
   // Seed the fields once the agent (and its template) arrive. Keyed on the
@@ -92,6 +95,7 @@ export function AgentFormPage({ mode }: { mode: "create" | "edit" | "view" }) {
     setHarnessPath(agent.harnessPath);
     setRuntime(agent.runtime);
     setModel(agent.model ?? "");
+    setRuntimeId(agent.runtimeId ?? "");
   }, [agent?.id]);
 
   useEffect(() => {
@@ -165,7 +169,7 @@ export function AgentFormPage({ mode }: { mode: "create" | "edit" | "view" }) {
           if (!title.trim() || !harnessPath.trim()) return;
           saveAgent.mutate(
             {
-              values: { title, slug, harnessPath, runtime, model },
+              values: { title, slug, harnessPath, runtime, model, runtimeId },
               harnessTemplate,
             },
             {
@@ -214,13 +218,33 @@ export function AgentFormPage({ mode }: { mode: "create" | "edit" | "view" }) {
               fullWidth={false}
               disabled={isView}
               value={runtime}
-              onChange={(e) => setRuntime(e.target.value as AgentRuntime)}
+              onChange={(e) => {
+                setRuntime(e.target.value as AgentRuntime);
+                // An instance belongs to one kind.
+                setRuntimeId("");
+              }}
             >
               {Object.entries(AGENT_RUNTIME_LABEL).map(([value, label]) => (
                 <option key={value} value={value}>
                   {label}
                 </option>
               ))}
+            </Select>
+            <Select
+              aria-label="Runtime instance"
+              fullWidth={false}
+              disabled={isView}
+              value={runtimeId}
+              onChange={(e) => setRuntimeId(e.target.value)}
+            >
+              <option value="">Default</option>
+              {(runtimes.data ?? [])
+                .filter((r) => r.kind === runtime)
+                .map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.name}
+                  </option>
+                ))}
             </Select>
             <TextInput
               aria-label="Model"

@@ -15,6 +15,8 @@ data class CreateAgentCommand(
     // null means "the default runtime", not "unchanged" — this is a create.
     val runtime: AgentRuntime?,
     val model: String?,
+    // When set, the Agent's runtime kind is taken from this Runtime.
+    val runtimeId: UUID? = null,
 )
 
 // Edit one. Every field is nullable with the same meaning: absent leaves the
@@ -32,4 +34,6 @@ data class UpdateAgentCommand(
     val harnessPath: String? = null,
     val runtime: AgentRuntime? = null,
     val model: String? = null,
+    val runtimeId: UUID? = null,
+    val clearRuntimeId: Boolean = false,
 )

@@ -72,7 +72,7 @@ class OpencodeRunner : AgentRunner {
     }
 
     override fun buildCommand(ctx: RunContext): List<String> {
-        val bin = System.getenv("OPENCODE_BIN") ?: "opencode"
+        val bin = ctx.binary("OPENCODE_BIN", "opencode")
         val args = mutableListOf(
             bin, "run",
             "--format", "json",

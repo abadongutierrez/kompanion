@@ -40,6 +40,7 @@ class AgentWriteController(
                 harnessPath = body.harnessPath,
                 runtime = parseRuntime(body.runtime),
                 model = body.model,
+                runtimeId = body.runtimeId,
             ),
         ).toResponse()
 
@@ -56,8 +57,13 @@ class AgentWriteController(
                 harnessPath = body.harnessPath,
                 runtime = parseRuntime(body.runtime),
                 model = body.model,
+                runtimeId = body.runtimeId?.takeIf { it.isNotBlank() }?.let(::parseId),
+                clearRuntimeId = body.runtimeId?.isBlank() == true,
             ),
         ).toResponse()
+
+    private fun parseId(raw: String): UUID =
+        runCatching { UUID.fromString(raw) }.getOrElse { throw DomainException.Invalid("invalid runtimeId \"$raw\"") }
 
     // Syntactic validation of the wire format, which is the web adapter's
     // job — an unknown runtime is a malformed request, not a domain rule.
@@ -83,6 +89,7 @@ data class AgentResponse(
     val harnessPath: String,
     val runtime: AgentRuntime,
     val model: String?,
+    val runtimeId: UUID?,
     val createdAt: OffsetDateTime?,
 )
 
@@ -93,5 +100,6 @@ internal fun Agent.toResponse() = AgentResponse(
     harnessPath = harnessPath,
     runtime = runtime,
     model = model,
+    runtimeId = runtimeId,
     createdAt = createdAt,
 )
