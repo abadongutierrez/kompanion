@@ -68,6 +68,46 @@ test.describe("agent pages", () => {
     await expect(page.getByText(runtime.name).first()).toBeVisible();
   });
 
+  test("editing an agent keeps its saved runtime when another of the same kind exists", async ({ page, request }) => {
+    // Two runtimes of one kind: the form must not fall back to the first.
+    const all: SeededRuntime[] = await request.get("/api/runtimes").then((r) => r.json());
+    const second =
+      all.find((r) => r.kind === "claude_code" && r.id !== runtime.id) ??
+      (await request
+        .post("/api/runtimes", { data: { name: `E2E Claude B ${Date.now()}`, kind: "claude_code" } })
+        .then((r) => r.json()));
+    const created: { id: string; title: string } = await request
+      .post("/api/agents", {
+        data: { title: `E2E UI Keep ${Date.now()}`, harnessPath, runtimeId: second.id },
+      })
+      .then((r) => r.json());
+
+    await page.goto(`/agents/${created.id}`);
+    await expect(page.getByLabel("Agent title")).toHaveValue(created.title);
+    await expect(page.getByLabel("Runtime", { exact: true })).toHaveValue(second.id);
+
+    await page.getByLabel("Agent title").fill(`${created.title} (renamed)`);
+    await page.getByRole("button", { name: "Save changes" }).click();
+    await expect(page).toHaveURL(/\/agents$/);
+
+    const agents: { id: string; runtimeId: string | null }[] = await request
+      .get("/api/agents")
+      .then((r) => r.json());
+    expect(agents.find((a) => a.id === created.id)?.runtimeId).toBe(second.id);
+  });
+
+  test("viewing an agent from before runtimes shows its kind, not a prompt", async ({ page, request }) => {
+    const created: { id: string } = await request
+      .post("/api/agents", { data: { title: `E2E UI Legacy ${Date.now()}`, harnessPath } })
+      .then((r) => r.json());
+
+    await page.goto(`/agents/${created.id}/view`);
+    const select = page.getByLabel("Runtime", { exact: true });
+    await expect(select).toBeDisabled();
+    await expect(select).toContainText("Claude Code (no runtime selected)");
+    await expect(select).not.toContainText("Select a runtime");
+  });
+
   test("editing an agent happens on its own /agents/:agentId page", async ({ page, request }) => {
     const created: { id: string; title: string } = await request
       .post("/api/agents", {

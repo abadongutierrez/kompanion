@@ -103,9 +103,11 @@ export function AgentFormPage({ mode }: { mode: "create" | "edit" | "view" }) {
 
   // Nothing picked yet: a new Agent, or one from before runtimes existed. Take
   // the first runtime of the Agent's kind (any, when creating) so saving links
-  // it, instead of leaving the operator a blank to fill in.
+  // it, instead of leaving the operator a blank to fill in. Never for an Agent
+  // that already has one: the seeding effect above has queued it, but this
+  // closure still sees the empty state and would overwrite it.
   useEffect(() => {
-    if (!runtimes.data || runtimeId || isView) return;
+    if (!runtimes.data || runtimeId || isView || agent?.runtimeId) return;
     if (isEdit && !agent) return;
     const match = runtimes.data.find((r) => !agent || r.kind === agent.runtime);
     if (match) setRuntimeId(match.id);
@@ -235,7 +237,15 @@ export function AgentFormPage({ mode }: { mode: "create" | "edit" | "view" }) {
             >
               {!selectedRuntime && (
                 <option value="" disabled>
-                  {runtimes.isSuccess ? "Select a runtime" : "Loading…"}
+                  {
+                    // View never picks one for the Agent, so say what it runs
+                    // on instead of prompting for a choice nobody can make.
+                    isView && agent
+                      ? `${AGENT_RUNTIME_LABEL[agent.runtime]} (no runtime selected)`
+                      : runtimes.isSuccess
+                        ? "Select a runtime"
+                        : "Loading…"
+                  }
                 </option>
               )}
               {(runtimes.data ?? []).map((r) => (
