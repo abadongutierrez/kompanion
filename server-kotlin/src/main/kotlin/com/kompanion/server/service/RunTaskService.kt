@@ -385,28 +385,29 @@ class RunTaskService(
     private fun insertOverBudgetRun(taskId: UUID, agent: Agent, summary: String): TaskRunResponse =
         jdbc.query(
             """
-            insert into task_runs (task_id, agent_id, runtime, model, status, summary, cost_usd, duration_ms)
-            values (?, ?, ?, ?, 'over_budget', ?, 0, 0)
+            insert into task_runs (task_id, agent_id, runtime, runtime_id, model, status, summary, cost_usd, duration_ms)
+            values (?, ?, ?, ?, ?, 'over_budget', ?, 0, 0)
             returning *
             """.trimIndent(),
             // `returning *` can't join, so the title comes from the Agent the
             // caller already has rather than a second round trip.
             { rs, _ -> mapTaskRun(rs, agent.title) },
-            taskId, agent.id, agent.runtime.name, agent.model, summary,
+            taskId, agent.id, agent.runtime.name, agent.runtimeId, agent.model, summary,
         ).first()
 
     // runtime/model are stamped here, at the moment the run starts, not read
     // back through agent_id later: the Agent can be switched to another CLI
     // afterwards and this run's events still have to replay under the shape
-    // that produced them.
+    // that produced them. runtime_id likewise pins which configured Runtime
+    // the run was billed to, for the sidebar's per-runtime spend.
     private fun insertRunningRun(taskId: UUID, agent: Agent): UUID =
         jdbc.query(
             """
-            insert into task_runs (task_id, agent_id, runtime, model, status)
-            values (?, ?, ?, ?, 'running') returning id
+            insert into task_runs (task_id, agent_id, runtime, runtime_id, model, status)
+            values (?, ?, ?, ?, ?, 'running') returning id
             """.trimIndent(),
             { rs, _ -> UUID.fromString(rs.getString("id")) },
-            taskId, agent.id, agent.runtime.name, agent.model,
+            taskId, agent.id, agent.runtime.name, agent.runtimeId, agent.model,
         ).first()
 
     private fun updateRunToTerminal(

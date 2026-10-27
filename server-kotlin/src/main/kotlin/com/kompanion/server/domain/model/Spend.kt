@@ -36,3 +36,16 @@ data class RuntimeSpend(
     val spendUsd: BigDecimal,
     val runCount: Int,
 )
+
+// One configured Runtime's share of the current month, for the sidebar.
+// runtimeId is task_runs.runtime_id: null when the run's Agent named no
+// runtime (the CLI defaults) or the run predates V28. runtimeName is the
+// Runtime's name today, null if it has been deleted since — its spend still
+// counts.
+data class ConfiguredRuntimeSpend(
+    val runtimeId: UUID?,
+    val runtime: String,
+    val runtimeName: String?,
+    val spendUsd: BigDecimal,
+    val runCount: Int,
+)

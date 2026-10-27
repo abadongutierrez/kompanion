@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   AgentSkill,
   AssignSkillsInput,
+  monthSpendByRuntime,
   ProjectSpend,
   RegisterSkillInput,
   RunSkill,
@@ -11,6 +12,7 @@ import {
   SkillDetail,
   SkillOutcome,
   SkillScanResult,
+  spendPerConfiguredRuntime,
   TaskRun,
 } from "./domain.js";
 
@@ -150,6 +152,42 @@ describe("a project's spend by day", () => {
   it("refuses a day without its split", () => {
     const { byRuntime: _, ...bare } = spend.byDay[0];
     expect(ProjectSpend.safeParse({ ...spend, byDay: [bare] }).success).toBe(false);
+  });
+
+  it("totals the month per runtime kind", () => {
+    const day2 = { day: "2026-10-03", spendUsd: 0.5, runCount: 1, byRuntime: [{ runtime: "claude_code", spendUsd: 0.5, runCount: 1 }] };
+    expect(monthSpendByRuntime([...spend.byDay, day2])).toEqual([
+      { runtime: "claude_code", spendUsd: 2, runCount: 2 },
+      { runtime: "opencode2", spendUsd: 0, runCount: 1 },
+      { runtime: "pi", spendUsd: 0, runCount: 1 },
+    ]);
+  });
+
+  it("defaults the per-configured-runtime split for payloads without one", () => {
+    expect(ProjectSpend.parse(spend).byConfiguredRuntime).toEqual([]);
+  });
+
+  it("lists each configured runtime by name, idle ones at $0, plus deleted and unattributed spend", () => {
+    const configured = [
+      { id: "cc1", name: "Claude Code", kind: "claude_code" as const },
+      { id: "cc2", name: "Claude Code Encora", kind: "claude_code" as const },
+      { id: "pi1", name: "pi local", kind: "pi" as const },
+    ];
+    const spent = [
+      { runtimeId: "cc2", runtime: "claude_code", runtimeName: "Claude Code Encora", spendUsd: 1.5, runCount: 2 },
+      { runtimeId: "cc1", runtime: "claude_code", runtimeName: "Claude Code", spendUsd: 0.25, runCount: 1 },
+      { runtimeId: "gone", runtime: "opencode", runtimeName: null, spendUsd: 0.1, runCount: 1 },
+      { runtimeId: null, runtime: "claude_code", runtimeName: null, spendUsd: 0.05, runCount: 1 },
+      { runtimeId: null, runtime: "some_new_cli", runtimeName: null, spendUsd: 0, runCount: 1 },
+    ];
+    expect(spendPerConfiguredRuntime(spent, configured).map((r) => [r.key, r.label, r.spendUsd, r.runCount])).toEqual([
+      ["cc2", "Claude Code Encora", 1.5, 2],
+      ["cc1", "Claude Code", 0.25, 1],
+      ["gone", "opencode (deleted)", 0.1, 1],
+      ["kind:claude_code", "Claude Code (unattributed)", 0.05, 1],
+      ["pi1", "pi local", 0, 0],
+      ["kind:some_new_cli", "some_new_cli (unattributed)", 0, 1],
+    ]);
   });
 
   it("labels known runtimes like the Agent form and falls back to the raw value", () => {
