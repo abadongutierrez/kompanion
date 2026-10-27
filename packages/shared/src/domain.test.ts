@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   AgentSkill,
   AssignSkillsInput,
+  monthSpendByRuntime,
   ProjectSpend,
   RegisterSkillInput,
   RunSkill,
@@ -150,6 +151,16 @@ describe("a project's spend by day", () => {
   it("refuses a day without its split", () => {
     const { byRuntime: _, ...bare } = spend.byDay[0];
     expect(ProjectSpend.safeParse({ ...spend, byDay: [bare] }).success).toBe(false);
+  });
+
+  it("totals the month per runtime, listing configured runtimes even when idle", () => {
+    const day2 = { day: "2026-10-03", spendUsd: 0.5, runCount: 1, byRuntime: [{ runtime: "claude_code", spendUsd: 0.5, runCount: 1 }] };
+    expect(monthSpendByRuntime([...spend.byDay, day2], ["claude_code", "opencode"])).toEqual([
+      { runtime: "claude_code", spendUsd: 2, runCount: 2 },
+      { runtime: "opencode", spendUsd: 0, runCount: 0 },
+      { runtime: "opencode2", spendUsd: 0, runCount: 1 },
+      { runtime: "pi", spendUsd: 0, runCount: 1 },
+    ]);
   });
 
   it("labels known runtimes like the Agent form and falls back to the raw value", () => {

@@ -472,6 +472,29 @@ export const ProjectDailySpend = DailySpend.extend({
 });
 export type ProjectDailySpend = z.infer<typeof ProjectDailySpend>;
 
+// Month-to-date spend per runtime, biggest spender first. `configured` are
+// runtime kinds that should get a row even with no runs yet (the sidebar
+// lists every configured runtime, at $0 if idle). A runtime that ran but is
+// no longer configured still shows: the money was spent.
+export function monthSpendByRuntime(
+  byDay: ProjectDailySpend[],
+  configured: readonly string[] = [],
+): RuntimeSpend[] {
+  const totals = new Map<string, RuntimeSpend>();
+  for (const runtime of configured) totals.set(runtime, { runtime, spendUsd: 0, runCount: 0 });
+  for (const day of byDay) {
+    for (const r of day.byRuntime) {
+      const t = totals.get(r.runtime) ?? { runtime: r.runtime, spendUsd: 0, runCount: 0 };
+      t.spendUsd += r.spendUsd;
+      t.runCount += r.runCount;
+      totals.set(r.runtime, t);
+    }
+  }
+  return [...totals.values()].sort(
+    (a, b) => b.spendUsd - a.spendUsd || a.runtime.localeCompare(b.runtime),
+  );
+}
+
 // A runtime's display name: the Agent form's label when there is one, the
 // raw value otherwise.
 export function runtimeLabel(runtime: string): string {

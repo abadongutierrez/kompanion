@@ -1,4 +1,5 @@
 import { NavLink } from "react-router-dom";
+import { SpentByRuntimeCard } from "@/features/budget/index.js";
 import { ClaudeUsageCard } from "@/features/system/index.js";
 
 export type Section = "board" | "agents" | "repositories" | "budget";
@@ -30,6 +31,7 @@ export function Sidebar({ projectId }: { projectId: string }) {
           </NavLink>
         ))}
       </div>
+      <SpentByRuntimeCard projectId={projectId} />
       <ClaudeUsageCard />
     </nav>
   );
