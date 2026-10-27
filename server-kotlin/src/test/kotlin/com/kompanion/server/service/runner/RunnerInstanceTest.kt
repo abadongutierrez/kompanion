@@ -76,7 +76,7 @@ class RunnerInstanceTest {
         s.write(s.harness, ".claude/skills/stale/SKILL.md", "harness only")
         s.write(s.cwd, ".claude/skills/previous-agent/SKILL.md", "left by the last agent")
 
-        ClaudeCodeRunner(s.enforcement).prepareWorkspace(s.ctx(AgentRuntime.claude_code), s.manifest)
+        ClaudeCodeRunner(s.enforcement) {}.prepareWorkspace(s.ctx(AgentRuntime.claude_code), s.manifest)
 
         assertEquals("from the instance", File(s.cwd, ".claude/skills/handoff/SKILL.md").readText())
         assertFalse(File(s.cwd, ".claude/skills/stale").exists())
@@ -92,7 +92,7 @@ class RunnerInstanceTest {
         s.write(s.instance, "CLAUDE.md", "prompt from the instance")
         s.write(s.harness, "CLAUDE.md", "prompt from the harness")
 
-        val args = ClaudeCodeRunner(s.enforcement).buildCommand(s.ctx(AgentRuntime.claude_code))
+        val args = ClaudeCodeRunner(s.enforcement) {}.buildCommand(s.ctx(AgentRuntime.claude_code))
 
         assertEquals("prompt from the instance", args[args.indexOf("--append-system-prompt") + 1])
     }
@@ -101,9 +101,22 @@ class RunnerInstanceTest {
     fun `claude code with an instance that has no dot-claude still prepares, and still installs enforcement`(@TempDir tmp: File) {
         val s = Setup(tmp)
 
-        ClaudeCodeRunner(s.enforcement).prepareWorkspace(s.ctx(AgentRuntime.claude_code), s.manifest)
+        ClaudeCodeRunner(s.enforcement) {}.prepareWorkspace(s.ctx(AgentRuntime.claude_code), s.manifest)
 
         assertTrue(File(s.cwd, ".claude/hooks/exec_in_folder.py").exists())
+    }
+
+    @Test
+    fun `claude code never lets a usage event fail the run`(@TempDir tmp: File) {
+        val s = Setup(tmp)
+        val runner = ClaudeCodeRunner(s.enforcement) { error("cache is broken") }
+
+        runner.observe(
+            mapOf(
+                "type" to "rate_limit_event",
+                "rate_limit_info" to mapOf("rateLimitType" to "five_hour", "resetsAt" to Long.MAX_VALUE),
+            ),
+        )
     }
 
     // -- opencode -------------------------------------------------------

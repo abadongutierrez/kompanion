@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { budgetKeys } from "@/features/budget/keys.js";
+import { systemKeys } from "@/features/system/keys.js";
 import { taskKeys } from "@/features/tasks/keys.js";
 import { runsApi } from "./api.js";
 import { runKeys } from "./keys.js";
@@ -19,9 +20,11 @@ export function useTaskRuns(
   });
 }
 
-// Starting a run touches four caches, three of which belong to other
+// Starting a run touches five caches, four of which belong to other
 // features: the run list, the task itself (a run moves its status through
-// backlog -> in_progress -> in_review/blocked), and both spend figures.
+// backlog -> in_progress -> in_review/blocked), both spend figures, and the
+// sidebar's Claude usage readout. The POST returns once the run is over, so
+// this is also "a run just finished".
 export function useRunTask(teamId: string, taskId: string, projectId: string) {
   const queryClient = useQueryClient();
   return useMutation({
@@ -33,6 +36,7 @@ export function useRunTask(teamId: string, taskId: string, projectId: string) {
       queryClient.invalidateQueries({
         queryKey: budgetKeys.projectSpend(projectId),
       });
+      queryClient.invalidateQueries({ queryKey: systemKeys.claudeUsage });
     },
   });
 }

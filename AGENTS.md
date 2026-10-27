@@ -198,3 +198,20 @@ Prefer Claude Code or pi for agents working in real repositories. If opencode
 enforcement is needed later, the shape would be a plugin under
 `.opencode/plugin/` materialized by `OpencodeRunner.prepareWorkspace` the way
 the hook files are copied today.
+
+## Claude usage readout
+
+The sidebar's "Claude usage" card shows the subscription windows (5h, 7d,
+per-model weekly) for the account the server runs as. Server-wide, not per
+project. `GET /api/claude/usage` reads them from Claude Code's own,
+**undocumented** `api.anthropic.com/api/oauth/usage` endpoint with the CLI's
+OAuth token, cached 60 s; Claude Code runs also feed their
+`rate_limit_event` lines into that cache through `AgentRunner.observe`.
+
+- Token file: `CLAUDE_CREDENTIALS_PATH`, else `$CLAUDE_CONFIG_DIR/.credentials.json`,
+  else `~/.claude/.credentials.json`. Read-only, never logged or returned.
+- API-key setups, macOS (Keychain), or any endpoint failure give
+  `available: false` and the card hides. That is expected, not a bug.
+- The payload parsers (`adapter/outbound/claude/ClaudeUsageParsing.kt`) accept
+  both known response shapes; if the card goes blank after a CLI update, look
+  there first.
