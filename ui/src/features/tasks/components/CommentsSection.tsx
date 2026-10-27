@@ -6,7 +6,10 @@ import {
   useTaskComments,
   useUpdateTaskComment,
 } from "../hooks.js";
+import { Markdown } from "@/shared/ui/index.js";
 
+// The board card's collapsible take on a task's comments. The task page shows
+// the same thread, uncollapsed, in its Comments tab.
 export function CommentsSection({
   teamId,
   task,
@@ -16,18 +19,38 @@ export function CommentsSection({
   task: TaskWithRepositories;
   agents: Agent[];
 }) {
+  const comments = useTaskComments(teamId, task.id);
+  const count = comments.data?.length ?? 0;
+
+  return (
+    <details className="space-y-2 border-t border-neutral-100 pt-2 text-xs">
+      <summary className="cursor-pointer font-medium text-neutral-500">
+        Comments {count > 0 && `(${count})`}
+      </summary>
+      <CommentsThread teamId={teamId} taskId={task.id} agents={agents} />
+    </details>
+  );
+}
+
+export function CommentsThread({
+  teamId,
+  taskId,
+  agents,
+}: {
+  teamId: string;
+  taskId: string;
+  agents: Agent[];
+}) {
   const [body, setBody] = useState("");
   const [asAgentId, setAsAgentId] = useState("");
   // Which Operator comment is open for editing, and its draft body.
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editBody, setEditBody] = useState("");
 
-  const comments = useTaskComments(teamId, task.id);
-  const addComment = useAddTaskComment(teamId, task.id);
-  const replyAsAgent = useReplyAsAgent(teamId, task.id);
-  const editComment = useUpdateTaskComment(teamId, task.id);
-
-  const count = comments.data?.length ?? 0;
+  const comments = useTaskComments(teamId, taskId);
+  const addComment = useAddTaskComment(teamId, taskId);
+  const replyAsAgent = useReplyAsAgent(teamId, taskId);
+  const editComment = useUpdateTaskComment(teamId, taskId);
 
   const isReplying = (commentId: string, agentId: string) =>
     replyAsAgent.isPending &&
@@ -35,10 +58,7 @@ export function CommentsSection({
     replyAsAgent.variables?.agentId === agentId;
 
   return (
-    <details className="space-y-2 border-t border-neutral-100 pt-2 text-xs">
-      <summary className="cursor-pointer font-medium text-neutral-500">
-        Comments {count > 0 && `(${count})`}
-      </summary>
+    <div className="space-y-2 text-xs">
 
       {(comments.data ?? []).map((comment) => (
         <div key={comment.id} className="space-y-1 rounded bg-neutral-50 p-2">
@@ -88,7 +108,7 @@ export function CommentsSection({
             </form>
           ) : (
             <>
-              <p className="whitespace-pre-wrap text-neutral-700">{comment.body}</p>
+              <Markdown className="text-neutral-700">{comment.body}</Markdown>
               {/* Only Operator comments are editable — an agent's comment is
                   the record of what its run reported. */}
               {comment.agentId === null && (
@@ -165,6 +185,6 @@ export function CommentsSection({
           </button>
         </div>
       </form>
-    </details>
+    </div>
   );
 }

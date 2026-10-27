@@ -1,5 +1,6 @@
 package com.kompanion.server.service.runner
 
+import com.kompanion.server.application.port.inbound.RecordClaudeRateLimit
 import com.kompanion.server.domain.model.AgentRuntime
 import com.kompanion.server.service.WorkspaceEnforcementService
 import com.kompanion.server.service.WorkspaceManifest
@@ -13,9 +14,21 @@ import java.math.RoundingMode
 @Component
 class ClaudeCodeRunner(
     private val workspaceEnforcementService: WorkspaceEnforcementService,
+    private val recordRateLimit: RecordClaudeRateLimit,
 ) : AgentRunner {
 
     override val runtime = AgentRuntime.claude_code
+
+    // Subscription logins emit rate_limit_event lines; feeding them to the
+    // usage cache keeps the sidebar readout current during a run without
+    // another call to the usage endpoint. The readout is optional, so nothing
+    // here, parsing included, may fail the run.
+    override fun observe(event: Map<String, Any?>) {
+        runCatching {
+            val window = parseRateLimitEvent(event) ?: return
+            recordRateLimit.handle(window)
+        }
+    }
 
     override fun validateHarness(harnessDir: File): String? =
         if (File(harnessDir, ".claude").exists()) null
@@ -37,8 +50,13 @@ class ClaudeCodeRunner(
         workspaceEnforcementService.installCwdEnforcement(ctx.cwdDir, ctx.taskWorkspaceDir, manifest)
     }
 
+    // Which Claude account this run uses. Only set when the Runtime names a
+    // config dir; otherwise the CLI keeps its own default (~/.claude).
+    override fun environment(ctx: RunContext): Map<String, String> =
+        ctx.runtime?.resolvedConfigDir()?.let { mapOf("CLAUDE_CONFIG_DIR" to it) } ?: emptyMap()
+
     override fun buildCommand(ctx: RunContext): List<String> {
-        val bin = System.getenv("CLAUDE_BIN") ?: "claude"
+        val bin = ctx.binary("CLAUDE_BIN", "claude")
         val args = mutableListOf(
             bin, "-p", ctx.prompt,
             "--output-format", "stream-json",

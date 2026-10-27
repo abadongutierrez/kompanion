@@ -1,4 +1,8 @@
 import { test, expect } from "@playwright/test";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { ensureClaudeRuntime, ensureRuntime, type SeededRuntime } from "./fixtures.js";
 
 // Creating and editing an agent each live on their own route now
 // (/agents/new and /agents/:agentId) — the library page at /agents only
@@ -7,6 +11,7 @@ import { test, expect } from "@playwright/test";
 // same screens would.
 test.describe("agent pages", () => {
   let harnessPath: string;
+  let runtime: SeededRuntime;
 
   test.beforeAll(async ({ request }) => {
     // Reuse an existing agent's harness folder: it is a real directory on
@@ -14,7 +19,10 @@ test.describe("agent pages", () => {
     const agents: { harnessPath: string }[] = await request
       .get("/api/agents")
       .then((r) => r.json());
-    harnessPath = agents[0].harnessPath;
+    // A fresh database has no agents yet: fall back to the library's engineer
+    // harness, which every layout is in.
+    harnessPath = agents[0]?.harnessPath ?? "harnesses/engineer";
+    runtime = await ensureClaudeRuntime(request);
   });
 
   test("creating an agent happens on /agents/new and returns to the library", async ({ page }) => {
@@ -32,10 +40,174 @@ test.describe("agent pages", () => {
 
     await page.getByLabel("Agent title").fill(title);
     await page.getByLabel("Harness folder path").fill(harnessPath);
+    // Not whatever the form preselects: that depends on the order of the
+    // runtimes in Settings, and the reused harness only suits Claude Code.
+    await page.getByLabel("Runtime", { exact: true }).selectOption(runtime.id);
     await page.getByRole("button", { name: "Create agent" }).click();
 
     await expect(page).toHaveURL(/\/agents$/);
     await expect(page.getByText(title)).toBeVisible();
+  });
+
+  test("an agent can be created and edited with the opencode v2 runtime", async ({ page, request }) => {
+    const title = `E2E opencode2 Agent ${Date.now()}`;
+
+    // The Runtime select lists the runtimes from Settings, and the kind follows
+    // the one chosen.
+    const opencode2 = await ensureRuntime(request, "opencode2");
+
+    await page.goto("/agents/new");
+    await page.getByLabel("Agent title").fill(title);
+    // The engineer harness carries every layout, AGENTS.md and .opencode/ included.
+    await page.getByLabel("Harness folder path").fill("harnesses/engineer");
+    await page.getByLabel("Runtime", { exact: true }).selectOption(opencode2.id);
+    await expect(page.getByLabel("Model", { exact: true })).toHaveAttribute(
+      "placeholder",
+      /opencode-go\/deepseek-v4\.1-flash/,
+    );
+    await page.getByLabel("Model", { exact: true }).fill("opencode-go/deepseek-v4.1-flash");
+    await page.getByRole("button", { name: "Create agent" }).click();
+    await expect(page).toHaveURL(/\/agents$/);
+
+    const agents: { id: string; title: string; runtime: string; model: string | null }[] = await request
+      .get("/api/agents")
+      .then((r) => r.json());
+    const created = agents.find((a) => a.title === title)!;
+    expect(created.runtime).toBe("opencode2");
+    expect(created.model).toBe("opencode-go/deepseek-v4.1-flash");
+
+    await page.goto(`/agents/${created.id}`);
+    await expect(page.getByLabel("Runtime", { exact: true })).toHaveValue(opencode2.id);
+    await page.getByLabel("Model", { exact: true }).fill("opencode-go/glm-5.3-flash");
+    await page.getByRole("button", { name: "Save changes" }).click();
+    await expect(page).toHaveURL(/\/agents$/);
+
+    const edited = (
+      (await request.get("/api/agents").then((r) => r.json())) as typeof agents
+    ).find((a) => a.id === created.id)!;
+    expect(edited.runtime).toBe("opencode2");
+    expect(edited.model).toBe("opencode-go/glm-5.3-flash");
+  });
+
+  test("an opencode v2 agent is refused a harness without .opencode/ or AGENTS.md", async ({ request }) => {
+    // A folder with only CLAUDE.md is a Claude Code harness, not an opencode one.
+    const dir = mkdtempSync(join(tmpdir(), "kompanion-e2e-claude-only-"));
+    writeFileSync(join(dir, "CLAUDE.md"), "claude only");
+
+    const res = await request.post("/api/agents", {
+      data: { title: `E2E opencode2 refused ${Date.now()}`, harnessPath: dir, runtime: "opencode2" },
+    });
+    expect(res.status()).toBe(400);
+    expect(await res.text()).toContain("isn't a valid opencode harness");
+  });
+
+  test("the Runtime select lists the runtimes from Settings and saves the choice", async ({ page, request }) => {
+    const all: SeededRuntime[] = await request.get("/api/runtimes").then((r) => r.json());
+    const title = `E2E UI Runtime ${Date.now()}`;
+
+    await page.goto("/agents/new");
+    const select = page.getByLabel("Runtime", { exact: true });
+    // One option per configured runtime — nothing hardcoded, no separate kind
+    // picker.
+    await expect(select.locator("option:not([disabled])")).toHaveCount(all.length);
+    await expect(page.getByLabel("Runtime instance")).toHaveCount(0);
+
+    await page.getByLabel("Agent title").fill(title);
+    await page.getByLabel("Harness folder path").fill(harnessPath);
+    await select.selectOption(runtime.id);
+    await page.getByRole("button", { name: "Create agent" }).click();
+    await expect(page).toHaveURL(/\/agents$/);
+
+    // The kind follows the chosen runtime, and the card shows its name.
+    const agents: { title: string; runtime: string; runtimeId: string | null }[] = await request
+      .get("/api/agents")
+      .then((r) => r.json());
+    const saved = agents.find((a) => a.title === title);
+    expect(saved?.runtimeId).toBe(runtime.id);
+    expect(saved?.runtime).toBe(runtime.kind);
+    await expect(page.getByText(runtime.name).first()).toBeVisible();
+  });
+
+  test("editing an agent keeps its saved runtime when another of the same kind exists", async ({ page, request }) => {
+    // Two runtimes of one kind: the form must not fall back to the first one
+    // the API lists (it orders by name). So the Agent gets the last Claude
+    // runtime of the re-fetched list, which is never the first.
+    const claudeRuntimes = async (): Promise<SeededRuntime[]> =>
+      (await request.get("/api/runtimes").then((r) => r.json()) as SeededRuntime[]).filter(
+        (r) => r.kind === "claude_code",
+      );
+    if ((await claudeRuntimes()).length < 2) {
+      await request.post("/api/runtimes", {
+        data: { name: `E2E Claude B ${Date.now()}`, kind: "claude_code" },
+      });
+    }
+    const claude = await claudeRuntimes();
+    const second = claude[claude.length - 1];
+    expect(second.id).not.toBe(claude[0].id);
+    const created: { id: string; title: string } = await request
+      .post("/api/agents", {
+        data: { title: `E2E UI Keep ${Date.now()}`, harnessPath, runtimeId: second.id },
+      })
+      .then((r) => r.json());
+
+    await page.goto(`/agents/${created.id}`);
+    await expect(page.getByLabel("Agent title")).toHaveValue(created.title);
+    await expect(page.getByLabel("Runtime", { exact: true })).toHaveValue(second.id);
+
+    await page.getByLabel("Agent title").fill(`${created.title} (renamed)`);
+    await page.getByRole("button", { name: "Save changes" }).click();
+    await expect(page).toHaveURL(/\/agents$/);
+
+    const agents: { id: string; runtimeId: string | null }[] = await request
+      .get("/api/agents")
+      .then((r) => r.json());
+    expect(agents.find((a) => a.id === created.id)?.runtimeId).toBe(second.id);
+  });
+
+  test("moving from one agent's edit page to a legacy agent's preselects a runtime", async ({ page, request }) => {
+    const withRuntime: { id: string } = await request
+      .post("/api/agents", {
+        data: { title: `E2E UI Nav A ${Date.now()}`, harnessPath, runtimeId: runtime.id },
+      })
+      .then((r) => r.json());
+    const legacy: { id: string } = await request
+      .post("/api/agents", { data: { title: `E2E UI Nav B ${Date.now()}`, harnessPath } })
+      .then((r) => r.json());
+
+    await page.goto(`/agents/${withRuntime.id}`);
+    await expect(page.getByLabel("Runtime", { exact: true })).toHaveValue(runtime.id);
+
+    // Client-side navigation: the form is not remounted, so the previous
+    // agent's runtime is still in its state when the next agent loads.
+    await page.evaluate((id) => {
+      history.pushState({}, "", `/agents/${id}`);
+      dispatchEvent(new PopStateEvent("popstate"));
+    }, legacy.id);
+
+    await expect(page.getByLabel("Runtime", { exact: true })).not.toHaveValue("");
+    await expect(page.getByRole("button", { name: "Save changes" })).toBeEnabled();
+  });
+
+  test("a runtimes load failure is shown with a retry, and Save stays disabled", async ({ page }) => {
+    await page.route("**/api/runtimes", (route) => route.fulfill({ status: 500, body: "{}" }));
+
+    await page.goto("/agents/new");
+    await expect(page.getByText("Could not load the runtimes.")).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole("button", { name: "Retry" })).toBeVisible();
+    await expect(page.getByLabel("Runtime", { exact: true })).toContainText("Could not load runtimes");
+    await expect(page.getByRole("button", { name: "Create agent" })).toBeDisabled();
+  });
+
+  test("viewing an agent from before runtimes shows its kind, not a prompt", async ({ page, request }) => {
+    const created: { id: string } = await request
+      .post("/api/agents", { data: { title: `E2E UI Legacy ${Date.now()}`, harnessPath } })
+      .then((r) => r.json());
+
+    await page.goto(`/agents/${created.id}/view`);
+    const select = page.getByLabel("Runtime", { exact: true });
+    await expect(select).toBeDisabled();
+    await expect(select).toContainText("Claude Code (no runtime selected)");
+    await expect(select).not.toContainText("Select a runtime");
   });
 
   test("editing an agent happens on its own /agents/:agentId page", async ({ page, request }) => {
@@ -64,8 +236,159 @@ test.describe("agent pages", () => {
     await expect(page.getByText(renamed)).toBeVisible();
   });
 
+  test("viewing an agent shows the edit fields read-only on /agents/:agentId/view", async ({ page, request }) => {
+    const created: { id: string; title: string } = await request
+      .post("/api/agents", {
+        data: { title: `E2E UI View ${Date.now()}`, harnessPath },
+      })
+      .then((r) => r.json());
+
+    await page.goto("/agents");
+    await page.locator(`a[href="/agents/${created.id}/view"]`).click();
+    await expect(page).toHaveURL(new RegExp(`/agents/${created.id}/view$`));
+
+    await expect(page.getByRole("heading", { name: created.title })).toBeVisible();
+    // Same fields as Edit, none of them changeable. Text fields are read-only
+    // rather than disabled so the keyboard can still reach and scroll them.
+    for (const label of ["Agent title", "Slug", "Harness folder path", "Model", "Harness template"]) {
+      const field = page.getByLabel(label, { exact: true });
+      await expect(field).not.toBeEditable();
+      await expect(field).toBeEnabled();
+    }
+    await expect(page.getByLabel("Runtime", { exact: true })).toBeDisabled();
+    await page.getByLabel("Harness template").focus();
+    await expect(page.getByLabel("Harness template")).toBeFocused();
+    await expect(page.getByLabel("Agent title")).toHaveValue(created.title);
+    await expect(page.getByLabel("Harness folder path")).toHaveValue(harnessPath);
+    await expect(page.getByRole("button", { name: "Save changes" })).toHaveCount(0);
+
+    await page.getByRole("link", { name: "Edit", exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`/agents/${created.id}$`));
+    await expect(page.getByRole("heading", { name: "Edit agent" })).toBeVisible();
+  });
+
+  test("going back from an unsaved Edit to View shows the saved agent, not the draft", async ({ page, request }) => {
+    const created: { id: string; title: string } = await request
+      .post("/api/agents", {
+        data: { title: `E2E UI Draft ${Date.now()}`, harnessPath },
+      })
+      .then((r) => r.json());
+
+    await page.goto(`/agents/${created.id}/view`);
+    await page.getByRole("link", { name: "Edit", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Edit agent" })).toBeVisible();
+    await page.getByLabel("Agent title").fill(`${created.title} (unsaved)`);
+
+    await page.goBack();
+    await expect(page).toHaveURL(new RegExp(`/agents/${created.id}/view$`));
+    await expect(page.getByLabel("Agent title")).toHaveValue(created.title);
+  });
+
   test("an unknown agent id says so instead of showing an empty form", async ({ page }) => {
     await page.goto("/agents/00000000-0000-0000-0000-000000000000");
     await expect(page.getByText("Agent not found.")).toBeVisible();
+  });
+
+  test("QA: the view page shows the agent's skills locked and never writes", async ({ page, request }) => {
+    const skills: { id: string; slug: string }[] = await request
+      .get("/api/skills")
+      .then((r) => r.json());
+    test.skip(skills.length === 0, "needs at least one skill in the library");
+    const skill = skills[0];
+
+    const created: { id: string; title: string } = await request
+      .post("/api/agents", {
+        data: { title: `E2E QA View ${Date.now()}`, harnessPath, model: "qa-model" },
+      })
+      .then((r) => r.json());
+    await request.put(`/api/agents/${created.id}/skills`, { data: { skillIds: [skill.id] } });
+
+    const writes: string[] = [];
+    page.on("request", (r) => {
+      if (r.url().includes("/api/") && r.method() !== "GET") writes.push(`${r.method()} ${r.url()}`);
+    });
+
+    await page.goto(`/agents/${created.id}/view`);
+    await expect(page.getByLabel("Model", { exact: true })).toHaveValue("qa-model");
+    const box = page.getByRole("checkbox", { name: skill.slug, exact: true });
+    await expect(box).toBeChecked();
+    await expect(box).toBeDisabled();
+    for (const cb of await page.getByRole("checkbox").all()) await expect(cb).toBeDisabled();
+
+    // Clicking the skill's label and pressing Enter must not change or submit anything.
+    await page.getByText(skill.slug, { exact: true }).click({ force: true });
+    await expect(box).toBeChecked();
+    await page.keyboard.press("Enter");
+    await expect(page).toHaveURL(new RegExp(`/agents/${created.id}/view$`));
+    expect(writes).toEqual([]);
+
+    // Leaving View for Edit gives back editable fields.
+    await page.getByRole("link", { name: "Edit", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Edit agent" })).toBeVisible();
+    await expect(page.getByLabel("Agent title")).toBeEnabled();
+    await expect(page.getByRole("checkbox", { name: skill.slug, exact: true })).toBeEnabled();
+  });
+
+  test("QA: read-only view fields take focus in order, ignore typing and Enter, and never write", async ({ page, request }) => {
+    const created: { id: string; title: string } = await request
+      .post("/api/agents", {
+        data: { title: `E2E QA Keys ${Date.now()}`, harnessPath, model: "qa-model" },
+      })
+      .then((r) => r.json());
+
+    const writes: string[] = [];
+    page.on("request", (r) => {
+      if (r.url().includes("/api/") && r.method() !== "GET") writes.push(`${r.method()} ${r.url()}`);
+    });
+
+    await page.goto(`/agents/${created.id}/view`);
+    await expect(page.getByLabel("Agent title")).toHaveValue(created.title);
+
+    // Tab walks the read-only text fields in form order; the disabled
+    // runtime select is skipped.
+    await page.getByLabel("Agent title").focus();
+    for (const label of ["Slug", "Harness folder path", "Model", "Harness template"]) {
+      await page.keyboard.press("Tab");
+      await expect(page.getByLabel(label, { exact: true })).toBeFocused();
+    }
+
+    // Typing into a read-only field changes nothing; Enter submits the form,
+    // which must stay a no-op in View.
+    await page.getByLabel("Agent title").focus();
+    await page.keyboard.type("xyz");
+    await expect(page.getByLabel("Agent title")).toHaveValue(created.title);
+    await page.keyboard.press("Enter");
+    await page.getByLabel("Model", { exact: true }).focus();
+    await page.keyboard.press("Enter");
+    await expect(page).toHaveURL(new RegExp(`/agents/${created.id}/view$`));
+    await expect(page.getByRole("button", { name: "Save changes" })).toHaveCount(0);
+    expect(writes).toEqual([]);
+  });
+
+  test("QA: View → Edit (unsaved) → Back → Edit starts again from the saved values", async ({ page, request }) => {
+    const created: { id: string; title: string } = await request
+      .post("/api/agents", {
+        data: { title: `E2E QA Reedit ${Date.now()}`, harnessPath, model: "saved-model" },
+      })
+      .then((r) => r.json());
+
+    await page.goto(`/agents/${created.id}/view`);
+    await page.getByRole("link", { name: "Edit", exact: true }).click();
+    await page.getByLabel("Agent title").fill("draft title");
+    await page.getByLabel("Model", { exact: true }).fill("draft-model");
+
+    await page.goBack();
+    await expect(page.getByLabel("Model", { exact: true })).toHaveValue("saved-model");
+    await page.getByRole("link", { name: "Edit", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Edit agent" })).toBeVisible();
+    await expect(page.getByLabel("Agent title")).toHaveValue(created.title);
+    await expect(page.getByLabel("Model", { exact: true })).toHaveValue("saved-model");
+    await expect(page.getByLabel("Agent title")).toBeEditable();
+  });
+
+  test("QA: an unknown agent id on the view page says so", async ({ page }) => {
+    await page.goto("/agents/00000000-0000-0000-0000-000000000000/view");
+    await expect(page.getByText("Agent not found.")).toBeVisible();
+    await expect(page.getByRole("link", { name: "Edit", exact: true })).toHaveCount(0);
   });
 });

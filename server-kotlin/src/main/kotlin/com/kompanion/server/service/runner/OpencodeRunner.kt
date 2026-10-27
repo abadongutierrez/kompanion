@@ -21,58 +21,15 @@ class OpencodeRunner : AgentRunner {
 
     override val runtime = AgentRuntime.opencode
 
-    // The name of the agent definition written into the workspace and passed
-    // to --agent. Fixed rather than derived from the Agent's slug: it names a
-    // file we own inside a directory we rewrite each run, so a stable name
-    // keeps prepareWorkspace idempotent.
-    private val agentName = "kompanion"
+    private val agentName = OpencodeWorkspace.AGENT_NAME
 
-    override fun validateHarness(harnessDir: File): String? =
-        if (File(harnessDir, ".opencode").exists() || File(harnessDir, "AGENTS.md").exists()) null
-        else "\"${harnessDir.path}\" exists but has neither .opencode/ nor AGENTS.md — it isn't a valid opencode harness"
+    override fun validateHarness(harnessDir: File): String? = OpencodeWorkspace.validateHarness(harnessDir)
 
-    // opencode has no --append-system-prompt: a system prompt reaches it only
-    // as an agent definition on disk, selected by --agent. So unlike the
-    // Claude path — which passes CLAUDE.md as a flag precisely so it can
-    // never clobber a real repository's own file — this one has to write into
-    // the working directory. It goes under .opencode/agents/, which is ours,
-    // rather than at AGENTS.md in the repo root, which would overwrite the
-    // project's own.
-    override fun prepareWorkspace(ctx: RunContext, manifest: WorkspaceManifest) {
-        ctx.cwdDir.mkdirs()
-
-        val destOpencode = File(ctx.cwdDir, ".opencode")
-        destOpencode.deleteRecursively()
-        File(ctx.instanceDir, ".opencode").takeIf { it.exists() }
-            ?.copyRecursively(destOpencode, overwrite = true)
-
-        val agentsDir = File(destOpencode, "agents")
-        agentsDir.mkdirs()
-        File(agentsDir, "$agentName.md").writeText(buildAgentDefinition(ctx))
-    }
-
-    // AGENTS.md is opencode's own convention; CLAUDE.md is the fallback so a
-    // harness written for Claude Code still carries its framing across
-    // without being duplicated.
-    private fun buildAgentDefinition(ctx: RunContext): String {
-        val body = listOf("AGENTS.md", "CLAUDE.md")
-            .map { File(ctx.instanceDir, it) }
-            .firstOrNull { it.exists() }
-            ?.readText()
-            .orEmpty()
-
-        return buildString {
-            appendLine("---")
-            appendLine("description: ${ctx.agent.title}, running a Kompanion task")
-            appendLine("mode: primary")
-            appendLine("---")
-            appendLine()
-            append(body)
-        }
-    }
+    // Shared with Opencode2Runner — see OpencodeWorkspace.
+    override fun prepareWorkspace(ctx: RunContext, manifest: WorkspaceManifest) = OpencodeWorkspace.prepare(ctx)
 
     override fun buildCommand(ctx: RunContext): List<String> {
-        val bin = System.getenv("OPENCODE_BIN") ?: "opencode"
+        val bin = ctx.binary("OPENCODE_BIN", "opencode")
         val args = mutableListOf(
             bin, "run",
             "--format", "json",

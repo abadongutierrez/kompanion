@@ -5,6 +5,7 @@ import com.kompanion.server.entity.Task
 import com.kompanion.server.domain.model.TaskType
 import org.springframework.stereotype.Service
 import java.io.File
+import java.util.UUID
 
 data class RepoWorktree(val repo: Repository, val worktreeDir: File)
 
@@ -24,9 +25,13 @@ class RepoWorkspaceService {
             .replace(Regex("(^-|-$)"), "")
             .take(40)
 
-    fun taskBranchName(task: Task): String {
-        val prefix = branchPrefixByType[task.type] ?: "task"
-        return "$prefix/${task.id}-${slugify(task.title)}"
+    fun taskBranchName(task: Task): String = taskBranchName(task.id!!, task.title, task.type)
+
+    // Plain fields rather than the entity, so callers holding the domain Task
+    // (adapter/outbound/workspace/GitWorktreeDiffs) name the same branch.
+    fun taskBranchName(taskId: UUID, title: String, type: TaskType): String {
+        val prefix = branchPrefixByType[type] ?: "task"
+        return "$prefix/$taskId-${slugify(title)}"
     }
 
     // Deliberately inside the repo's own directory, not our app's internal
@@ -36,7 +41,10 @@ class RepoWorkspaceService {
     // excluding from git's own view (see ensureRepoExcludes) since it sits
     // inside a tracked working tree.
     fun resolveRepoWorktreeDir(repo: Repository, task: Task): File =
-        File(File(repo.localPath, ".worktrees"), "${task.id}-${slugify(task.title)}")
+        resolveRepoWorktreeDir(repo.localPath, task.id!!, task.title)
+
+    fun resolveRepoWorktreeDir(repoLocalPath: String, taskId: UUID, title: String): File =
+        File(File(repoLocalPath, ".worktrees"), "$taskId-${slugify(title)}")
 
     // Idempotent: appends each pattern to the repo's shared .git/info/exclude
     // (not the project's own tracked .gitignore) only if not already

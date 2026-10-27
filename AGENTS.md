@@ -136,14 +136,15 @@ skills repeat the split. Change one, change the others.
 ## Agent runtimes
 
 An Agent names the CLI it runs on (`agents.runtime`) and optionally a model
-(`agents.model`, free text — the id formats differ per CLI). Three runtimes
-exist: `claude_code`, `opencode` and `pi`. Adding a fourth means adding an
+(`agents.model`, free text — the id formats differ per CLI). Four runtimes
+exist: `claude_code`, `opencode` (opencode v1), `opencode2` (opencode v2) and
+`pi`. Adding a fifth means adding an
 `AgentRunner` `@Component` under `service/runner/`; `RunTaskService` keeps
 everything runtime-agnostic and resolves runners from injected beans, and so
 does `GlobalAgentsController`'s harness validation.
 
-A harness folder can serve all three — `CLAUDE.md` + `.claude/` for Claude
-Code, `AGENTS.md` + `.opencode/` for opencode, `AGENTS.md` + `pi-agent/` for
+A harness folder can serve all of them — `CLAUDE.md` + `.claude/` for Claude
+Code, `AGENTS.md` + `.opencode/` for opencode and opencode2, `AGENTS.md` + `pi-agent/` for
 pi. `library/harnesses/engineer/` carries every layout and is the reference
 example.
 
@@ -180,7 +181,7 @@ switched to another CLI afterwards.
 
 ### opencode runs are not enforced
 
-**Known and accepted asymmetry, and opencode is now the only one.** Claude
+**Known and accepted asymmetry, and opencode (v1 and v2) is now the only one.** Claude
 Code runs are confined by the `PreToolUse` hook in `library/hooks/`: raw
 Bash is denied, everything goes through `exec_in_folder.py`, which checks
 folder membership and appends to `commands.log`. pi runs get the same
@@ -198,9 +199,26 @@ rewrite is idempotent and the bash wrap detects itself.
 
 opencode has no equivalent the server can install — its extension points are
 JS/TS plugins and a per-agent permission config — so an opencode run is scoped
-by `--dir` and nothing else, with no command log.
+by `--dir` (v1) or its cwd (v2) and nothing else, with no command log.
 
 Prefer Claude Code or pi for agents working in real repositories. If opencode
 enforcement is needed later, the shape would be a plugin under
 `.opencode/plugin/` materialized by `OpencodeRunner.prepareWorkspace` the way
 the hook files are copied today.
+
+## Claude usage readout
+
+The sidebar's "Claude usage" card shows the subscription windows (5h, 7d,
+per-model weekly) for the account the server runs as. Server-wide, not per
+project. `GET /api/claude/usage` reads them from Claude Code's own,
+**undocumented** `api.anthropic.com/api/oauth/usage` endpoint with the CLI's
+OAuth token, cached 60 s; Claude Code runs also feed their
+`rate_limit_event` lines into that cache through `AgentRunner.observe`.
+
+- Token file: `CLAUDE_CREDENTIALS_PATH`, else `$CLAUDE_CONFIG_DIR/.credentials.json`,
+  else `~/.claude/.credentials.json`. Read-only, never logged or returned.
+- API-key setups, macOS (Keychain), or any endpoint failure give
+  `available: false` and the card hides. That is expected, not a bug.
+- The payload parsers (`adapter/outbound/claude/ClaudeUsageParsing.kt`) accept
+  both known response shapes; if the card goes blank after a CLI update, look
+  there first.

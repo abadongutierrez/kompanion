@@ -317,6 +317,42 @@ function applyOpencodeEvent(state: TranscriptState, raw: RunEventRaw): Transcrip
   return { ...state, blocks, finished, costUsd, costIsEstimate };
 }
 
+// opencode v2's `run --standalone --format json` shape, verified against
+// 2.0.26 from real runs: `step_start`, `tool_use`, `step_finish`, `text` and
+// `error`. The success events are v1's, so they go through the v1 reducer.
+// Two things differ:
+// - `error` is flat, `{type: "provider.auth", message}`, not v1's
+//   `{name, data: {message}}`.
+// - v2 never emits a `step_finish` for the last step, so the step sum is
+//   short. Opencode2Runner adds a `session_summary` event after the process
+//   exits, holding the session's own total, and that replaces the sum.
+function applyOpencode2Event(state: TranscriptState, raw: RunEventRaw): TranscriptState {
+  switch (raw.type) {
+    case "error": {
+      const error = asRecord(raw.error);
+      const summary = asString(error.message) || asString(error.type) || null;
+      return {
+        ...state,
+        blocks: [...state.blocks, { kind: "result", ok: false, summary, costUsd: state.costUsd }],
+        finished: true,
+      };
+    }
+
+    case "session_summary": {
+      // Zero is a real cost here too.
+      const cost = raw.cost;
+      if (typeof cost !== "number") return state;
+      // An error before the summary already pushed a result block holding
+      // the short step sum; the failure banner reads it, so correct it too.
+      const blocks = state.blocks.map((b) => (b.kind === "result" ? { ...b, costUsd: cost } : b));
+      return { ...state, blocks, costUsd: cost, costIsEstimate: false };
+    }
+
+    default:
+      return applyOpencodeEvent(state, raw);
+  }
+}
+
 // pi's `-p --mode json` shape (verified against pi 0.84.3 and its docs/json.md):
 // newline-delimited AgentSessionEvents. Text and thinking arrive as
 // delta-only `message_update` events carrying an `assistantMessageEvent`,
@@ -508,6 +544,8 @@ export function applyRunEvent(
   switch (runtime) {
     case "opencode":
       return applyOpencodeEvent(state, raw);
+    case "opencode2":
+      return applyOpencode2Event(state, raw);
     case "pi":
       return applyPiEvent(state, raw);
     default:

@@ -5,6 +5,7 @@ import { ProjectShell } from "@/pages/ProjectShell.js";
 import { AgentsLibraryPage } from "@/pages/AgentsLibraryPage.js";
 import { AgentFormPage } from "@/pages/AgentFormPage.js";
 import { SkillsLibraryPage } from "@/pages/SkillsLibraryPage.js";
+import { SettingsPage } from "@/pages/SettingsPage.js";
 import { TaskPage } from "@/pages/TaskPage.js";
 
 export function App() {
@@ -39,6 +40,14 @@ export function App() {
             >
               Skills
             </NavLink>
+            <NavLink
+              to="/settings"
+              className={({ isActive }) =>
+                isActive ? "font-medium text-neutral-900" : "text-neutral-500 hover:text-neutral-700"
+              }
+            >
+              Settings
+            </NavLink>
           </nav>
         </div>
         <HeartbeatIndicator />
@@ -47,9 +56,14 @@ export function App() {
       <Routes>
         <Route path="/" element={<ProjectsPage />} />
         <Route path="/agents" element={<AgentsLibraryPage />} />
-        <Route path="/agents/new" element={<AgentFormPage mode="create" />} />
-        <Route path="/agents/:agentId" element={<AgentFormPage mode="edit" />} />
+        {/* Keyed by mode so moving between New, Edit and View remounts the
+            form: otherwise React reuses it and View could show an unsaved
+            Edit draft instead of the saved Agent. */}
+        <Route path="/agents/new" element={<AgentFormPage key="create" mode="create" />} />
+        <Route path="/agents/:agentId" element={<AgentFormPage key="edit" mode="edit" />} />
+        <Route path="/agents/:agentId/view" element={<AgentFormPage key="view" mode="view" />} />
         <Route path="/skills" element={<SkillsLibraryPage />} />
+        <Route path="/settings" element={<SettingsPage />} />
         <Route path="/projects/:projectId/tasks/:taskId" element={<TaskPage />} />
         <Route path="/projects/:projectId/:section?" element={<ProjectShell />} />
         <Route path="*" element={<Navigate to="/" replace />} />

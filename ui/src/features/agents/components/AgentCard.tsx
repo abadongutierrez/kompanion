@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import type { Agent } from "@kompanion/shared";
 import { AGENT_RUNTIME_LABEL } from "@kompanion/shared";
 import { Card } from "@/shared/ui/index.js";
+import { useRuntimes } from "@/features/runtimes/index.js";
 
 // One agent, as a card. The team panel and the library page render the same
 // thing and differ only in the control top-right (Unassign vs. an Edit link)
@@ -16,6 +17,11 @@ export function AgentCard({
   action?: ReactNode;
   showRuntime?: boolean;
 }) {
+  // The runtime's own name from Settings; the kind's label only for an Agent
+  // that predates runtimes (or whose runtime list has not loaded).
+  const runtimes = useRuntimes();
+  const runtimeName =
+    runtimes.data?.find((r) => r.id === agent.runtimeId)?.name ?? AGENT_RUNTIME_LABEL[agent.runtime];
   return (
     <Card tone="soft" className="space-y-1">
       <div className="flex items-center justify-between">
@@ -27,7 +33,7 @@ export function AgentCard({
         {showRuntime && (
           <>
             {" · "}
-            {AGENT_RUNTIME_LABEL[agent.runtime]}
+            {runtimeName}
             {agent.model && (
               <>
                 {" · "}

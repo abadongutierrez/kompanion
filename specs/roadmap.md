@@ -7,7 +7,9 @@ Status is taken from `DESIGN.md` and the git log. Each item becomes a spec in
 
 - Domain model: Project, Team, Agent, Task, task state machine.
 - Agent harnesses (engineer, qa, product_manager) and shared Task workspaces.
-- Three runtimes: Claude Code, opencode, pi.
+- Four runtimes: Claude Code, opencode (v1), opencode2 (v2), pi. opencode v2
+  dropped `run --dir`, so it got its own runner (`Opencode2Runner`, runs
+  `--standalone`) instead of changing the v1 one.
 - Project workspace folders, and per-Task folders agents can write in.
 - Heartbeat scheduler (off by default).
 - Budget enforcement per Team, and a Project spend rollup.
@@ -49,7 +51,6 @@ reviewer Agent.
 - Ceremonies (standup, retro, on-call).
 - Work Products as a real entity.
 - Multi-repo Tasks.
-- Make `OpencodeRunner` work with opencode v2: `run` no longer takes `--dir`.
 - Skills extras: per-Project default skills, skill bundles, import from a git
   URL, edit a skill in the UI.
 - Replay a run from its stored agent instance.
