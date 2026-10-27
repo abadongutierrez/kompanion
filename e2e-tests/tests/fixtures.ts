@@ -79,3 +79,20 @@ export async function ensureAgents(request: APIRequestContext, teamId: string) {
 export async function deleteTask(request: APIRequestContext, teamId: string, taskId: string) {
   await request.delete(`/api/teams/${teamId}/tasks/${taskId}`);
 }
+
+export type SeededRuntime = { id: string; name: string; kind: string };
+
+// The Agent form picks from the runtimes defined in Settings, so a form test
+// needs at least one. Reuses a Claude Code runtime when there is one (there is
+// no way to tell a real setup from a test one, and a duplicate adds nothing).
+export async function ensureClaudeRuntime(request: APIRequestContext): Promise<SeededRuntime> {
+  const runtimes = await json<SeededRuntime[]>(await request.get("/api/runtimes"));
+  return (
+    runtimes.find((r) => r.kind === "claude_code") ??
+    (await json<SeededRuntime>(
+      await request.post("/api/runtimes", {
+        data: { name: "E2E Claude Code", kind: "claude_code" },
+      }),
+    ))
+  );
+}

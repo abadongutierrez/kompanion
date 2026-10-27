@@ -78,10 +78,14 @@ export function AgentFormPage({ mode }: { mode: "create" | "edit" | "view" }) {
   const [title, setTitle] = useState("");
   const [slug, setSlug] = useState("");
   const [harnessPath, setHarnessPath] = useState("");
-  const [runtime, setRuntime] = useState<AgentRuntime>("claude_code");
   const [model, setModel] = useState("");
   const [runtimeId, setRuntimeId] = useState("");
   const runtimes = useRuntimes();
+  // The runtime picked on the Settings page decides which CLI runs the Agent,
+  // so the kind is read from it rather than chosen separately. Until one is
+  // picked, fall back to what the Agent already has (for the placeholders).
+  const selectedRuntime = (runtimes.data ?? []).find((r) => r.id === runtimeId);
+  const runtime: AgentRuntime = selectedRuntime?.kind ?? agent?.runtime ?? "claude_code";
   const [harnessTemplate, setHarnessTemplate] = useState("");
 
   // Seed the fields once the agent (and its template) arrive. Keyed on the
@@ -93,10 +97,19 @@ export function AgentFormPage({ mode }: { mode: "create" | "edit" | "view" }) {
     setTitle(agent.title);
     setSlug(agent.slug);
     setHarnessPath(agent.harnessPath);
-    setRuntime(agent.runtime);
     setModel(agent.model ?? "");
     setRuntimeId(agent.runtimeId ?? "");
   }, [agent?.id]);
+
+  // Nothing picked yet: a new Agent, or one from before runtimes existed. Take
+  // the first runtime of the Agent's kind (any, when creating) so saving links
+  // it, instead of leaving the operator a blank to fill in.
+  useEffect(() => {
+    if (!runtimes.data || runtimeId || isView) return;
+    if (isEdit && !agent) return;
+    const match = runtimes.data.find((r) => !agent || r.kind === agent.runtime);
+    if (match) setRuntimeId(match.id);
+  }, [runtimes.data, agent?.id]);
 
   useEffect(() => {
     if (template.data) setHarnessTemplate(template.data.content);
@@ -166,7 +179,7 @@ export function AgentFormPage({ mode }: { mode: "create" | "edit" | "view" }) {
         onSubmit={(e) => {
           e.preventDefault();
           if (isView) return;
-          if (!title.trim() || !harnessPath.trim()) return;
+          if (!title.trim() || !harnessPath.trim() || !selectedRuntime) return;
           saveAgent.mutate(
             {
               values: { title, slug, harnessPath, runtime, model, runtimeId },
@@ -217,34 +230,19 @@ export function AgentFormPage({ mode }: { mode: "create" | "edit" | "view" }) {
               aria-label="Runtime"
               fullWidth={false}
               disabled={isView}
-              value={runtime}
-              onChange={(e) => {
-                setRuntime(e.target.value as AgentRuntime);
-                // An instance belongs to one kind.
-                setRuntimeId("");
-              }}
-            >
-              {Object.entries(AGENT_RUNTIME_LABEL).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </Select>
-            <Select
-              aria-label="Runtime instance"
-              fullWidth={false}
-              disabled={isView}
               value={runtimeId}
               onChange={(e) => setRuntimeId(e.target.value)}
             >
-              <option value="">Default</option>
-              {(runtimes.data ?? [])
-                .filter((r) => r.kind === runtime)
-                .map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.name}
-                  </option>
-                ))}
+              {!selectedRuntime && (
+                <option value="" disabled>
+                  {runtimes.isSuccess ? "Select a runtime" : "Loading…"}
+                </option>
+              )}
+              {(runtimes.data ?? []).map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.name} ({AGENT_RUNTIME_LABEL[r.kind]})
+                </option>
+              ))}
             </Select>
             <TextInput
               aria-label="Model"
@@ -256,6 +254,12 @@ export function AgentFormPage({ mode }: { mode: "create" | "edit" | "view" }) {
               onChange={(e) => setModel(e.target.value)}
             />
           </div>
+          {runtimes.isSuccess && runtimes.data.length === 0 && (
+            <Muted size="xs">
+              No runtimes yet. <Link to="/settings" className="underline">Add one in Settings</Link>{" "}
+              to choose how this Agent runs.
+            </Muted>
+          )}
           {isEdit && (
             <TextArea
               className={isView ? "bg-neutral-100 font-mono text-xs" : "font-mono text-xs"}
