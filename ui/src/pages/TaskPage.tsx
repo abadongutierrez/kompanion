@@ -2,7 +2,14 @@ import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ProjectChrome } from "@/app/layouts/ProjectChrome.js";
 import { useCurrentTeamId } from "@/features/teams/index.js";
-import { CommentsThread, TaskDiff, useTask, useTaskComments } from "@/features/tasks/index.js";
+import {
+  CommentsThread,
+  TaskDiff,
+  countChangedFiles,
+  useTask,
+  useTaskComments,
+  useTaskDiff,
+} from "@/features/tasks/index.js";
 import { useTeamAgents } from "@/features/agents/index.js";
 import { RunRow, useTaskRuns } from "@/features/runs/index.js";
 
@@ -160,11 +167,14 @@ function TaskTabs({
   const [tab, setTab] = useState<Tab>("runs");
   const comments = useTaskComments(teamId, taskId);
   const agents = useTeamAgents(teamId);
+  // Fetched even while another tab is open so the Diff label can show the
+  // count; TaskDiff shares this query's cache.
+  const diff = useTaskDiff(teamId, taskId, { enabled: true, isRunning });
 
   const tabs: { id: Tab; label: string; count: number | undefined }[] = [
     { id: "runs", label: "Runs", count: runCount },
     { id: "comments", label: "Comments", count: comments.data?.length },
-    { id: "diff", label: "Diff", count: undefined },
+    { id: "diff", label: "Diff", count: countChangedFiles(diff.data) },
   ];
 
   // WAI-ARIA tabs pattern: only the selected tab is in the Tab sequence

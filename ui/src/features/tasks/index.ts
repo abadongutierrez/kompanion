@@ -1,6 +1,6 @@
 export { TaskBoard } from "./components/TaskBoard.js";
 export { CommentsThread } from "./components/CommentsSection.js";
-export { TaskDiff } from "./components/TaskDiff.js";
+export { TaskDiff, countChangedFiles } from "./components/TaskDiff.js";
 export {
   useTasks,
   useTask,
