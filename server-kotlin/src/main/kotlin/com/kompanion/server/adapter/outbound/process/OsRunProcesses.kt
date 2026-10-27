@@ -65,7 +65,10 @@ class OsRunProcesses : RunProcesses {
         val ourUid = uid(ProcessHandle.current().pid())
         val found = mutableListOf<ProcessHandle>()
         var blocked = false
-        for (pid in proc.listFiles().orEmpty().mapNotNull { it.name.toLongOrNull() }) {
+        // null when /proc cannot be listed: nothing was checked, which is
+        // not the same as nothing found.
+        val entries = proc.listFiles() ?: return Scan(emptyList(), blocked = true)
+        for (pid in entries.mapNotNull { it.name.toLongOrNull() }) {
             val env = environment(pid)
             val carries = when {
                 env != null -> marker in env

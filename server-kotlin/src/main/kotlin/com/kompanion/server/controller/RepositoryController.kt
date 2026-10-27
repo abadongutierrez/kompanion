@@ -87,6 +87,16 @@ class RepositoryController(private val repositories: RepositoryRepository) {
             ?: return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(ErrorResponse("repository not found"))
 
+        // A run's worktree sits under the repository's path, and after a
+        // crash the next boot looks for the run's leftover processes there
+        // (DiskRunFolders). Moving the path mid-run would hide them.
+        if (body.localPath != null && body.localPath != existing.localPath &&
+            repositories.projectHasRunningTask(existing.projectId)
+        ) {
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ErrorResponse("a task in this project is running; change the local path once no run is in progress"))
+        }
+
         val updated = existing.copy(
             name = body.name ?: existing.name,
             localPath = body.localPath ?: existing.localPath,

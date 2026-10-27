@@ -1,9 +1,12 @@
 package com.kompanion.server.adapter.outbound.persistence
 
+import com.kompanion.server.repository.RepositoryRepository
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
@@ -20,6 +23,7 @@ class RunPersistenceTest(
     @Autowired val runs: JdbcRunStore,
     @Autowired val jdbc: JdbcTemplate,
     @Autowired val txManager: PlatformTransactionManager,
+    @Autowired val repositories: RepositoryRepository,
 ) {
 
     private val suffix = UUID.randomUUID().toString().take(8)
@@ -126,5 +130,17 @@ class RunPersistenceTest(
 
             tx.setRollbackOnly()
         }
+    }
+
+    // Guards RepositoryController's refusal to move a repository mid-run.
+    @Test
+    fun `a project has a running task while any of its tasks holds a claim`() {
+        val idle = project("idle")
+        task(team(idle, "Core"), "idle", running = false)
+        val busy = project("busy")
+        task(team(busy, "Core"), "busy", running = true)
+
+        assertFalse(repositories.projectHasRunningTask(idle))
+        assertTrue(repositories.projectHasRunningTask(busy))
     }
 }

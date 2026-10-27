@@ -8,6 +8,7 @@ import com.kompanion.server.repository.TeamRepository
 import com.kompanion.server.service.ClaudeHarnessService
 import org.springframework.stereotype.Component
 import java.io.File
+import java.io.IOException
 import java.util.UUID
 
 // Looks on disk rather than at what a run recorded, so it works for every
@@ -38,10 +39,12 @@ class DiskRunFolders(
 
         val taskWorkspace = harness.resolveWorkspaceDir(project, taskId)
         val worktrees = repositories.findByProjectIdOrderByCreatedAt(project.id!!).flatMap { repo ->
-            File(repo.localPath, ".worktrees")
-                .listFiles { f -> f.isDirectory && f.name.startsWith("$taskId-") }
-                .orEmpty()
-                .toList()
+            val root = File(repo.localPath, ".worktrees")
+            if (!root.exists()) return@flatMap emptyList()
+            // null for a folder that is there but cannot be listed: the
+            // task's worktree may be in it, so this is a failure, not "none".
+            root.listFiles { f -> f.isDirectory && f.name.startsWith("$taskId-") }?.toList()
+                ?: throw IOException("cannot list $root")
         }
         return (listOf(taskWorkspace) + worktrees).map { it.path }.distinct()
     }
