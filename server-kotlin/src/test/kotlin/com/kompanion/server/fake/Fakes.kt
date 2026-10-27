@@ -10,11 +10,13 @@ import com.kompanion.server.application.port.outbound.RuntimeProbe
 import com.kompanion.server.application.port.outbound.RuntimeStore
 import com.kompanion.server.application.port.outbound.Harnesses
 import com.kompanion.server.application.port.outbound.ProjectStore
+import com.kompanion.server.application.port.outbound.RunStore
 import com.kompanion.server.application.port.outbound.SkillFiles
 import com.kompanion.server.application.port.outbound.SkillInspection
 import com.kompanion.server.application.port.outbound.SkillStore
 import com.kompanion.server.application.port.outbound.SpendStore
 import com.kompanion.server.application.port.outbound.TaskStore
+import com.kompanion.server.domain.model.ActiveRun
 import com.kompanion.server.domain.model.Agent
 import com.kompanion.server.domain.model.AgentInstance
 import com.kompanion.server.domain.model.AgentRuntime
@@ -95,6 +97,15 @@ class InMemorySpendStore(
     }
 
     override fun projectDailySpend(projectId: UUID): List<DaySpend> = byDay
+}
+
+class InMemoryRunStore(private val runs: List<ActiveRun> = emptyList()) : RunStore {
+    val asked = mutableListOf<UUID>()
+
+    override fun activeRuns(projectId: UUID): List<ActiveRun> {
+        asked += projectId
+        return runs
+    }
 }
 
 class InMemoryProjectStore(vararg seed: UUID) : ProjectStore {

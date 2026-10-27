@@ -1,4 +1,4 @@
-import type { TaskRun } from "@kompanion/shared";
+import type { ActiveRun, TaskRun } from "@kompanion/shared";
 import { apiBase, request } from "@/shared/api/request.js";
 
 export const runsApi = {
@@ -8,6 +8,8 @@ export const runsApi = {
     }),
   listTaskRuns: (teamId: string, taskId: string) =>
     request<TaskRun[]>(`${apiBase}/teams/${teamId}/tasks/${taskId}/runs`),
+  listActiveRuns: (projectId: string) =>
+    request<ActiveRun[]>(`${apiBase}/projects/${projectId}/runs/active`),
 
   // Opened directly via EventSource (SSE), not through request<T> — no JSON
   // fetch involved here, just the URL.

@@ -1,0 +1,57 @@
+package com.kompanion.server.adapter.outbound.persistence
+
+import com.kompanion.server.application.port.outbound.RunStore
+import com.kompanion.server.domain.model.ActiveRun
+import org.springframework.jdbc.core.JdbcTemplate
+import org.springframework.stereotype.Component
+import java.time.OffsetDateTime
+import java.util.UUID
+
+// Joins across task_runs, tasks, teams and agents — the hybrid JdbcTemplate
+// case, like JdbcSpendStore, and for the same reason it hops through teams
+// to reach the project.
+//
+// "Active" needs both signals: the run row at status 'running' and its task
+// still holding running_since. RunTaskService clears both when a run ends,
+// but a server killed mid-run leaves the row at 'running' with nothing behind
+// it; requiring running_since keeps those ghosts off the list.
+@Component
+class JdbcRunStore(private val jdbc: JdbcTemplate) : RunStore {
+
+    override fun activeRuns(projectId: UUID): List<ActiveRun> = jdbc.query(
+        """
+        select
+          tr.id as run_id,
+          t.id as task_id,
+          t.title as task_title,
+          tm.id as team_id,
+          tm.name as team_name,
+          a.title as agent_title,
+          tr.runtime as runtime,
+          tr.model as model,
+          tr.created_at as started_at
+        from task_runs tr
+        join tasks t on t.id = tr.task_id
+        join teams tm on tm.id = t.team_id
+        left join agents a on a.id = tr.agent_id
+        where tm.project_id = ?
+          and tr.status = 'running'
+          and t.running_since is not null
+        order by tr.created_at
+        """.trimIndent(),
+        { rs, _ ->
+            ActiveRun(
+                runId = UUID.fromString(rs.getString("run_id")),
+                taskId = UUID.fromString(rs.getString("task_id")),
+                taskTitle = rs.getString("task_title"),
+                teamId = UUID.fromString(rs.getString("team_id")),
+                teamName = rs.getString("team_name"),
+                agentTitle = rs.getString("agent_title"),
+                runtime = rs.getString("runtime"),
+                model = rs.getString("model"),
+                startedAt = rs.getObject("started_at", OffsetDateTime::class.java),
+            )
+        },
+        projectId,
+    )
+}

@@ -7,12 +7,11 @@ import { RepositoriesPanel } from "@/features/repositories/index.js";
 import { AgentsPanel } from "@/features/agents/index.js";
 import { BudgetPanel } from "@/features/budget/index.js";
 import { TaskBoard } from "@/features/tasks/index.js";
-
-
+import { ActiveRunsPanel } from "@/features/runs/index.js";
 
 import { Muted } from "@/shared/ui/index.js";
 
-const VALID_SECTIONS: Section[] = ["board", "agents", "repositories", "budget"];
+const VALID_SECTIONS: Section[] = ["board", "runs", "agents", "repositories", "budget"];
 
 // The per-project app shell: everything App.tsx used to render once it had
 // silently picked a project. Team selection is unchanged from before
@@ -61,6 +60,8 @@ export function ProjectShell() {
       {/* Budget is project-scoped — it rolls up every team — so it must not
           wait on the first team resolving the way the team-scoped panels do. */}
       {section === "budget" && <BudgetPanel projectId={projectId} />}
+      {/* Project-scoped too: it lists runs across every team. */}
+      {section === "runs" && <ActiveRunsPanel projectId={projectId} />}
       {teamId && (
         <>
           {section === "board" && <TaskBoard teamId={teamId} projectId={projectId} />}

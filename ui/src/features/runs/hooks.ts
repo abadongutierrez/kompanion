@@ -20,6 +20,16 @@ export function useTaskRuns(
   });
 }
 
+// The Runs tab. Always polled: runs start and end from other tabs, other
+// browsers and the heartbeat, and nothing here would hear about it otherwise.
+export function useActiveRuns(projectId: string) {
+  return useQuery({
+    queryKey: runKeys.activeByProject(projectId),
+    queryFn: () => runsApi.listActiveRuns(projectId),
+    refetchInterval: 3000,
+  });
+}
+
 // Starting a run touches five caches, four of which belong to other
 // features: the run list, the task itself (a run moves its status through
 // backlog -> in_progress -> in_review/blocked), both spend figures, and the
@@ -31,6 +41,9 @@ export function useRunTask(teamId: string, taskId: string, projectId: string) {
     mutationFn: () => runsApi.runTask(teamId, taskId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: runKeys.byTask(taskId) });
+      queryClient.invalidateQueries({
+        queryKey: runKeys.activeByProject(projectId),
+      });
       queryClient.invalidateQueries({ queryKey: taskKeys.byTeam(teamId) });
       queryClient.invalidateQueries({ queryKey: budgetKeys.teamSpend(teamId) });
       queryClient.invalidateQueries({
