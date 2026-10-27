@@ -7,6 +7,7 @@ import tools.jackson.databind.ObjectMapper
 import tools.jackson.module.kotlin.readValue
 import java.io.File
 import java.math.BigDecimal
+import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
 
 // opencode v2 (verified against 2.0.26). A runtime of its own rather than a
@@ -62,18 +63,38 @@ class Opencode2Runner : AgentRunner {
         return listOfNotNull(sessionSummary(sessionId, exported))
     }
 
+    // How long `session export` may take. The run's own timeout has already
+    // stopped by now, so this is the only thing keeping a hung export from
+    // leaving the task running forever. A var only so tests can shorten it.
+    internal var exportTimeoutSeconds: Long = 60
+
     // Best effort: a missing summary only means the run's cost falls back to
     // the step_finish events, so any failure here is swallowed.
-    private fun exportSession(bin: String, cwd: File, sessionId: String): String? = try {
-        val process = ProcessBuilder(bin, "session", "export", "--standalone", sessionId)
-            .directory(cwd)
-            .redirectInput(File("/dev/null"))
-            .redirectError(ProcessBuilder.Redirect.DISCARD)
-            .start()
-        val out = process.inputStream.bufferedReader().readText()
-        if (process.waitFor(60, TimeUnit.SECONDS) && process.exitValue() == 0) out else null
-    } catch (e: Exception) {
-        null
+    internal fun exportSession(bin: String, cwd: File, sessionId: String): String? {
+        val process = try {
+            ProcessBuilder(bin, "session", "export", "--standalone", sessionId)
+                .directory(cwd)
+                .redirectInput(File("/dev/null"))
+                .redirectError(ProcessBuilder.Redirect.DISCARD)
+                .start()
+        } catch (e: Exception) {
+            return null
+        }
+        // Drained on its own thread: reading to EOF here would block for as
+        // long as anything (the standalone server, say) holds stdout open,
+        // and the timed wait below would never be reached.
+        val out = CompletableFuture.supplyAsync { process.inputStream.bufferedReader().readText() }
+        return try {
+            if (!process.waitFor(exportTimeoutSeconds, TimeUnit.SECONDS) || process.exitValue() != 0) return null
+            out.get(5, TimeUnit.SECONDS)
+        } catch (e: Exception) {
+            null
+        } finally {
+            // Takes the standalone server down with it if it outlived the CLI.
+            process.descendants().forEach { it.destroyForcibly() }
+            process.destroyForcibly()
+            out.cancel(true)
+        }
     }
 
     // Keeps only the session's totals, not its messages: the transcript

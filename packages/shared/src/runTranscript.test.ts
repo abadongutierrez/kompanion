@@ -410,6 +410,18 @@ describe("opencode v2 transcripts", () => {
     ]);
   });
 
+  it("puts the session total on an earlier error's result block", () => {
+    const state = reduceOpencode2([
+      ...v2Run,
+      { type: "error", sessionID: SES, error: { type: "provider.auth", message: "bad key" } },
+      { type: "session_summary", sessionID: SES, cost: 0.001100564 },
+    ]);
+    const result = state.blocks.find((b) => b.kind === "result");
+    expect(result).toMatchObject({ kind: "result", ok: false, summary: "bad key" });
+    expect(result && result.kind === "result" ? result.costUsd : undefined).toBeCloseTo(0.001100564, 12);
+    expect(state.costUsd).toBeCloseTo(0.001100564, 12);
+  });
+
   it("leaves v1 runs on the v1 reducer", () => {
     // A v1 error still reads as name: message, not as a v2 one.
     const state = reduceOpencode([

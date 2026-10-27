@@ -342,7 +342,10 @@ function applyOpencode2Event(state: TranscriptState, raw: RunEventRaw): Transcri
       // Zero is a real cost here too.
       const cost = raw.cost;
       if (typeof cost !== "number") return state;
-      return { ...state, costUsd: cost, costIsEstimate: false };
+      // An error before the summary already pushed a result block holding
+      // the short step sum; the failure banner reads it, so correct it too.
+      const blocks = state.blocks.map((b) => (b.kind === "result" ? { ...b, costUsd: cost } : b));
+      return { ...state, blocks, costUsd: cost, costIsEstimate: false };
     }
 
     default:
