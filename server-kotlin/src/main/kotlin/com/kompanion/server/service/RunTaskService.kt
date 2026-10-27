@@ -49,6 +49,7 @@ class RunTaskService(
     private val claudeHarnessService: ClaudeHarnessService,
     private val budgetService: BudgetService,
     private val repoWorkspaceService: RepoWorkspaceService,
+    private val workspaceEnforcementService: WorkspaceEnforcementService,
     private val runEventsBus: RunEventsBus,
     // Builds the agent instance a run works from and records it on the run.
     // A use case, not logic of this class: this orchestrator is old layered
@@ -579,6 +580,10 @@ class RunTaskService(
                             ?: throw IllegalStateException("the runtime selected for this Agent no longer exists")
                     },
                 )
+                // Every runtime gets the manifest, not only the ones that
+                // enforce from it: skills read it too (preflight-check fails
+                // without it).
+                workspaceEnforcementService.writeManifest(taskWorkspaceDir, manifest)
                 runner.prepareWorkspace(ctx, manifest)
 
                 // Starting a run means work is happening: move
