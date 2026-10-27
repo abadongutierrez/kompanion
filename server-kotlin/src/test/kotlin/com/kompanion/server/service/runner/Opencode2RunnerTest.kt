@@ -144,6 +144,31 @@ class Opencode2RunnerTest {
     }
 
     @Test
+    fun `an export that hangs with stdout held open gives up instead of blocking`(@TempDir tmp: File) {
+        // A child keeps stdout open past the CLI, the way a standalone
+        // server that never shuts down would.
+        val bin = File(tmp, "opencode2").apply {
+            writeText("#!/bin/sh\necho partial\nsleep 30 &\nsleep 30\n")
+            setExecutable(true)
+        }
+        val hanging = Opencode2Runner().apply { exportTimeoutSeconds = 1 }
+
+        val started = System.nanoTime()
+        assertNull(hanging.exportSession(bin.absolutePath, tmp, "ses_x"))
+        assertTrue(System.nanoTime() - started < 15_000_000_000L, "export should give up near its timeout")
+    }
+
+    @Test
+    fun `a quick export returns its output`(@TempDir tmp: File) {
+        val bin = File(tmp, "opencode2").apply {
+            writeText("#!/bin/sh\necho '{\"info\":{}}'\n")
+            setExecutable(true)
+        }
+
+        assertEquals("{\"info\":{}}", runner.exportSession(bin.absolutePath, tmp, "ses_x")?.trim())
+    }
+
+    @Test
     fun `an export that is not JSON gives no summary`() {
         assertNull(runner.sessionSummary("ses_x", "not json"))
     }
