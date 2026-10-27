@@ -4,6 +4,8 @@ import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.condition.EnabledOnOs
+import org.junit.jupiter.api.condition.OS
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
 import java.time.Instant
@@ -11,6 +13,7 @@ import java.util.UUID
 
 // Real processes carrying TASK_ID, standing in for a CLI and the tools it
 // spawns. Linux only, like the adapter.
+@EnabledOnOs(OS.LINUX)
 class OsRunProcessesTest {
 
     private val stops = OsRunProcesses()

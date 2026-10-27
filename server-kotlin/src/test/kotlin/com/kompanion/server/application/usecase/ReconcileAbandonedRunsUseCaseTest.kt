@@ -54,4 +54,19 @@ class ReconcileAbandonedRunsUseCaseTest {
         assertEquals(ReconcileResult(closed = 1, stillRunning = 1), result)
         assertEquals(listOf(gone.runId to ReconcileAbandonedRunsUseCase.SUMMARY), store.failed)
     }
+
+    @Test
+    fun `a task whose folders cannot be read keeps its claim, and the others are still reconciled`() {
+        val unreadable = abandoned()
+        val gone = abandoned()
+        val store = InMemoryRunStore(abandoned = listOf(unreadable, gone))
+        val failing = RunFolders { if (it == unreadable.taskId) error("unreadable") else listOf("/work/$it") }
+
+        val result = ReconcileAbandonedRunsUseCase(store, FakeRunProcesses(), failing).handle()
+
+        assertEquals(1, result.closed)
+        assertEquals(1, result.stillRunning)
+        assertEquals(setOf(unreadable.taskId), result.unchecked.keys)
+        assertEquals(listOf(gone.runId to ReconcileAbandonedRunsUseCase.SUMMARY), store.failed)
+    }
 }

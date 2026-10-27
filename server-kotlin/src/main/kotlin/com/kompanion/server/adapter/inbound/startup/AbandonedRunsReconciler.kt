@@ -27,5 +27,8 @@ class AbandonedRunsReconciler(private val reconcile: ReconcileAbandonedRuns) {
                     "stop the agent process, then restart the server to free them",
             )
         }
+        result.unchecked.forEach { (taskId, reason) ->
+            System.err.println("could not check the processes of task $taskId, so it stays claimed: $reason")
+        }
     }
 }
