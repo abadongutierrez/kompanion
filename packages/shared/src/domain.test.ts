@@ -154,7 +154,8 @@ describe("a project's spend by day", () => {
 
   it("labels known runtimes like the Agent form and falls back to the raw value", () => {
     expect(runtimeLabel("claude_code")).toBe("Claude Code");
-    expect(runtimeLabel("opencode2")).toBe("opencode2");
+    expect(runtimeLabel("opencode2")).toBe("opencode v2");
+    expect(runtimeLabel("some_future_runtime")).toBe("some_future_runtime");
     for (const k of ["__proto__", "constructor", "toString"]) expect(runtimeLabel(k)).toBe(k);
   });
 });
