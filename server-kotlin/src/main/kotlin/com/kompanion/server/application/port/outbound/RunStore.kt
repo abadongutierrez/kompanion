@@ -1,5 +1,6 @@
 package com.kompanion.server.application.port.outbound
 
+import com.kompanion.server.domain.model.AbandonedRun
 import com.kompanion.server.domain.model.ActiveRun
 import java.util.UUID
 
@@ -11,8 +12,11 @@ interface RunStore {
     // Runs in flight across every team in the project, oldest first.
     fun activeRuns(projectId: UUID): List<ActiveRun>
 
-    // Marks every run still at 'running' as failed with this summary, and
-    // frees every task still claimed by running_since. Returns how many
-    // runs it failed.
-    fun failAbandonedRuns(summary: String): Int
+    // Every run still at 'running', across all projects.
+    fun abandonedRuns(): List<AbandonedRun>
+
+    // Marks these runs failed with this summary, then frees every task whose
+    // claim (running_since) no run at 'running' backs any more — including
+    // claims whose run row was never written.
+    fun failAbandonedRuns(runIds: List<UUID>, summary: String)
 }

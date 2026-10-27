@@ -2,8 +2,9 @@ package com.kompanion.server.adapter.outbound.persistence
 
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
+import com.kompanion.server.domain.model.RunProcess
+import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
-import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
@@ -87,16 +88,27 @@ class RunPersistenceTest(
             "insert into agents (title, slug, harness_path) values ('Engineer', ?, 'harnesses/engineer') returning id",
             UUID::class.java, "c-$suffix",
         )!!.also { agentIds += it }
+        val core = team(projectId, "Core")
         // What a hard crash leaves: both signals still set.
-        val taskId = task(team(projectId, "Core"), "crashed", running = true)
+        val taskId = task(core, "crashed", running = true)
         val runId = run(taskId, agentId, "running")
-        assertEquals(listOf(runId), runs.activeRuns(projectId).map { it.runId })
+        val started = OffsetDateTime.parse("2026-10-27T10:00:00Z")
+        jdbc.update("update task_runs set pid = 4242, process_started_at = ? where id = ?", started, runId)
+        // Its CLI could not be shown to be gone, so it keeps its task.
+        val survivorTask = task(core, "survivor", running = true)
+        val survivorRun = run(survivorTask, agentId, "running")
 
-        // failAbandonedRuns touches every row in the database, and tests share
-        // the dev database with a server that may be mid-run. Roll it back.
+        val found = runs.abandonedRuns().associateBy { it.runId }
+        assertEquals(RunProcess(4242, started.toInstant()), found.getValue(runId).process)
+        assertEquals(taskId, found.getValue(runId).taskId)
+        assertNull(found.getValue(survivorRun).process)
+
+        // failAbandonedRuns frees claims across the whole database, and tests
+        // share the dev database with a server that may be mid-run. Roll it back.
         TransactionTemplate(txManager).executeWithoutResult { tx ->
-            runs.failAbandonedRuns("server restarted")
+            runs.failAbandonedRuns(listOf(runId), "server restarted")
 
+            assertEquals(listOf(survivorRun), runs.activeRuns(projectId).map { it.runId })
             assertEquals(
                 "failed",
                 jdbc.queryForObject("select status from task_runs where id = ?", String::class.java, runId),
@@ -110,7 +122,11 @@ class RunPersistenceTest(
                     "select running_since from tasks where id = ?", OffsetDateTime::class.java, taskId,
                 ),
             )
-            assertTrue(runs.activeRuns(projectId).isEmpty())
+            assertNotNull(
+                jdbc.queryForObject(
+                    "select running_since from tasks where id = ?", OffsetDateTime::class.java, survivorTask,
+                ),
+            )
 
             tx.setRollbackOnly()
         }

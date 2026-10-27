@@ -239,6 +239,16 @@ class RunTaskService(
             )
         }
 
+        // If this JVM dies mid-run the CLI may outlive it. The next boot finds
+        // it by these and stops it before freeing the task (see
+        // ReconcileAbandonedRunsUseCase).
+        jdbc.update(
+            "update task_runs set pid = ?, process_started_at = ? where id = ?",
+            process.pid(),
+            process.info().startInstant().map { OffsetDateTime.ofInstant(it, java.time.ZoneOffset.UTC) }.orElse(null),
+            runId,
+        )
+
         val killer = Thread {
             try {
                 Thread.sleep(runTimeoutMs)

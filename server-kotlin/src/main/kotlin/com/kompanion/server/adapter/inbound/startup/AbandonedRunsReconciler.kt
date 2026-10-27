@@ -10,15 +10,22 @@ import org.springframework.stereotype.Component
 // server takes a request — nothing can start a run ahead of the cleanup.
 //
 // Assumes one server per database: a second server booting against the same
-// database would close the first one's live runs. Tests share the dev
-// database, so they turn this off (src/test/resources/config/application.yml).
+// database would take the first one's live runs for abandoned ones, and kill
+// their CLIs. Tests share the dev database, so they turn this off
+// (src/test/resources/config/application.yml).
 @Component
 @ConditionalOnProperty("runs.reconcile-on-startup", havingValue = "true", matchIfMissing = true)
 class AbandonedRunsReconciler(private val reconcile: ReconcileAbandonedRuns) {
 
     @PostConstruct
     fun reconcileOnStartup() {
-        val closed = reconcile.handle()
-        if (closed > 0) println("marked $closed abandoned run(s) as failed")
+        val result = reconcile.handle()
+        if (result.closed > 0) println("marked ${result.closed} abandoned run(s) as failed")
+        if (result.stillRunning > 0) {
+            System.err.println(
+                "${result.stillRunning} run(s) from before the restart may still be running and keep their task; " +
+                    "stop the agent process, then restart the server to free them",
+            )
+        }
     }
 }

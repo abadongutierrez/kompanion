@@ -1,7 +1,9 @@
 package com.kompanion.server.adapter.outbound.persistence
 
 import com.kompanion.server.application.port.outbound.RunStore
+import com.kompanion.server.domain.model.AbandonedRun
 import com.kompanion.server.domain.model.ActiveRun
+import com.kompanion.server.domain.model.RunProcess
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.stereotype.Component
 import java.time.OffsetDateTime
@@ -13,9 +15,9 @@ import java.util.UUID
 //
 // "Active" needs both signals: the run row at status 'running' and its task
 // still holding running_since. RunTaskService clears both when a run ends.
-// A server killed mid-run leaves both set; failAbandonedRuns clears them at
-// the next boot (see AbandonedRunsReconciler). Requiring both here still
-// hides a row whose task was freed some other way.
+// A server killed mid-run leaves both set; the next boot clears them (see
+// ReconcileAbandonedRunsUseCase). Requiring both here still hides a row
+// whose task was freed some other way.
 @Component
 class JdbcRunStore(private val jdbc: JdbcTemplate) : RunStore {
 
@@ -56,12 +58,31 @@ class JdbcRunStore(private val jdbc: JdbcTemplate) : RunStore {
         projectId,
     )
 
-    override fun failAbandonedRuns(summary: String): Int {
-        val failed = jdbc.update(
-            "update task_runs set status = 'failed', summary = ? where status = 'running'",
-            summary,
+    override fun abandonedRuns(): List<AbandonedRun> = jdbc.query(
+        "select id, task_id, pid, process_started_at from task_runs where status = 'running'",
+        { rs, _ ->
+            val pid = rs.getLong("pid").takeUnless { rs.wasNull() }
+            AbandonedRun(
+                runId = UUID.fromString(rs.getString("id")),
+                taskId = UUID.fromString(rs.getString("task_id")),
+                process = pid?.let {
+                    RunProcess(it, rs.getObject("process_started_at", OffsetDateTime::class.java)?.toInstant())
+                },
+            )
+        },
+    )
+
+    override fun failAbandonedRuns(runIds: List<UUID>, summary: String) {
+        jdbc.batchUpdate(
+            "update task_runs set status = 'failed', summary = ? where id = ? and status = 'running'",
+            runIds.map { arrayOf<Any>(summary, it) },
         )
-        jdbc.update("update tasks set running_since = null where running_since is not null")
-        return failed
+        jdbc.update(
+            """
+            update tasks set running_since = null
+            where running_since is not null
+              and not exists (select 1 from task_runs tr where tr.task_id = tasks.id and tr.status = 'running')
+            """.trimIndent(),
+        )
     }
 }
