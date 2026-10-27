@@ -228,8 +228,8 @@ function TaskTabs({
         ))}
       </div>
 
-      {/* Both panels stay mounted and the inactive one is only hidden, so a
-          comment draft survives a trip to the Runs tab and back. */}
+      {/* The Runs and Comments panels stay mounted and the inactive one is only
+          hidden, so a comment draft survives a trip to the Runs tab and back. */}
       <div
         id="task-tabpanel-runs"
         role="tabpanel"
@@ -258,7 +258,11 @@ function TaskTabs({
         className="flex min-h-0 flex-1 flex-col"
       >
         <div className="min-h-0 flex-1 overflow-y-auto">
-          <TaskDiff teamId={teamId} taskId={taskId} active={tab === "diff"} isRunning={isRunning} />
+          {/* Mounted only while selected so a large diff doesn't render (and
+              re-render on polling) in the hidden panel. */}
+          {tab === "diff" && (
+            <TaskDiff teamId={teamId} taskId={taskId} active isRunning={isRunning} />
+          )}
         </div>
       </div>
     </div>
