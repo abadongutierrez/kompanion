@@ -74,7 +74,8 @@ test.describe("task page", () => {
     const rows = page.getByRole("button", { name: /logs$/ });
     await expect(rows).toHaveCount(3);
     await expect(page.getByText("QA", { exact: false }).first()).toBeVisible();
-    await expect(page.getByText("$0.2500")).toBeVisible();
+    // Scoped to the run row: the sidebar also shows $0.2500 for the Engineer.
+    await expect(page.getByText("· $0.2500")).toBeVisible();
     // A run that never finished has no cost, and must not read as free.
     await expect(page.getByText("cost unknown")).toBeVisible();
 
@@ -177,8 +178,9 @@ test.describe("task page", () => {
     await expect(page.getByText("opencode said this")).toBeVisible();
 
     // A local model really is free, so zero is shown as zero rather than
-    // being reported as unknown.
-    await expect(page.getByText("$0.0000")).toBeVisible();
+    // being reported as unknown. Scoped to the run row — the sidebar shows
+    // its own $0.0000 total.
+    await expect(page.getByText("· $0.0000", { exact: true })).toBeVisible();
     await expect(page.getByText("cost unknown")).toHaveCount(0);
 
     // The tool block is a <details>, collapsed until asked otherwise.
@@ -310,8 +312,9 @@ test.describe("task page", () => {
     // Assembled from the deltas — the Claude reducer would have ignored them.
     await expect(page.getByText("pi said this").first()).toBeVisible();
 
-    // A local model really is free, so zero is shown as zero.
-    await expect(page.getByText("$0.0000")).toBeVisible();
+    // A local model really is free, so zero is shown as zero. Scoped to the
+    // run row — the sidebar shows its own $0.0000 total.
+    await expect(page.getByText("· $0.0000", { exact: true })).toBeVisible();
     await expect(page.getByText("cost unknown")).toHaveCount(0);
 
     // The tool block rendered, with the text pulled out of pi's content
@@ -398,11 +401,11 @@ test.describe("task page", () => {
     await page.keyboard.press("ArrowRight");
     await expect(commentsTab).toBeFocused();
     await expect(commentsTab).toHaveAttribute("aria-selected", "true");
-    await page.keyboard.press("ArrowRight");
+    await page.keyboard.press("ArrowLeft");
     await expect(runsTab).toBeFocused();
     await expect(runsTab).toHaveAttribute("aria-selected", "true");
     await page.keyboard.press("End");
-    await expect(commentsTab).toBeFocused();
+    await expect(page.getByRole("tab", { name: /^Diff/ })).toBeFocused();
   });
 
   test("an unknown task id shows Task not found, not a spinner forever", async ({ page }) => {
