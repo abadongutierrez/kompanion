@@ -4,11 +4,12 @@ import com.kompanion.server.domain.model.UsageWindow
 import com.kompanion.server.domain.model.inDisplayOrder
 import java.time.Instant
 
-// Both payloads read here are undocumented and have changed shape before,
-// so every reader is lenient: unknown keys are ignored, both casings are
+// The payload read here is undocumented and has changed shape before, so
+// the reader is lenient: unknown keys are ignored, both casings are
 // accepted, and a value of the wrong type reads as null instead of throwing.
 // See docs/research/claude-usage-window-monitor.md for where each shape
-// was found.
+// was found. The stream-json rate_limit_event is read by the runner, in
+// service/runner/ClaudeRateLimitEvent.kt.
 
 // GET /api/oauth/usage. Two shapes seen:
 //   older — top-level `five_hour`, `seven_day`, `seven_day_opus`, … objects,
@@ -57,38 +58,12 @@ private fun flatKindOf(kind: String): String = when {
     else -> kind
 }
 
-// A stream-json line from `claude -p`. Returns null for anything that is not
-// a rate_limit_event with a window type.
-//
-//   {"type":"rate_limit_event","rate_limit_info":{"status":"allowed_warning",
-//    "resetsAt":1761500000,"rateLimitType":"five_hour","utilization":0.82}}
-//
-// utilization here has been seen as a 0–1 fraction, unlike the endpoint's
-// 0–100, so a value of 1 or below is scaled up. used_percentage, when present,
-// is already a percent.
-@Suppress("UNCHECKED_CAST")
-fun parseRateLimitEvent(event: Map<String, Any?>): UsageWindow? {
-    if (event["type"] != "rate_limit_event") return null
-    val info = event.firstOf("rate_limit_info", "rateLimitInfo") as? Map<String, Any?> ?: return null
-    val kind = info.firstOf("rateLimitType", "rate_limit_type") as? String ?: return null
-
-    val percent = percentOf(info.firstOf("used_percentage", "usedPercentage"))
-        ?: percentOf(info["utilization"])?.let { if (it <= 1.0) it * 100 else it }
-
-    return UsageWindow(
-        kind = kind,
-        utilization = percent,
-        resetsAt = instantOf(info.firstOf("resetsAt", "resets_at")),
-        status = info["status"] as? String,
-    )
-}
-
 private fun Map<String, Any?>.firstOf(vararg keys: String): Any? =
     keys.firstNotNullOfOrNull { this[it] }
 
 private fun percentOf(value: Any?): Double? = (value as? Number)?.toDouble()
 
-// ISO-8601 from the endpoint, epoch seconds from stream-json. An epoch value
+// ISO-8601 as seen, epoch seconds accepted too. An epoch value
 // outside Instant's range reads as unknown, like an unparseable string.
 private fun instantOf(value: Any?): Instant? = when (value) {
     is Number -> runCatching { Instant.ofEpochSecond(value.toLong()) }.getOrNull()

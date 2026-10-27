@@ -1,6 +1,5 @@
 package com.kompanion.server.service.runner
 
-import com.kompanion.server.adapter.outbound.claude.parseRateLimitEvent
 import com.kompanion.server.application.port.inbound.RecordClaudeRateLimit
 import com.kompanion.server.domain.model.AgentRuntime
 import com.kompanion.server.service.WorkspaceEnforcementService
