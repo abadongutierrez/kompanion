@@ -182,3 +182,18 @@ export function useReplyAsAgent(teamId: string, taskId: string) {
       tasksApi.replyAsAgent(teamId, taskId, commentId, agentId),
   );
 }
+
+// Fetched only while the Diff tab is open — every call shells out to git.
+// Polled while an agent is running so the reader watches the change grow.
+export function useTaskDiff(
+  teamId: string,
+  taskId: string,
+  { enabled, isRunning }: { enabled: boolean; isRunning: boolean },
+) {
+  return useQuery({
+    queryKey: taskKeys.diff(taskId),
+    queryFn: () => tasksApi.getTaskDiff(teamId, taskId),
+    enabled,
+    refetchInterval: enabled && isRunning ? 5000 : false,
+  });
+}
