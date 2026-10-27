@@ -2,10 +2,15 @@ package com.kompanion.server.adapter.outbound.persistence
 
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.jdbc.core.JdbcTemplate
+import org.springframework.transaction.PlatformTransactionManager
+import org.springframework.transaction.support.TransactionTemplate
+import java.time.OffsetDateTime
 import java.util.UUID
 
 // Against the real schema, like SpendPersistenceTest: which runs count as
@@ -14,6 +19,7 @@ import java.util.UUID
 class RunPersistenceTest(
     @Autowired val runs: JdbcRunStore,
     @Autowired val jdbc: JdbcTemplate,
+    @Autowired val txManager: PlatformTransactionManager,
 ) {
 
     private val suffix = UUID.randomUUID().toString().take(8)
@@ -72,5 +78,41 @@ class RunPersistenceTest(
         assertEquals("Engineer", only.agentTitle)
         assertEquals("claude_code", only.runtime)
         assertEquals("opus", only.model)
+    }
+
+    @Test
+    fun `a run cut off by a crash is failed and its task freed`() {
+        val projectId = project("crash")
+        val agentId = jdbc.queryForObject(
+            "insert into agents (title, slug, harness_path) values ('Engineer', ?, 'harnesses/engineer') returning id",
+            UUID::class.java, "c-$suffix",
+        )!!.also { agentIds += it }
+        // What a hard crash leaves: both signals still set.
+        val taskId = task(team(projectId, "Core"), "crashed", running = true)
+        val runId = run(taskId, agentId, "running")
+        assertEquals(listOf(runId), runs.activeRuns(projectId).map { it.runId })
+
+        // failAbandonedRuns touches every row in the database, and tests share
+        // the dev database with a server that may be mid-run. Roll it back.
+        TransactionTemplate(txManager).executeWithoutResult { tx ->
+            runs.failAbandonedRuns("server restarted")
+
+            assertEquals(
+                "failed",
+                jdbc.queryForObject("select status from task_runs where id = ?", String::class.java, runId),
+            )
+            assertEquals(
+                "server restarted",
+                jdbc.queryForObject("select summary from task_runs where id = ?", String::class.java, runId),
+            )
+            assertNull(
+                jdbc.queryForObject(
+                    "select running_since from tasks where id = ?", OffsetDateTime::class.java, taskId,
+                ),
+            )
+            assertTrue(runs.activeRuns(projectId).isEmpty())
+
+            tx.setRollbackOnly()
+        }
     }
 }

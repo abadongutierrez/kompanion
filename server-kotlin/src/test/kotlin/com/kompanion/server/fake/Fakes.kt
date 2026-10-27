@@ -101,10 +101,16 @@ class InMemorySpendStore(
 
 class InMemoryRunStore(private val runs: List<ActiveRun> = emptyList()) : RunStore {
     val asked = mutableListOf<UUID>()
+    val failedWith = mutableListOf<String>()
 
     override fun activeRuns(projectId: UUID): List<ActiveRun> {
         asked += projectId
         return runs
+    }
+
+    override fun failAbandonedRuns(summary: String): Int {
+        failedWith += summary
+        return runs.size
     }
 }
 

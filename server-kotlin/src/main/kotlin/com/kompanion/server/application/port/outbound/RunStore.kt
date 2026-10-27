@@ -10,4 +10,9 @@ interface RunStore {
 
     // Runs in flight across every team in the project, oldest first.
     fun activeRuns(projectId: UUID): List<ActiveRun>
+
+    // Marks every run still at 'running' as failed with this summary, and
+    // frees every task still claimed by running_since. Returns how many
+    // runs it failed.
+    fun failAbandonedRuns(summary: String): Int
 }

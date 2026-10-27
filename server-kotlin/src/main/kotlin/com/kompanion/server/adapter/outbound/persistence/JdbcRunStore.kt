@@ -12,9 +12,10 @@ import java.util.UUID
 // to reach the project.
 //
 // "Active" needs both signals: the run row at status 'running' and its task
-// still holding running_since. RunTaskService clears both when a run ends,
-// but a server killed mid-run leaves the row at 'running' with nothing behind
-// it; requiring running_since keeps those ghosts off the list.
+// still holding running_since. RunTaskService clears both when a run ends.
+// A server killed mid-run leaves both set; failAbandonedRuns clears them at
+// the next boot (see AbandonedRunsReconciler). Requiring both here still
+// hides a row whose task was freed some other way.
 @Component
 class JdbcRunStore(private val jdbc: JdbcTemplate) : RunStore {
 
@@ -54,4 +55,13 @@ class JdbcRunStore(private val jdbc: JdbcTemplate) : RunStore {
         },
         projectId,
     )
+
+    override fun failAbandonedRuns(summary: String): Int {
+        val failed = jdbc.update(
+            "update task_runs set status = 'failed', summary = ? where status = 'running'",
+            summary,
+        )
+        jdbc.update("update tasks set running_since = null where running_since is not null")
+        return failed
+    }
 }

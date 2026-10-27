@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { ProjectChrome } from "@/app/layouts/ProjectChrome.js";
 import { useCurrentTeamId } from "@/features/teams/index.js";
 import { CommentsThread, TaskDiff, useTask, useTaskComments } from "@/features/tasks/index.js";
@@ -9,12 +9,17 @@ import { RunRow, useTaskRuns } from "@/features/runs/index.js";
 // The board card's "Expand" used to open a modal; it now links here, so this
 // is a real route with its own URL — shareable, reloadable, and back-button
 // friendly. Team resolution mirrors ProjectShell (first team of the project),
-// since routes are project-scoped and there is still no team switcher.
+// since routes are project-scoped and there is still no team switcher —
+// unless the link names the task's team in `?team=`, as the Runs tab does for
+// runs in other teams. A team that is not this project's is ignored.
 export function TaskPage() {
   const { projectId, taskId } = useParams<{ projectId: string; taskId: string }>();
+  const [searchParams] = useSearchParams();
+  const teamParam = searchParams.get("team");
 
   const teams = useCurrentTeamId(projectId);
-  const teamId = teams.teamId;
+  const teamId =
+    teamParam && teams.data?.some((t) => t.id === teamParam) ? teamParam : teams.teamId;
 
   const tasks = useTask(teamId, taskId);
   const task = tasks.data;

@@ -43,7 +43,9 @@ function ActiveRunRow({
   return (
     <li className="flex flex-wrap items-center gap-x-2 rounded border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-500">
       <Link
-        to={`/projects/${projectId}/tasks/${run.taskId}`}
+        // The task page loads tasks one team at a time and would otherwise
+        // pick the project's first team; the run may belong to another.
+        to={`/projects/${projectId}/tasks/${run.taskId}?team=${run.teamId}`}
         className="text-sm font-medium text-neutral-800 underline-offset-2 hover:underline"
       >
         {RUN_STATUS_ICON.running} {run.taskTitle}

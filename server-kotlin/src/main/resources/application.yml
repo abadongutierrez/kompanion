@@ -30,3 +30,9 @@ claude:
 heartbeat:
   enabled: ${HEARTBEAT_ENABLED:false}
   interval-ms: ${HEARTBEAT_INTERVAL_MS:30000}
+
+runs:
+  # On boot, fail every run still marked running and free its task: a run
+  # lives in the server process, so a crash leaves those rows behind. Turn it
+  # off only if two servers share one database.
+  reconcile-on-startup: ${RECONCILE_RUNS_ON_STARTUP:true}
