@@ -13,6 +13,7 @@ import org.junit.jupiter.api.io.TempDir
 import org.mockito.Mockito.mock
 import java.io.File
 import java.util.UUID
+import java.util.concurrent.TimeUnit
 
 // Real git in a temp repo: the point is that the diff covers committed and
 // uncommitted work, and ignores what landed on the base branch afterwards.
@@ -84,5 +85,34 @@ class GitWorktreeDiffsTest {
         assertFalse(result.diff.contains("b.txt"))
         assertEquals(listOf("new.txt"), result.untrackedFiles)
         assertTrue(result.shortStat!!.contains("1 file changed"))
+    }
+
+    @Test
+    fun `output past the cap is cut off and the process killed`() {
+        // `yes` never ends on its own: only the cap stops it.
+        val result = GitWorktreeDiffs.runBounded(listOf("yes"), 1000, 10, TimeUnit.SECONDS)
+
+        assertEquals(0, result.exitCode)
+        assertTrue(result.truncated)
+        assertEquals(1000, result.output.length)
+    }
+
+    @Test
+    fun `output exactly at the cap is not truncated`() {
+        val result = GitWorktreeDiffs.runBounded(listOf("printf", "abcde"), 5, 10, TimeUnit.SECONDS)
+
+        assertEquals(0, result.exitCode)
+        assertFalse(result.truncated)
+        assertEquals("abcde", result.output)
+    }
+
+    @Test
+    fun `a stalled process is killed at the timeout`() {
+        val started = System.nanoTime()
+        val result = GitWorktreeDiffs.runBounded(listOf("sleep", "30"), 1000, 200, TimeUnit.MILLISECONDS)
+        val elapsedMs = (System.nanoTime() - started) / 1_000_000
+
+        assertEquals(-1, result.exitCode)
+        assertTrue(elapsedMs < 5000) { "took ${elapsedMs}ms" }
     }
 }

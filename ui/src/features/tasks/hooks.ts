@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
   CreateTaskCommentInput,
@@ -184,12 +185,23 @@ export function useReplyAsAgent(teamId: string, taskId: string) {
 }
 
 // Fetched only while the Diff tab is open — every call shells out to git.
-// Polled while an agent is running so the reader watches the change grow.
+// Polled while an agent is running so the reader watches the change grow,
+// and refetched once when the run ends — the last poll may predate the
+// agent's final edits.
 export function useTaskDiff(
   teamId: string,
   taskId: string,
   { enabled, isRunning }: { enabled: boolean; isRunning: boolean },
 ) {
+  const queryClient = useQueryClient();
+  const wasRunning = useRef(isRunning);
+  useEffect(() => {
+    if (wasRunning.current && !isRunning) {
+      void queryClient.invalidateQueries({ queryKey: taskKeys.diff(taskId) });
+    }
+    wasRunning.current = isRunning;
+  }, [isRunning, queryClient, taskId]);
+
   return useQuery({
     queryKey: taskKeys.diff(taskId),
     queryFn: () => tasksApi.getTaskDiff(teamId, taskId),

@@ -8,8 +8,10 @@ import com.kompanion.server.repository.RepositoryRepository
 import com.kompanion.server.service.RepoWorkspaceService
 import org.springframework.stereotype.Component
 import java.io.File
+import java.io.IOException
 import java.util.UUID
 import java.util.concurrent.TimeUnit
+import kotlin.concurrent.thread
 
 // Shells out to git in each worktree. Leans on the legacy
 // RepoWorkspaceService for the worktree path and branch name, so the two can
@@ -24,7 +26,7 @@ class GitWorktreeDiffs(
     // to read, so cap what goes over the wire and say so.
     private val maxDiffChars = 1_000_000
 
-    private class GitResult(val exitCode: Int, val output: String)
+    internal class GitResult(val exitCode: Int, val output: String, val truncated: Boolean = false)
 
     override fun diffsFor(task: Task, repositoryIds: List<UUID>): List<RepositoryDiff> =
         repositories.findAllById(repositoryIds)
@@ -59,27 +61,54 @@ class GitWorktreeDiffs(
         val stat = git(worktreeDir, "diff", "--shortstat", baseSha)
         val untracked = git(worktreeDir, "ls-files", "--others", "--exclude-standard")
 
-        val truncated = diff.output.length > maxDiffChars
         return result.copy(
             mergeBase = baseSha,
-            diff = if (truncated) diff.output.take(maxDiffChars) else diff.output,
-            truncated = truncated,
+            diff = diff.output,
+            truncated = diff.truncated,
             shortStat = stat.output.trim().ifEmpty { null },
             untrackedFiles = untracked.output.lines().filter { it.isNotBlank() },
         )
     }
 
-    private fun git(dir: File, vararg args: String): GitResult {
-        val process = ProcessBuilder(listOf("git", "-C", dir.path) + args)
-            .redirectError(ProcessBuilder.Redirect.DISCARD)
-            .start()
-        // Read before waiting: a diff bigger than the pipe buffer would
-        // otherwise block git forever.
-        val output = process.inputStream.bufferedReader().readText()
-        if (!process.waitFor(30, TimeUnit.SECONDS)) {
-            process.destroyForcibly()
-            return GitResult(-1, "")
+    private fun git(dir: File, vararg args: String): GitResult =
+        runBounded(listOf("git", "-C", dir.path) + args, maxDiffChars, 30, TimeUnit.SECONDS)
+
+    internal companion object {
+        // Output is read on its own thread, so the timeout holds even when
+        // the process stalls without writing, and stops at maxChars, so a
+        // huge diff is never buffered whole. Past the cap the process is
+        // killed; that's a truncated success, not a failure.
+        internal fun runBounded(command: List<String>, maxChars: Int, timeout: Long, unit: TimeUnit): GitResult {
+            val process = ProcessBuilder(command)
+                .redirectError(ProcessBuilder.Redirect.DISCARD)
+                .start()
+            val output = StringBuilder()
+            var truncated = false
+            val reader = thread(isDaemon = true, name = "git-output") {
+                process.inputStream.bufferedReader().use { r ->
+                    val chunk = CharArray(8192)
+                    while (true) {
+                        val n = try { r.read(chunk) } catch (e: IOException) { -1 }
+                        if (n < 0) break
+                        val room = maxChars - output.length
+                        if (n > room) {
+                            output.appendRange(chunk, 0, room)
+                            truncated = true
+                            process.destroyForcibly()
+                            break
+                        }
+                        output.appendRange(chunk, 0, n)
+                    }
+                }
+            }
+            if (!process.waitFor(timeout, unit)) {
+                process.destroyForcibly()
+                reader.join(1000)
+                return GitResult(-1, "")
+            }
+            reader.join()
+            if (truncated) return GitResult(0, output.toString(), truncated = true)
+            return GitResult(process.exitValue(), output.toString())
         }
-        return GitResult(process.exitValue(), output)
     }
 }
