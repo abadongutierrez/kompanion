@@ -1,70 +1,71 @@
 package com.kompanion.server.adapter.outbound.process
 
-import com.kompanion.server.domain.model.RunProcess
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
-import java.util.concurrent.TimeUnit
+import java.io.File
+import java.util.UUID
 
-// Real processes: a shell that starts a child, standing in for a CLI and the
-// tools it spawns.
+// Real processes carrying TASK_ID, standing in for a CLI and the tools it
+// spawns. Linux only, like the adapter.
 class OsRunProcessesTest {
 
     private val stops = OsRunProcesses()
-    private val started = mutableListOf<Process>()
+    private val taskId = UUID.randomUUID()
+    private val otherTaskId = UUID.randomUUID()
 
     @AfterEach
     fun cleanUp() {
-        started.forEach { p ->
-            p.descendants().forEach { it.destroyForcibly() }
-            p.destroyForcibly()
+        listOf(taskId, otherTaskId).forEach { stops.stopAll(it) }
+    }
+
+    private fun spawn(task: UUID, script: String): Process =
+        ProcessBuilder("sh", "-c", script)
+            .apply { environment()["TASK_ID"] = task.toString() }
+            .start()
+
+    private fun carrying(task: UUID): List<Long> =
+        File("/proc").listFiles().orEmpty().mapNotNull { it.name.toLongOrNull() }.filter { pid ->
+            runCatching { File("/proc/$pid/environ").readText().split('\u0000') }
+                .getOrDefault(emptyList())
+                .contains("TASK_ID=$task")
         }
-    }
 
-    private fun cli(): Process =
-        ProcessBuilder("sh", "-c", "sleep 60 & wait").start().also { started += it }
-
-    private fun recorded(p: Process) = RunProcess(p.pid(), p.info().startInstant().orElseThrow())
-
-    @Test
-    fun `our process and its children are killed`() {
-        val p = cli()
-        // Give sh a moment to fork its child.
-        repeat(50) { if (p.descendants().count() == 0L) Thread.sleep(20) }
-        val children = p.descendants().toList()
-
-        assertTrue(stops.stop(recorded(p)))
-
-        assertTrue(p.waitFor(5, TimeUnit.SECONDS))
-        assertTrue(children.isNotEmpty() && children.none { it.isAlive })
+    private fun waitFor(condition: () -> Boolean) {
+        repeat(100) { if (condition()) return else Thread.sleep(20) }
     }
 
     @Test
-    fun `a pid now held by another process is left alone`() {
-        val p = cli()
-        val reused = RunProcess(p.pid(), p.info().startInstant().orElseThrow().minusSeconds(3600))
+    fun `the CLI and its children are killed`() {
+        val cli = spawn(taskId, "sleep 60 & wait")
+        waitFor { carrying(taskId).size >= 2 }
 
-        assertTrue(stops.stop(reused))
+        assertTrue(stops.stopAll(taskId))
 
-        assertTrue(p.isAlive)
+        assertFalse(cli.isAlive)
+        assertTrue(carrying(taskId).isEmpty())
     }
 
     @Test
-    fun `a live pid with no recorded start time cannot be verified`() {
-        val p = cli()
+    fun `a tool that outlived the CLI is found and killed`() {
+        // The shell starts a sleep in a subshell and exits: the sleep is
+        // reparented and no longer anyone's descendant we know of.
+        spawn(taskId, "(sleep 60 &)").waitFor()
+        waitFor { carrying(taskId).isNotEmpty() }
+        assertTrue(carrying(taskId).isNotEmpty())
 
-        assertFalse(stops.stop(RunProcess(p.pid(), null)))
+        assertTrue(stops.stopAll(taskId))
 
-        assertTrue(p.isAlive)
+        assertTrue(carrying(taskId).isEmpty())
     }
 
     @Test
-    fun `a process that is already gone counts as stopped`() {
-        val p = cli()
-        val gone = recorded(p)
-        p.destroyForcibly().waitFor()
+    fun `another task's processes are left alone`() {
+        val other = spawn(otherTaskId, "sleep 60")
 
-        assertTrue(stops.stop(gone))
+        assertTrue(stops.stopAll(taskId))
+
+        assertTrue(other.isAlive)
     }
 }

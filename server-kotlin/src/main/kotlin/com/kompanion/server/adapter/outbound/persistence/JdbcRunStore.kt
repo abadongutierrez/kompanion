@@ -3,7 +3,6 @@ package com.kompanion.server.adapter.outbound.persistence
 import com.kompanion.server.application.port.outbound.RunStore
 import com.kompanion.server.domain.model.AbandonedRun
 import com.kompanion.server.domain.model.ActiveRun
-import com.kompanion.server.domain.model.RunProcess
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.stereotype.Component
 import java.time.OffsetDateTime
@@ -59,15 +58,11 @@ class JdbcRunStore(private val jdbc: JdbcTemplate) : RunStore {
     )
 
     override fun abandonedRuns(): List<AbandonedRun> = jdbc.query(
-        "select id, task_id, pid, process_started_at from task_runs where status = 'running'",
+        "select id, task_id from task_runs where status = 'running'",
         { rs, _ ->
-            val pid = rs.getLong("pid").takeUnless { rs.wasNull() }
             AbandonedRun(
                 runId = UUID.fromString(rs.getString("id")),
                 taskId = UUID.fromString(rs.getString("task_id")),
-                process = pid?.let {
-                    RunProcess(it, rs.getObject("process_started_at", OffsetDateTime::class.java)?.toInstant())
-                },
             )
         },
     )

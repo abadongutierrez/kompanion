@@ -222,6 +222,9 @@ class RunTaskService(
         // manifest.json from — deliberately separate from cwd (the real
         // repo being worked on) once repos are linked.
         processBuilder.environment()["TASK_WORKSPACE_DIR"] = ctx.taskWorkspaceDir.path
+        // TASK_ID also marks every process of the run: children inherit it,
+        // even once reparented. If this JVM dies mid-run, the next boot finds
+        // the leftovers by it (see OsRunProcesses).
         processBuilder.environment()["TASK_ID"] = ctx.taskId.toString()
         processBuilder.environment().putAll(runner.environment(ctx))
 
@@ -238,16 +241,6 @@ class RunTaskService(
                 tokens = TokenUsage.NONE,
             )
         }
-
-        // If this JVM dies mid-run the CLI may outlive it. The next boot finds
-        // it by these and stops it before freeing the task (see
-        // ReconcileAbandonedRunsUseCase).
-        jdbc.update(
-            "update task_runs set pid = ?, process_started_at = ? where id = ?",
-            process.pid(),
-            process.info().startInstant().map { OffsetDateTime.ofInstant(it, java.time.ZoneOffset.UTC) }.orElse(null),
-            runId,
-        )
 
         val killer = Thread {
             try {

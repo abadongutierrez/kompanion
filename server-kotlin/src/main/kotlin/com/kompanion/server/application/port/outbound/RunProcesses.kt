@@ -1,13 +1,13 @@
 package com.kompanion.server.application.port.outbound
 
-import com.kompanion.server.domain.model.RunProcess
+import java.util.UUID
 
 // The OS side of a run. Implemented by adapter/outbound/process/OsRunProcesses.
 fun interface RunProcesses {
 
-    // Makes sure the process and everything it spawned are gone. True when
-    // nothing of it is left: it was already gone, the pid now belongs to an
-    // unrelated process, or it was killed. False when it may still be running
-    // — it would not die, or it cannot be told apart from a stranger.
-    fun stop(process: RunProcess): Boolean
+    // Makes sure no process started by a run on this task is left: the CLI
+    // and everything it spawned, including tools that outlived it. True when
+    // none is left. False when one may still be running — it would not die,
+    // or the processes cannot be inspected at all.
+    fun stopAll(taskId: UUID): Boolean
 }

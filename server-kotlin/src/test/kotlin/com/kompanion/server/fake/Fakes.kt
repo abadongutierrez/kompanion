@@ -19,7 +19,6 @@ import com.kompanion.server.application.port.outbound.SpendStore
 import com.kompanion.server.application.port.outbound.TaskStore
 import com.kompanion.server.domain.model.AbandonedRun
 import com.kompanion.server.domain.model.ActiveRun
-import com.kompanion.server.domain.model.RunProcess
 import com.kompanion.server.domain.model.Agent
 import com.kompanion.server.domain.model.AgentInstance
 import com.kompanion.server.domain.model.AgentRuntime
@@ -121,13 +120,14 @@ class InMemoryRunStore(
     }
 }
 
-// Answers stop() from a fixed set: pids in `survivors` would not die.
-class FakeRunProcesses(private val survivors: Set<Long> = emptySet()) : RunProcesses {
-    val stopped = mutableListOf<RunProcess>()
+// Answers stopAll() from a fixed set: tasks in `survivors` keep a process
+// that would not die.
+class FakeRunProcesses(private val survivors: Set<UUID> = emptySet()) : RunProcesses {
+    val stopped = mutableListOf<UUID>()
 
-    override fun stop(process: RunProcess): Boolean {
-        stopped += process
-        return process.pid !in survivors
+    override fun stopAll(taskId: UUID): Boolean {
+        stopped += taskId
+        return taskId !in survivors
     }
 }
 

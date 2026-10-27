@@ -5,10 +5,3 @@ runs:
   # reconciler would fail every live run in it — and kill its CLI — including
   # any run the real server is doing right now.
   reconcile-on-startup: false
-
-spring:
-  flyway:
-    # The dev database is shared by every worktree, so it can hold migrations
-    # from branches this checkout has not merged yet. Those are not this
-    # branch's to validate.
-    ignore-migration-patterns: "*:missing,*:future"

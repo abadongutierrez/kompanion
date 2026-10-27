@@ -2,7 +2,6 @@ package com.kompanion.server.adapter.outbound.persistence
 
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
-import com.kompanion.server.domain.model.RunProcess
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Test
@@ -92,16 +91,13 @@ class RunPersistenceTest(
         // What a hard crash leaves: both signals still set.
         val taskId = task(core, "crashed", running = true)
         val runId = run(taskId, agentId, "running")
-        val started = OffsetDateTime.parse("2026-10-27T10:00:00Z")
-        jdbc.update("update task_runs set pid = 4242, process_started_at = ? where id = ?", started, runId)
         // Its CLI could not be shown to be gone, so it keeps its task.
         val survivorTask = task(core, "survivor", running = true)
         val survivorRun = run(survivorTask, agentId, "running")
 
-        val found = runs.abandonedRuns().associateBy { it.runId }
-        assertEquals(RunProcess(4242, started.toInstant()), found.getValue(runId).process)
-        assertEquals(taskId, found.getValue(runId).taskId)
-        assertNull(found.getValue(survivorRun).process)
+        val found = runs.abandonedRuns().associateBy({ it.runId }, { it.taskId })
+        assertEquals(taskId, found[runId])
+        assertEquals(survivorTask, found[survivorRun])
 
         // failAbandonedRuns frees claims across the whole database, and tests
         // share the dev database with a server that may be mid-run. Roll it back.

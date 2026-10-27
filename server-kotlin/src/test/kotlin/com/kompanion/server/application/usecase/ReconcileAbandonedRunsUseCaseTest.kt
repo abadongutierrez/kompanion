@@ -2,48 +2,46 @@ package com.kompanion.server.application.usecase
 
 import com.kompanion.server.application.port.inbound.ReconcileResult
 import com.kompanion.server.domain.model.AbandonedRun
-import com.kompanion.server.domain.model.RunProcess
 import com.kompanion.server.fake.FakeRunProcesses
 import com.kompanion.server.fake.InMemoryRunStore
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
-import java.time.Instant
 import java.util.UUID
 
 // No Spring context, no database.
 class ReconcileAbandonedRunsUseCaseTest {
 
-    private fun abandoned(pid: Long?) = AbandonedRun(
-        runId = UUID.randomUUID(),
-        taskId = UUID.randomUUID(),
-        process = pid?.let { RunProcess(it, Instant.now()) },
-    )
+    private fun abandoned(taskId: UUID = UUID.randomUUID()) = AbandonedRun(UUID.randomUUID(), taskId)
 
     @Test
-    fun `runs whose process is gone are failed with a summary that says why`() {
-        val stopped = abandoned(pid = 100)
-        val neverStarted = abandoned(pid = null)
-        val store = InMemoryRunStore(abandoned = listOf(stopped, neverStarted))
+    fun `runs whose processes are gone are failed with a summary that says why`() {
+        val taskId = UUID.randomUUID()
+        // Two stale rows on one task: its processes are checked once.
+        val first = abandoned(taskId)
+        val second = abandoned(taskId)
+        val store = InMemoryRunStore(abandoned = listOf(first, second))
         val processes = FakeRunProcesses()
 
         val result = ReconcileAbandonedRunsUseCase(store, processes).handle()
 
         assertEquals(ReconcileResult(closed = 2, stillRunning = 0), result)
         assertEquals(
-            listOf(stopped.runId, neverStarted.runId).map { it to ReconcileAbandonedRunsUseCase.SUMMARY },
+            listOf(first.runId, second.runId).map { it to ReconcileAbandonedRunsUseCase.SUMMARY },
             store.failed,
         )
-        assertEquals(listOf(stopped.process), processes.stopped)
+        assertEquals(listOf(taskId), processes.stopped)
     }
 
     @Test
-    fun `a run whose process may still be alive keeps its task`() {
-        val survivor = abandoned(pid = 200)
-        val store = InMemoryRunStore(abandoned = listOf(survivor))
+    fun `a run whose processes may still be alive keeps its task`() {
+        val survivor = abandoned()
+        val gone = abandoned()
+        val store = InMemoryRunStore(abandoned = listOf(survivor, gone))
 
-        val result = ReconcileAbandonedRunsUseCase(store, FakeRunProcesses(survivors = setOf(200))).handle()
+        val result = ReconcileAbandonedRunsUseCase(store, FakeRunProcesses(survivors = setOf(survivor.taskId)))
+            .handle()
 
-        assertEquals(ReconcileResult(closed = 0, stillRunning = 1), result)
-        assertEquals(emptyList<Pair<UUID, String>>(), store.failed)
+        assertEquals(ReconcileResult(closed = 1, stillRunning = 1), result)
+        assertEquals(listOf(gone.runId to ReconcileAbandonedRunsUseCase.SUMMARY), store.failed)
     }
 }

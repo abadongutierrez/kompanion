@@ -11,11 +11,12 @@ import org.springframework.transaction.annotation.Transactional
 // 'running' and its task keeps running_since. Left alone, the Runs tab lists
 // it forever and the task can never be run again.
 //
-// The run's timeout killer was a thread in the dead JVM, so its CLI may
-// still be alive and editing the worktree. A task is only freed once that
-// process is known to be gone; otherwise a new run would work in the same
-// folder at the same time. A run whose process survives keeps its claim and
-// stays on the Runs tab — which is accurate, since it is still running.
+// The run's timeout killer was a thread in the dead JVM, so its CLI, or
+// tools the CLI started, may still be alive and editing the worktree. A task
+// is only freed once nothing of its runs is left; otherwise a new run would
+// work in the same folder at the same time. A run whose processes survive
+// keeps its claim and stays on the Runs tab — which is accurate, since it is
+// still running.
 @Service
 class ReconcileAbandonedRunsUseCase(
     private val runs: RunStore,
@@ -25,7 +26,8 @@ class ReconcileAbandonedRunsUseCase(
     @Transactional
     override fun handle(): ReconcileResult {
         val abandoned = runs.abandonedRuns()
-        val stopped = abandoned.filter { run -> run.process?.let(processes::stop) ?: true }
+        val clearTasks = abandoned.map { it.taskId }.distinct().filter(processes::stopAll).toSet()
+        val stopped = abandoned.filter { it.taskId in clearTasks }
         runs.failAbandonedRuns(stopped.map { it.runId }, SUMMARY)
         return ReconcileResult(closed = stopped.size, stillRunning = abandoned.size - stopped.size)
     }
