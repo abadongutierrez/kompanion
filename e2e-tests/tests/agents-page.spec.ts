@@ -35,6 +35,9 @@ test.describe("agent pages", () => {
 
     await page.getByLabel("Agent title").fill(title);
     await page.getByLabel("Harness folder path").fill(harnessPath);
+    // Not whatever the form preselects: that depends on the order of the
+    // runtimes in Settings, and the reused harness only suits Claude Code.
+    await page.getByLabel("Runtime", { exact: true }).selectOption(runtime.id);
     await page.getByRole("button", { name: "Create agent" }).click();
 
     await expect(page).toHaveURL(/\/agents$/);
