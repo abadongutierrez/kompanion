@@ -85,14 +85,18 @@ export type SeededRuntime = { id: string; name: string; kind: string };
 // The Agent form picks from the runtimes defined in Settings, so a form test
 // needs at least one. Reuses a Claude Code runtime when there is one (there is
 // no way to tell a real setup from a test one, and a duplicate adds nothing).
-export async function ensureClaudeRuntime(request: APIRequestContext): Promise<SeededRuntime> {
+export async function ensureRuntime(
+  request: APIRequestContext,
+  kind: "claude_code" | "opencode" | "pi",
+): Promise<SeededRuntime> {
   const runtimes = await json<SeededRuntime[]>(await request.get("/api/runtimes"));
   return (
-    runtimes.find((r) => r.kind === "claude_code") ??
+    runtimes.find((r) => r.kind === kind) ??
     (await json<SeededRuntime>(
-      await request.post("/api/runtimes", {
-        data: { name: "E2E Claude Code", kind: "claude_code" },
-      }),
+      await request.post("/api/runtimes", { data: { name: `E2E ${kind}`, kind } }),
     ))
   );
 }
+
+export const ensureClaudeRuntime = (request: APIRequestContext) =>
+  ensureRuntime(request, "claude_code");
