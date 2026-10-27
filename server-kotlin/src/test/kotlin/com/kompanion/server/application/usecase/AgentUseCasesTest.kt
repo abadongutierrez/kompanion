@@ -7,6 +7,7 @@ import com.kompanion.server.domain.model.Agent
 import com.kompanion.server.domain.model.AgentRuntime
 import com.kompanion.server.fake.FakeHarnesses
 import com.kompanion.server.fake.InMemoryAgentStore
+import com.kompanion.server.fake.InMemoryRuntimeStore
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
@@ -17,7 +18,7 @@ import java.util.UUID
 class CreateAgentUseCaseTest {
 
     private fun useCase(agents: InMemoryAgentStore, harnesses: FakeHarnesses) =
-        CreateAgentUseCase(agents, harnesses)
+        CreateAgentUseCase(agents, harnesses, InMemoryRuntimeStore())
 
     @Test
     fun `it derives a slug, normalizes the path, and defaults the runtime`() {
@@ -95,7 +96,7 @@ class UpdateAgentUseCaseTest {
     fun `absent fields are left alone`() {
         val agents = InMemoryAgentStore(existing())
 
-        val updated = UpdateAgentUseCase(agents, FakeHarnesses())
+        val updated = UpdateAgentUseCase(agents, FakeHarnesses(), InMemoryRuntimeStore())
             .handle(UpdateAgentCommand(agentId = agentId, title = "Senior Engineer"))
 
         assertEquals("Senior Engineer", updated.title)
@@ -111,7 +112,7 @@ class UpdateAgentUseCaseTest {
         val agents = InMemoryAgentStore(existing())
         val harnesses = FakeHarnesses()
 
-        UpdateAgentUseCase(agents, harnesses)
+        UpdateAgentUseCase(agents, harnesses, InMemoryRuntimeStore())
             .handle(UpdateAgentCommand(agentId = agentId, runtime = AgentRuntime.opencode))
 
         assertEquals(listOf(AgentRuntime.opencode to "harnesses/engineer"), harnesses.validated)
@@ -122,7 +123,7 @@ class UpdateAgentUseCaseTest {
         val agents = InMemoryAgentStore(existing())
         val harnesses = FakeHarnesses()
 
-        UpdateAgentUseCase(agents, harnesses).handle(UpdateAgentCommand(agentId = agentId, title = "X"))
+        UpdateAgentUseCase(agents, harnesses, InMemoryRuntimeStore()).handle(UpdateAgentCommand(agentId = agentId, title = "X"))
 
         assertTrue(harnesses.validated.isEmpty())
     }
@@ -135,7 +136,7 @@ class UpdateAgentUseCaseTest {
         )
 
         val e = assertThrows<DomainException.Conflict> {
-            UpdateAgentUseCase(agents, FakeHarnesses())
+            UpdateAgentUseCase(agents, FakeHarnesses(), InMemoryRuntimeStore())
                 .handle(UpdateAgentCommand(agentId = agentId, slug = "qa"))
         }
 
@@ -146,7 +147,7 @@ class UpdateAgentUseCaseTest {
     fun `a blank model clears it back to the CLI default`() {
         val agents = InMemoryAgentStore(existing())
 
-        val updated = UpdateAgentUseCase(agents, FakeHarnesses())
+        val updated = UpdateAgentUseCase(agents, FakeHarnesses(), InMemoryRuntimeStore())
             .handle(UpdateAgentCommand(agentId = agentId, model = ""))
 
         assertNull(updated.model)
@@ -155,7 +156,7 @@ class UpdateAgentUseCaseTest {
     @Test
     fun `an unknown agent is not found`() {
         assertThrows<DomainException.NotFound> {
-            UpdateAgentUseCase(InMemoryAgentStore(), FakeHarnesses())
+            UpdateAgentUseCase(InMemoryAgentStore(), FakeHarnesses(), InMemoryRuntimeStore())
                 .handle(UpdateAgentCommand(agentId = agentId, title = "X"))
         }
     }

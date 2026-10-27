@@ -17,6 +17,26 @@ event stream.
 
 ---
 
+## Configured runtimes (Settings page)
+
+A **runtime** is one installed CLI plus how to launch it, kept in the
+`runtimes` table and managed on the Settings page. An Agent may point at one
+(`agents.runtime_id`); the runtime's kind then decides `agents.runtime`.
+
+- `binary_path` overrides the command. Without it a run uses `CLAUDE_BIN` /
+  `OPENCODE_BIN` / `OPENCODE2_BIN` / `PI_BIN`, then the bare command on PATH. An Agent with no
+  runtime behaves exactly as before.
+- `config_dir` (Claude Code only) is passed as `CLAUDE_CONFIG_DIR`, so two
+  Claude runtimes can run as two accounts. A leading `~/` is expanded at run
+  time. Only the path is stored; credentials stay in that folder and are never
+  read by us.
+- **Test** runs `<bin> --version` with the same binary and config dir. It
+  proves the CLI starts and the folder exists, not that the login works.
+- A runtime cannot be deleted while an Agent uses it. Changing an Agent's kind
+  by hand drops its runtime, since that binary belongs to the other CLI.
+
+---
+
 ## Common to all runtimes
 
 ### The call

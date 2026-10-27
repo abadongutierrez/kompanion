@@ -1,6 +1,7 @@
 package com.kompanion.server.service.runner
 
 import com.kompanion.server.domain.model.AgentRuntime
+import com.kompanion.server.domain.model.Runtime
 import com.kompanion.server.entity.Agent
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -29,7 +30,7 @@ class Opencode2RunnerTest {
     private fun events(name: String): List<Map<String, Any?>> =
         fixture(name).lines().filter { it.isNotBlank() }.map { mapper.readValue(it) }
 
-    private fun ctx(tmp: File, model: String?) = RunContext(
+    private fun ctx(tmp: File, model: String?, runtime: Runtime? = null) = RunContext(
         agent = Agent(
             id = UUID.randomUUID(), title = "Eng", slug = "eng", harnessPath = "h",
             runtime = AgentRuntime.opencode2, model = model,
@@ -41,7 +42,15 @@ class Opencode2RunnerTest {
         taskWorkspaceDir = tmp,
         taskId = UUID.randomUUID(),
         remainingBudgetUsd = null,
+        runtime = runtime,
     )
+
+    @Test
+    fun `the runtime chosen in settings supplies the binary`(@TempDir tmp: File) {
+        val runtime = Runtime(name = "opencode2", kind = AgentRuntime.opencode2, binaryPath = "/opt/oc2/bin/opencode2")
+
+        assertEquals("/opt/oc2/bin/opencode2", runner.buildCommand(ctx(tmp, null, runtime))[0])
+    }
 
     @Test
     fun `runs standalone with json, auto and the kompanion agent, and no --dir`(@TempDir tmp: File) {

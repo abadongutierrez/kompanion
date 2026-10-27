@@ -34,7 +34,8 @@ class Opencode2Runner : AgentRunner {
 
     private val objectMapper = ObjectMapper()
 
-    private fun bin() = System.getenv("OPENCODE2_BIN") ?: "opencode2"
+    // The Runtime chosen in Settings wins, then OPENCODE2_BIN, then PATH.
+    private fun bin(ctx: RunContext) = ctx.binary("OPENCODE2_BIN", "opencode2")
 
     override fun validateHarness(harnessDir: File): String? = OpencodeWorkspace.validateHarness(harnessDir)
 
@@ -42,7 +43,7 @@ class Opencode2Runner : AgentRunner {
 
     override fun buildCommand(ctx: RunContext): List<String> {
         val args = mutableListOf(
-            bin(), "run",
+            bin(ctx), "run",
             "--standalone",
             "--format", "json",
             // Runs are unattended: without this opencode blocks waiting for a
@@ -57,14 +58,14 @@ class Opencode2Runner : AgentRunner {
 
     override fun afterRun(ctx: RunContext, events: List<Map<String, Any?>>): List<Map<String, Any?>> {
         val sessionId = events.firstNotNullOfOrNull { it["sessionID"] as? String } ?: return emptyList()
-        val exported = exportSession(ctx.cwdDir, sessionId) ?: return emptyList()
+        val exported = exportSession(bin(ctx), ctx.cwdDir, sessionId) ?: return emptyList()
         return listOfNotNull(sessionSummary(sessionId, exported))
     }
 
     // Best effort: a missing summary only means the run's cost falls back to
     // the step_finish events, so any failure here is swallowed.
-    private fun exportSession(cwd: File, sessionId: String): String? = try {
-        val process = ProcessBuilder(bin(), "session", "export", "--standalone", sessionId)
+    private fun exportSession(bin: String, cwd: File, sessionId: String): String? = try {
+        val process = ProcessBuilder(bin, "session", "export", "--standalone", sessionId)
             .directory(cwd)
             .redirectInput(File("/dev/null"))
             .redirectError(ProcessBuilder.Redirect.DISCARD)

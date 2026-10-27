@@ -20,6 +20,9 @@ data class Agent(
     // null means "whatever that CLI defaults to". Free text: the id formats
     // differ per runtime (claude-opus-5 vs lmstudio/qwen3.8-27b).
     val model: String? = null,
+    // The configured Runtime this Agent launches through (binary, config
+    // dir). null keeps the old behaviour: the kind's env var, then PATH.
+    val runtimeId: UUID? = null,
     val createdAt: OffsetDateTime? = null,
 )
 

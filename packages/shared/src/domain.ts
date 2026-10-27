@@ -87,6 +87,9 @@ export const Agent = z.object({
   // runtime — `claude-opus-5` vs opencode's `ollama/qwen2.5-coder:7b` — so
   // this is free text, not an enum that would go stale.
   model: z.string().nullable(),
+  // The configured Runtime the Agent launches through; null means the kind's
+  // default (env var, then PATH).
+  runtimeId: z.string().nullable(),
   createdAt: z.string(),
 });
 export type Agent = z.infer<typeof Agent>;
@@ -174,6 +177,7 @@ export const CreateAgentInput = Agent.pick({
 }).extend({
   runtime: AgentRuntime.optional(),
   model: z.string().nullable().optional(),
+  runtimeId: z.string().nullable().optional(),
 });
 export type CreateAgentInput = z.infer<typeof CreateAgentInput>;
 
@@ -194,8 +198,45 @@ export const UpdateAgentInput = Agent.pick({
   harnessPath: true,
   runtime: true,
   model: true,
-}).partial();
+})
+  .partial()
+  .extend({
+    // A blank string clears it back to the kind's default.
+    runtimeId: z.string().nullable().optional(),
+  });
 export type UpdateAgentInput = z.infer<typeof UpdateAgentInput>;
+
+// A configured runtime: an installed agent CLI and how to launch it. Two
+// Claude Code runtimes can coexist, each with its own configDir (sent to the
+// CLI as CLAUDE_CONFIG_DIR). null binaryPath means the kind's default.
+export const Runtime = z.object({
+  id: z.string(),
+  name: z.string(),
+  kind: AgentRuntime,
+  binaryPath: z.string().nullable(),
+  configDir: z.string().nullable(),
+  createdAt: z.string().nullable(),
+});
+export type Runtime = z.infer<typeof Runtime>;
+
+// POST /api/runtimes. configDir is only accepted for claude_code.
+export const CreateRuntimeInput = z.object({
+  name: z.string(),
+  kind: AgentRuntime,
+  binaryPath: z.string().nullable().optional(),
+  configDir: z.string().nullable().optional(),
+});
+export type CreateRuntimeInput = z.infer<typeof CreateRuntimeInput>;
+
+// PATCH /api/runtimes/:id. Absent leaves a field alone; blank clears
+// binaryPath / configDir. The kind cannot change.
+export const UpdateRuntimeInput = CreateRuntimeInput.omit({ kind: true }).partial();
+export type UpdateRuntimeInput = z.infer<typeof UpdateRuntimeInput>;
+
+// POST /api/runtimes/:id/test — `<bin> --version` with the runtime's own
+// binary and config dir.
+export const RuntimeTestResult = z.object({ ok: z.boolean(), message: z.string() });
+export type RuntimeTestResult = z.infer<typeof RuntimeTestResult>;
 
 // A skill: a folder on disk (SKILL.md plus files) that can be taught to
 // Agents. The row only points at it; broken is true when the folder is gone or

@@ -37,8 +37,13 @@ class ClaudeCodeRunner(
         workspaceEnforcementService.installCwdEnforcement(ctx.cwdDir, ctx.taskWorkspaceDir, manifest)
     }
 
+    // Which Claude account this run uses. Only set when the Runtime names a
+    // config dir; otherwise the CLI keeps its own default (~/.claude).
+    override fun environment(ctx: RunContext): Map<String, String> =
+        ctx.runtime?.resolvedConfigDir()?.let { mapOf("CLAUDE_CONFIG_DIR" to it) } ?: emptyMap()
+
     override fun buildCommand(ctx: RunContext): List<String> {
-        val bin = System.getenv("CLAUDE_BIN") ?: "claude"
+        val bin = ctx.binary("CLAUDE_BIN", "claude")
         val args = mutableListOf(
             bin, "-p", ctx.prompt,
             "--output-format", "stream-json",

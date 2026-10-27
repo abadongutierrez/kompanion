@@ -5,6 +5,9 @@ import com.kompanion.server.application.port.outbound.AgentStore
 import com.kompanion.server.application.port.outbound.BuildInstanceRequest
 import com.kompanion.server.application.port.outbound.BuiltInstance
 import com.kompanion.server.application.port.outbound.RunInstances
+import com.kompanion.server.application.port.outbound.ProbeResult
+import com.kompanion.server.application.port.outbound.RuntimeProbe
+import com.kompanion.server.application.port.outbound.RuntimeStore
 import com.kompanion.server.application.port.outbound.Harnesses
 import com.kompanion.server.application.port.outbound.ProjectStore
 import com.kompanion.server.application.port.outbound.SkillFiles
@@ -17,6 +20,7 @@ import com.kompanion.server.domain.model.AgentInstance
 import com.kompanion.server.domain.model.AgentRuntime
 import com.kompanion.server.domain.model.DaySpend
 import com.kompanion.server.domain.model.ProjectSpend
+import com.kompanion.server.domain.model.Runtime
 import com.kompanion.server.domain.model.Skill
 import com.kompanion.server.domain.model.Task
 import java.math.BigDecimal
@@ -186,4 +190,38 @@ class FakeSkillFiles : SkillFiles {
 
     override fun harnessHasSkill(runtime: AgentRuntime, harnessPath: String, slug: String): Boolean =
         Triple(runtime, harnessPath, slug) in harnessSkills
+}
+
+class InMemoryRuntimeStore(vararg seed: Runtime) : RuntimeStore {
+    private val runtimes = seed.associateBy { it.id!! }.toMutableMap()
+    // Agent titles per runtime id, seeded by tests that exercise delete.
+    val usedBy = mutableMapOf<UUID, List<String>>()
+
+    override fun findById(id: UUID): Runtime? = runtimes[id]
+
+    override fun findByName(name: String): Runtime? =
+        runtimes.values.firstOrNull { it.name.equals(name, ignoreCase = true) }
+
+    override fun findAll(): List<Runtime> = runtimes.values.sortedBy { it.name }
+
+    override fun save(runtime: Runtime): Runtime {
+        val stored = if (runtime.id == null) runtime.copy(id = UUID.randomUUID()) else runtime
+        runtimes[stored.id!!] = stored
+        return stored
+    }
+
+    override fun delete(id: UUID) {
+        runtimes.remove(id)
+    }
+
+    override fun agentTitlesUsing(runtimeId: UUID): List<String> = usedBy[runtimeId].orEmpty()
+}
+
+class FakeRuntimeProbe(var result: ProbeResult = ProbeResult(true, "1.0.0")) : RuntimeProbe {
+    val probed = mutableListOf<Runtime>()
+
+    override fun probe(runtime: Runtime): ProbeResult {
+        probed += runtime
+        return result
+    }
 }

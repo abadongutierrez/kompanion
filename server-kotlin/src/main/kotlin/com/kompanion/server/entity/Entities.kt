@@ -69,6 +69,7 @@ data class Agent(
     // before these columns existed.
     val runtime: AgentRuntime = AgentRuntime.claude_code,
     val model: String? = null,
+    val runtimeId: UUID? = null,
     @ReadOnlyProperty val createdAt: OffsetDateTime? = null,
 )
 
