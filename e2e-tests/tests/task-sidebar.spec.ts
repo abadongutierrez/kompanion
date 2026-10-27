@@ -168,4 +168,63 @@ test.describe("task page sidebar", () => {
     await expect(sidebar.getByTestId("task-spent")).toHaveText("$0.0000");
     await expect(sidebar.getByText("Not run yet")).toBeVisible();
   });
+  // QA edge cases for the per-agent breakdown (commit 5be6202).
+  test("only running runs: total $0, 'Not run yet', no agent rows", async ({ page, request }) => {
+    const taskId = await makeTask(request, `E2E sidebar only running ${Date.now()}`);
+    await stubRuns(page, taskId, [
+      run("12121212-1212-1212-1212-121212121212", taskId, null, { status: "running", durationMs: null }),
+    ]);
+
+    await page.goto(`/projects/${projectId}/tasks/${taskId}`);
+    const sidebar = page.getByRole("complementary", { name: "Task details" });
+    await expect(sidebar.getByTestId("task-spent")).toHaveText("$0.0000");
+    await expect(sidebar.getByText("Not run yet")).toBeVisible();
+    await expect(sidebar.getByText("1 running, not counted")).toBeVisible();
+    await expect(sidebar.getByTestId("task-spent-agent")).toHaveCount(0);
+  });
+
+  test("groups runs of one agent, labels a missing agent, counts failed runs", async ({ page, request }) => {
+    await page.setViewportSize({ width: 1400, height: 900 });
+    const taskId = await makeTask(request, `E2E sidebar group ${Date.now()}`);
+    await stubRuns(page, taskId, [
+      run("31313131-3131-3131-3131-313131313131", taskId, 0.3, { agentTitle: "Engineer", durationMs: 30_000 }),
+      run("32323232-3232-3232-3232-323232323232", taskId, 0.3, { agentTitle: "Engineer", durationMs: 30_000, status: "failed" }),
+      run("33333333-3333-3333-3333-333333333334", taskId, 0.4, { agentTitle: null as unknown as string, durationMs: 3_725_000, status: "over_budget" }),
+    ]);
+
+    await page.goto(`/projects/${projectId}/tasks/${taskId}`);
+    const sidebar = page.getByRole("complementary", { name: "Task details" });
+    await expect(sidebar.getByTestId("task-spent")).toHaveText("$1.0000");
+    await expect(sidebar.getByText("across 3 runs", { exact: true })).toBeVisible();
+    const rows = sidebar.getByTestId("task-spent-agent");
+    await expect(rows).toHaveCount(2);
+    await expect(rows.nth(0)).toContainText("Engineer");
+    await expect(rows.nth(0)).toContainText("$0.6000");
+    await expect(rows.nth(0)).toContainText("1m 0s");
+    await expect(rows.nth(0)).toContainText("60%");
+    await expect(rows.nth(1)).toContainText("Unknown agent");
+    await expect(rows.nth(1)).toContainText("1h 2m");
+    await expect(rows.nth(1)).toContainText("40%");
+  });
+
+  test("zero total cost shows 0% rather than NaN", async ({ page, request }) => {
+    const taskId = await makeTask(request, `E2E sidebar zero ${Date.now()}`);
+    await stubRuns(page, taskId, [run("41414141-4141-4141-4141-414141414141", taskId, 0)]);
+
+    await page.goto(`/projects/${projectId}/tasks/${taskId}`);
+    const row = page.getByRole("complementary", { name: "Task details" }).getByTestId("task-spent-agent");
+    await expect(row).toContainText("0%");
+    await expect(row).not.toContainText("NaN");
+  });
+
+  test("at exactly 1024px (lg) cost and bar are shown", async ({ page, request }) => {
+    await page.setViewportSize({ width: 1024, height: 900 });
+    const taskId = await makeTask(request, `E2E sidebar lg ${Date.now()}`);
+    await stubTwoAgents(page, taskId);
+
+    await page.goto(`/projects/${projectId}/tasks/${taskId}`);
+    const row = page.getByRole("complementary", { name: "Task details" }).getByTestId("task-spent-agent").first();
+    await expect(row.getByText("$0.7500")).toBeVisible();
+    await expect(row.getByRole("progressbar")).toBeVisible();
+  });
 });
