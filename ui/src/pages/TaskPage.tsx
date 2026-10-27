@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ProjectChrome } from "@/app/layouts/ProjectChrome.js";
 import { useCurrentTeamId } from "@/features/teams/index.js";
-import { CommentsThread, TaskDiff, useTask, useTaskComments } from "@/features/tasks/index.js";
+import { CommentsThread, TaskDiff, TaskSidebar, useTask, useTaskComments } from "@/features/tasks/index.js";
 import { useTeamAgents } from "@/features/agents/index.js";
 import { RunRow, useTaskRuns } from "@/features/runs/index.js";
 
@@ -82,7 +82,8 @@ export function TaskPage() {
   }
 
   return framed(
-    <div className="flex h-[calc(100vh-13rem)] w-full max-w-4xl flex-col gap-3">
+    <div className="flex h-[calc(100vh-13rem)] w-full max-w-6xl gap-4">
+      <div className="flex min-w-0 max-w-4xl flex-1 flex-col gap-3">
       {backToBoard}
 
       {!task ? (
@@ -135,6 +136,8 @@ export function TaskPage() {
           )}
         </>
       )}
+      </div>
+      {task && <TaskSidebar runs={runs.data} />}
     </div>,
   );
 }
