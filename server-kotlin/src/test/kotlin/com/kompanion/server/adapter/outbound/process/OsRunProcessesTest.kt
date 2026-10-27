@@ -4,6 +4,7 @@ import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
 import java.io.File
 import java.time.Instant
 import java.util.UUID
@@ -18,11 +19,18 @@ class OsRunProcessesTest {
     // Every process a test starts is younger than this.
     private val runStarted = Instant.now().minusSeconds(1)
     private val started = mutableListOf<Process>()
+    private val orphans = mutableListOf<Long>()
+
+    // Where the run works. The test JVM works elsewhere.
+    @TempDir
+    lateinit var runFolder: File
+    private val folders get() = listOf(runFolder.path)
 
     @AfterEach
     fun cleanUp() {
-        listOf(taskId, otherTaskId).forEach { stops.stopAll(it, runStarted) }
+        listOf(taskId, otherTaskId).forEach { stops.stopAll(it, runStarted, folders) }
         started.forEach { it.destroyForcibly() }
+        orphans.forEach { pid -> ProcessHandle.of(pid).ifPresent { it.destroyForcibly() } }
     }
 
     private fun spawn(task: UUID?, vararg command: String): Process =
@@ -47,7 +55,7 @@ class OsRunProcessesTest {
         val cli = spawn(taskId, "sh", "-c", "sleep 60 & wait")
         waitFor { carrying(taskId).size >= 2 }
 
-        assertTrue(stops.stopAll(taskId, runStarted))
+        assertTrue(stops.stopAll(taskId, runStarted, folders))
 
         assertFalse(cli.isAlive)
         assertTrue(carrying(taskId).isEmpty())
@@ -61,7 +69,7 @@ class OsRunProcessesTest {
         waitFor { carrying(taskId).isNotEmpty() }
         assertTrue(carrying(taskId).isNotEmpty())
 
-        assertTrue(stops.stopAll(taskId, runStarted))
+        assertTrue(stops.stopAll(taskId, runStarted, folders))
 
         assertTrue(carrying(taskId).isEmpty())
     }
@@ -70,7 +78,7 @@ class OsRunProcessesTest {
     fun `another task's processes are left alone`() {
         val other = spawn(otherTaskId, "sleep", "60")
 
-        assertTrue(stops.stopAll(taskId, runStarted))
+        assertTrue(stops.stopAll(taskId, runStarted, folders))
 
         assertTrue(other.isAlive)
     }
@@ -85,10 +93,33 @@ class OsRunProcessesTest {
         )
         hidden.inputStream.bufferedReader().readLine()
 
-        assertFalse(stops.stopAll(taskId, runStarted))
+        assertFalse(stops.stopAll(taskId, runStarted, folders))
         assertTrue(hidden.isAlive)
 
         // A run that began after it started cannot have spawned it.
-        assertTrue(stops.stopAll(taskId, Instant.now().plusSeconds(60)))
+        assertTrue(stops.stopAll(taskId, Instant.now().plusSeconds(60), folders))
+    }
+
+    @Test
+    fun `a tool that cleared its environment and outlived the CLI keeps the task claimed while it works in the run's folders`() {
+        // env -i drops TASK_ID, and the subshell's sleep is reparented once
+        // sh exits. It prints its pid so the test can clean it up: the
+        // adapter does not kill it.
+        val tool = ProcessBuilder("env", "-i", "sh", "-c", "(sleep 60 & echo \$!)")
+            .directory(runFolder)
+            .apply { environment()["TASK_ID"] = taskId.toString() }
+            .start()
+            .also { started += it }
+        val pid = tool.inputStream.bufferedReader().readLine().trim().toLong()
+        orphans += pid
+        tool.waitFor()
+        assertFalse(pid in carrying(taskId))
+
+        assertFalse(stops.stopAll(taskId, runStarted, folders))
+        assertTrue(ProcessHandle.of(pid).map { it.isAlive }.orElse(false))
+
+        // Outside the run's folders, or older than the run, it cannot be the run's.
+        assertTrue(stops.stopAll(taskId, runStarted, listOf(File(runFolder, "elsewhere").path)))
+        assertTrue(stops.stopAll(taskId, Instant.now().plusSeconds(60), folders))
     }
 }

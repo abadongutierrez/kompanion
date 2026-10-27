@@ -3,6 +3,8 @@ package com.kompanion.server.adapter.outbound.process
 import com.kompanion.server.application.port.outbound.RunProcesses
 import org.springframework.stereotype.Component
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.Path
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
@@ -14,6 +16,12 @@ import java.util.concurrent.TimeUnit
 // environment is inherited by every process the run spawns, whatever its
 // parent is now.
 //
+// Unless a tool clears it, as env -i does. Such a tool still works in the
+// run's folders, so a process with no marker whose working directory is in
+// one of them may be the run's too. It is not killed, since it may as well
+// be a shell the user opened there, but it keeps the task claimed. A tool
+// that clears its environment and leaves the run's folders is not found.
+//
 // Reads /proc, so Linux only. Elsewhere nothing can be verified, and stopAll
 // answers false: the task stays claimed until someone frees it by hand.
 @Component
@@ -23,18 +31,19 @@ class OsRunProcesses : RunProcesses {
 
     // A few rounds, not one: a process can fork between the scan and the
     // kill, and its child only shows up on the next scan.
-    override fun stopAll(taskId: UUID, since: Instant): Boolean {
+    override fun stopAll(taskId: UUID, since: Instant, folders: List<String>): Boolean {
         if (!proc.isDirectory) return false
         val marker = "TASK_ID=$taskId"
+        val roots = folders.map { File(it).canonicalFile.toPath() }
 
         repeat(ROUNDS) {
-            val scan = scan(marker, since)
+            val scan = scan(marker, since, roots)
             if (scan.blocked) return false
             if (scan.found.isEmpty()) return true
             scan.found.forEach { it.destroyForcibly() }
             scan.found.forEach { runCatching { it.onExit().get(KILL_WAIT_SECONDS, TimeUnit.SECONDS) } }
         }
-        return scan(marker, since).let { !it.blocked && it.found.isEmpty() }
+        return scan(marker, since, roots).let { !it.blocked && it.found.isEmpty() }
     }
 
     // found: live processes whose environment holds this exact entry, safe to
@@ -47,9 +56,11 @@ class OsRunProcesses : RunProcesses {
     //   environment (it can, by making itself non-dumpable), so we cannot
     //   tell whether it is the run's. One started earlier cannot be — that
     //   spares the ssh-agent and gpg-agent of the login session.
+    // - a process started since the run began, with no marker, works in one
+    //   of the run's folders.
     private class Scan(val found: List<ProcessHandle>, val blocked: Boolean)
 
-    private fun scan(marker: String, since: Instant): Scan {
+    private fun scan(marker: String, since: Instant, roots: List<Path>): Scan {
         val spared = generateSequence(ProcessHandle.current()) { it.parent().orElse(null) }.map { it.pid() }.toSet()
         val ourUid = uid(ProcessHandle.current().pid())
         val found = mutableListOf<ProcessHandle>()
@@ -66,7 +77,10 @@ class OsRunProcesses : RunProcesses {
                 }
                 else -> false
             }
-            if (!carries) continue
+            if (!carries) {
+                if (env != null && worksIn(pid, roots) && couldBeTheRuns(pid, since)) blocked = true
+                continue
+            }
             if (pid in spared) {
                 blocked = true
                 continue
@@ -79,6 +93,12 @@ class OsRunProcesses : RunProcesses {
     // NUL-separated KEY=value entries, or null when the file cannot be read.
     private fun environment(pid: Long): List<String>? =
         runCatching { File(proc, "$pid/environ").readText().split('\u0000') }.getOrNull()
+
+    // Whether its working directory is in one of these folders.
+    private fun worksIn(pid: Long, roots: List<Path>): Boolean {
+        val cwd = runCatching { Files.readSymbolicLink(proc.toPath().resolve("$pid/cwd")) }.getOrNull() ?: return false
+        return roots.any(cwd::startsWith)
+    }
 
     // The real uid, from the status file. Not the owner of /proc/<pid>: for a
     // non-dumpable process that shows as root. Null once the process is gone.

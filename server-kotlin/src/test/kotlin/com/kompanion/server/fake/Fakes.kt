@@ -125,8 +125,11 @@ class InMemoryRunStore(
 class FakeRunProcesses(private val survivors: Set<UUID> = emptySet()) : RunProcesses {
     val stopped = mutableListOf<Pair<UUID, java.time.Instant>>()
 
-    override fun stopAll(taskId: UUID, since: java.time.Instant): Boolean {
+    val folders = mutableListOf<List<String>>()
+
+    override fun stopAll(taskId: UUID, since: java.time.Instant, folders: List<String>): Boolean {
         stopped += taskId to since
+        this.folders += folders
         return taskId !in survivors
     }
 }

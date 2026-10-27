@@ -2,6 +2,7 @@ package com.kompanion.server.application.usecase
 
 import com.kompanion.server.application.port.inbound.ReconcileAbandonedRuns
 import com.kompanion.server.application.port.inbound.ReconcileResult
+import com.kompanion.server.application.port.outbound.RunFolders
 import com.kompanion.server.application.port.outbound.RunProcesses
 import com.kompanion.server.application.port.outbound.RunStore
 import org.springframework.stereotype.Service
@@ -21,13 +22,16 @@ import org.springframework.transaction.annotation.Transactional
 class ReconcileAbandonedRunsUseCase(
     private val runs: RunStore,
     private val processes: RunProcesses,
+    private val folders: RunFolders,
 ) : ReconcileAbandonedRuns {
 
     @Transactional
     override fun handle(): ReconcileResult {
         val abandoned = runs.abandonedRuns()
         val clearTasks = abandoned.groupBy { it.taskId }
-            .filter { (taskId, taskRuns) -> processes.stopAll(taskId, taskRuns.minOf { it.startedAt }) }
+            .filter { (taskId, taskRuns) ->
+                processes.stopAll(taskId, taskRuns.minOf { it.startedAt }, folders.of(taskId))
+            }
             .keys
         val stopped = abandoned.filter { it.taskId in clearTasks }
         runs.failAbandonedRuns(stopped.map { it.runId }, SUMMARY)
