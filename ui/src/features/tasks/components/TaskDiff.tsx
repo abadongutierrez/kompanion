@@ -1,6 +1,21 @@
 import type { RepositoryDiff } from "@kompanion/shared";
 import { useTaskDiff } from "../hooks.js";
 
+// Files changed across every linked repository: tracked files (from git's
+// own summary, which stays exact when the diff text is truncated) plus
+// untracked ones. Undefined until the diff has loaded.
+export function countChangedFiles(diffs: RepositoryDiff[] | undefined): number | undefined {
+  if (!diffs) return undefined;
+  let total = 0;
+  for (const d of diffs) {
+    if (!d.worktreeExists || d.error) continue;
+    const m = d.shortStat?.match(/(\d+) files? changed/);
+    total += m ? Number(m[1]) : (d.diff.match(/^diff --git /gm) ?? []).length;
+    total += d.untrackedFiles.length;
+  }
+  return total;
+}
+
 // The task's worktree in each linked repository, compared with the branch it
 // was cut from. Read-only and local: nothing is pushed or fetched.
 export function TaskDiff({
