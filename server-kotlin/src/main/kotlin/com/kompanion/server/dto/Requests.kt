@@ -18,6 +18,7 @@ data class CreateAgentRequest(
     val harnessPath: String,
     val runtime: String? = null,
     val model: String? = null,
+    val runtimeId: java.util.UUID? = null,
 )
 
 // slug is only touched when explicitly provided — unlike creation, editing
@@ -29,6 +30,8 @@ data class UpdateAgentRequest(
     val runtime: String? = null,
     // Blank clears the model back to the CLI default; null leaves it alone.
     val model: String? = null,
+    // A configured Runtime. Blank clears it; null leaves it alone.
+    val runtimeId: String? = null,
 )
 
 // POST /api/teams/{teamId}/agents — assign an existing Agent (from the

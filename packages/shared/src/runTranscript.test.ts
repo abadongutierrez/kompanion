@@ -314,3 +314,107 @@ describe("pi transcript", () => {
     expect(state.blocks).toEqual([]);
   });
 });
+
+// opencode v2's `run --standalone --format json` stream, transcribed from a
+// real run against opencode 2.0.26 (the same recording as
+// server-kotlin/src/test/resources/opencode2/), with ids trimmed.
+function reduceOpencode2(events: RunEventRaw[]) {
+  return events.reduce(
+    (state, event) => applyRunEvent(state, event, "opencode2"),
+    createTranscriptState(),
+  );
+}
+
+const SES = "ses_e85a03aa5ffeyR8Tk4c5aOBbB4";
+
+const v2Run: RunEventRaw[] = [
+  { type: "step_start", sessionID: SES, part: { type: "step-start" } },
+  {
+    type: "tool_use",
+    sessionID: SES,
+    part: {
+      type: "tool",
+      id: "call_87934677f35040e397628392",
+      tool: "shell",
+      state: {
+        status: "completed",
+        input: { command: "echo hello > hello.txt" },
+        output: "(no output)",
+        title: "shell",
+      },
+    },
+  },
+  {
+    type: "step_finish",
+    sessionID: SES,
+    part: {
+      type: "step-finish",
+      reason: "tool-calls",
+      cost: 0.000992424,
+      tokens: { input: 6360, output: 42, reasoning: 15, cache: { read: 1408, write: 0 } },
+    },
+  },
+  { type: "text", sessionID: SES, part: { type: "text", text: "PONG" } },
+];
+
+describe("opencode v2 transcripts", () => {
+  it("renders tools and text the way v1 does", () => {
+    const state = reduceOpencode2(v2Run);
+    expect(state.blocks).toEqual([
+      {
+        kind: "tool_use",
+        id: "call_87934677f35040e397628392",
+        name: "shell",
+        input: { command: "echo hello > hello.txt" },
+        partialInputJson: "",
+        result: "(no output)",
+        resultIsError: false,
+        done: true,
+      },
+      { kind: "text", text: "PONG", done: true },
+    ]);
+  });
+
+  it("shows the step sum live, then the session total once the summary arrives", () => {
+    expect(reduceOpencode2(v2Run).costUsd).toBeCloseTo(0.000992424, 12);
+
+    const state = reduceOpencode2([
+      ...v2Run,
+      { type: "session_summary", sessionID: SES, cost: 0.001100564, outcome: "succeeded" },
+    ]);
+    expect(state.costUsd).toBeCloseTo(0.001100564, 12);
+    expect(state.costIsEstimate).toBe(false);
+  });
+
+  it("keeps a zero session cost", () => {
+    const state = reduceOpencode2([...v2Run, { type: "session_summary", cost: 0 }]);
+    expect(state.costUsd).toBe(0);
+  });
+
+  it("ends on v2's flat error with its message", () => {
+    const state = reduceOpencode2([
+      {
+        type: "error",
+        sessionID: "ses_e85a066dfffepSA4GpR8Uj20r3",
+        error: { type: "provider.no-route", message: "Model unavailable: opencode-go/deepseek-v4-flash" },
+      },
+    ]);
+    expect(state.finished).toBe(true);
+    expect(state.blocks).toEqual([
+      {
+        kind: "result",
+        ok: false,
+        summary: "Model unavailable: opencode-go/deepseek-v4-flash",
+        costUsd: null,
+      },
+    ]);
+  });
+
+  it("leaves v1 runs on the v1 reducer", () => {
+    // A v1 error still reads as name: message, not as a v2 one.
+    const state = reduceOpencode([
+      { type: "error", error: { name: "APIError", data: { message: "boom" } } },
+    ]);
+    expect(state.blocks[0]).toMatchObject({ kind: "result", summary: "APIError: boom" });
+  });
+});

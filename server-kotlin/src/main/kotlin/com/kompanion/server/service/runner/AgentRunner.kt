@@ -2,6 +2,7 @@ package com.kompanion.server.service.runner
 
 import com.kompanion.server.entity.Agent
 import com.kompanion.server.domain.model.AgentRuntime
+import com.kompanion.server.domain.model.Runtime
 import com.kompanion.server.service.WorkspaceManifest
 import java.io.File
 import java.math.BigDecimal
@@ -37,7 +38,15 @@ data class RunContext(
     // the pre-flight check in RunTaskService only catches "already over", and
     // without this one run can spend past the remainder.
     val remainingBudgetUsd: BigDecimal?,
-)
+    // The configured Runtime the Agent launches through, or null for an Agent
+    // with none: the CLI then comes from its *_BIN env var, then PATH.
+    val runtime: Runtime? = null,
+) {
+    // The command to start: the Runtime's binary, else the env var, else the
+    // bare command name.
+    fun binary(envVar: String, default: String): String =
+        runtime?.binaryPath ?: System.getenv(envVar) ?: default
+}
 
 // Kept apart rather than summed: cache reads bill at 0.1x input and cache
 // writes at 1.25x, and on Claude Code `input` alone counts only what wasn't
@@ -101,6 +110,12 @@ interface AgentRunner {
     // rate_limit_event — not for anything that decides the run's outcome;
     // that is interpret's job. Must not throw.
     fun observe(event: Map<String, Any?>) {}
+
+    // Extra events to add after the process exits and before interpret().
+    // They are stored and published like the CLI's own, so a live view and a
+    // replay see the same thing. Empty for most runtimes; opencode v2 needs it
+    // because its stream leaves out the last step's cost (see Opencode2Runner).
+    fun afterRun(ctx: RunContext, events: List<Map<String, Any?>>): List<Map<String, Any?>> = emptyList()
 
     // `events` is every JSON line the CLI wrote to stdout, in order. Empty
     // when it produced none, which is itself a failure signal worth

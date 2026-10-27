@@ -86,6 +86,7 @@ class TeamAgentsController(
                 // team-scoped Agent back to Claude Code.
                 runtime = AgentRuntime.valueOf(rs.getString("runtime")),
                 model = rs.getString("model"),
+                runtimeId = rs.getObject("runtime_id", UUID::class.java),
                 createdAt = rs.getObject("created_at", java.time.OffsetDateTime::class.java),
             )
         },

@@ -77,3 +77,17 @@ data class TaskCommentResponse(
     val createdAt: OffsetDateTime?,
     val updatedAt: OffsetDateTime?,
 )
+
+data class RepositoryDiffResponse(
+    val repositoryId: UUID,
+    val repositoryName: String,
+    val baseBranch: String,
+    val branch: String,
+    val worktreeExists: Boolean,
+    val mergeBase: String?,
+    val diff: String,
+    val truncated: Boolean,
+    val shortStat: String?,
+    val untrackedFiles: List<String>,
+    val error: String?,
+)

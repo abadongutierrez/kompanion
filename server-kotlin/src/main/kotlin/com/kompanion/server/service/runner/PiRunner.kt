@@ -86,7 +86,7 @@ class PiRunner(
     }
 
     override fun buildCommand(ctx: RunContext): List<String> {
-        val bin = System.getenv("PI_BIN") ?: "pi"
+        val bin = ctx.binary("PI_BIN", "pi")
         val args = mutableListOf(
             bin,
             "-p", "--mode", "json",

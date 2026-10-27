@@ -67,12 +67,13 @@ export type Team = z.infer<typeof Team>;
 // (CLAUDE.md + .claude/ for one, AGENTS.md + .opencode/ for another, plus
 // pi-agent/ for pi), so switching runtime doesn't necessarily mean a
 // different folder.
-export const AgentRuntime = z.enum(["claude_code", "opencode", "pi"]);
+export const AgentRuntime = z.enum(["claude_code", "opencode", "opencode2", "pi"]);
 export type AgentRuntime = z.infer<typeof AgentRuntime>;
 
 export const AGENT_RUNTIME_LABEL: Record<AgentRuntime, string> = {
   claude_code: "Claude Code",
   opencode: "opencode",
+  opencode2: "opencode v2",
   pi: "pi",
 };
 
@@ -86,6 +87,9 @@ export const Agent = z.object({
   // runtime — `claude-opus-5` vs opencode's `ollama/qwen2.5-coder:7b` — so
   // this is free text, not an enum that would go stale.
   model: z.string().nullable(),
+  // The configured Runtime the Agent launches through; null means the kind's
+  // default (env var, then PATH).
+  runtimeId: z.string().nullable(),
   createdAt: z.string(),
 });
 export type Agent = z.infer<typeof Agent>;
@@ -131,6 +135,26 @@ export const TaskWithRepositories = Task.extend({
 });
 export type TaskWithRepositories = z.infer<typeof TaskWithRepositories>;
 
+// One linked repository's local diff: the task's worktree (committed and
+// uncommitted changes) against the merge base with the branch it was cut
+// from. worktreeExists is false until the task has run on that repository.
+export const RepositoryDiff = z.object({
+  repositoryId: z.string(),
+  repositoryName: z.string(),
+  baseBranch: z.string(),
+  branch: z.string(),
+  worktreeExists: z.boolean(),
+  mergeBase: z.string().nullable(),
+  diff: z.string(),
+  // The server caps the diff text; true when it was cut short.
+  truncated: z.boolean(),
+  shortStat: z.string().nullable(),
+  // New files git does not track yet — they are not in the diff text.
+  untrackedFiles: z.array(z.string()),
+  error: z.string().nullable(),
+});
+export type RepositoryDiff = z.infer<typeof RepositoryDiff>;
+
 export const TaskDependencyType = z.enum([
   "blocked_by",
   "depends_on",
@@ -173,6 +197,7 @@ export const CreateAgentInput = Agent.pick({
 }).extend({
   runtime: AgentRuntime.optional(),
   model: z.string().nullable().optional(),
+  runtimeId: z.string().nullable().optional(),
 });
 export type CreateAgentInput = z.infer<typeof CreateAgentInput>;
 
@@ -193,8 +218,45 @@ export const UpdateAgentInput = Agent.pick({
   harnessPath: true,
   runtime: true,
   model: true,
-}).partial();
+})
+  .partial()
+  .extend({
+    // A blank string clears it back to the kind's default.
+    runtimeId: z.string().nullable().optional(),
+  });
 export type UpdateAgentInput = z.infer<typeof UpdateAgentInput>;
+
+// A configured runtime: an installed agent CLI and how to launch it. Two
+// Claude Code runtimes can coexist, each with its own configDir (sent to the
+// CLI as CLAUDE_CONFIG_DIR). null binaryPath means the kind's default.
+export const Runtime = z.object({
+  id: z.string(),
+  name: z.string(),
+  kind: AgentRuntime,
+  binaryPath: z.string().nullable(),
+  configDir: z.string().nullable(),
+  createdAt: z.string().nullable(),
+});
+export type Runtime = z.infer<typeof Runtime>;
+
+// POST /api/runtimes. configDir is only accepted for claude_code.
+export const CreateRuntimeInput = z.object({
+  name: z.string(),
+  kind: AgentRuntime,
+  binaryPath: z.string().nullable().optional(),
+  configDir: z.string().nullable().optional(),
+});
+export type CreateRuntimeInput = z.infer<typeof CreateRuntimeInput>;
+
+// PATCH /api/runtimes/:id. Absent leaves a field alone; blank clears
+// binaryPath / configDir. The kind cannot change.
+export const UpdateRuntimeInput = CreateRuntimeInput.omit({ kind: true }).partial();
+export type UpdateRuntimeInput = z.infer<typeof UpdateRuntimeInput>;
+
+// POST /api/runtimes/:id/test — `<bin> --version` with the runtime's own
+// binary and config dir.
+export const RuntimeTestResult = z.object({ ok: z.boolean(), message: z.string() });
+export type RuntimeTestResult = z.infer<typeof RuntimeTestResult>;
 
 // A skill: a folder on disk (SKILL.md plus files) that can be taught to
 // Agents. The row only points at it; broken is true when the folder is gone or
@@ -392,6 +454,32 @@ export const DailySpend = z.object({
 });
 export type DailySpend = z.infer<typeof DailySpend>;
 
+// One runtime's share of a day. `runtime` is task_runs.runtime — what the
+// run actually used — and a plain string rather than AgentRuntime, so a
+// runtime added later parses before the UI has a label for it.
+export const RuntimeSpend = z.object({
+  runtime: z.string(),
+  spendUsd: z.number(),
+  runCount: z.number().int(),
+});
+export type RuntimeSpend = z.infer<typeof RuntimeSpend>;
+
+// The project's days carry the runtime split; the legacy per-team daily
+// endpoint does not, so it keeps the plain DailySpend. The day's totals are
+// summed server-side from byRuntime, so the two always add up.
+export const ProjectDailySpend = DailySpend.extend({
+  byRuntime: z.array(RuntimeSpend),
+});
+export type ProjectDailySpend = z.infer<typeof ProjectDailySpend>;
+
+// A runtime's display name: the Agent form's label when there is one, the
+// raw value otherwise.
+export function runtimeLabel(runtime: string): string {
+  return Object.hasOwn(AGENT_RUNTIME_LABEL, runtime)
+    ? (AGENT_RUNTIME_LABEL as Record<string, string>)[runtime]
+    : runtime;
+}
+
 export const UpdateTeamBudgetInput = z.object({
   monthlyBudgetUsd: z.number().positive().nullable(),
 });
@@ -436,7 +524,7 @@ export const ProjectSpend = z.object({
   totalRunCount: z.number().int(),
   monthSpendUsd: z.number(),
   periodStart: z.string(),
-  byDay: z.array(DailySpend),
+  byDay: z.array(ProjectDailySpend),
 });
 export type ProjectSpend = z.infer<typeof ProjectSpend>;
 
