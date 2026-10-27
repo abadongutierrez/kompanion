@@ -558,7 +558,14 @@ class RunTaskService(
                     // Only meaningful when the team has a budget; the gate
                     // above already refused if the remainder were negative.
                     remainingBudgetUsd = spend.monthlyBudgetUsd?.minus(spend.spendUsd),
-                    runtime = agent.runtimeId?.let { runtimeStore.findById(it) },
+                    // An Agent with no runtime uses the CLI defaults. One that
+                    // names a runtime must get it: falling back would quietly
+                    // run the wrong binary, or the wrong Claude account, if the
+                    // runtime was deleted after the Agent was loaded.
+                    runtime = agent.runtimeId?.let {
+                        runtimeStore.findById(it)
+                            ?: throw IllegalStateException("the runtime selected for this Agent no longer exists")
+                    },
                 )
                 runner.prepareWorkspace(ctx, manifest)
 

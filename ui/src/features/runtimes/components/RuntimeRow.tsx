@@ -14,6 +14,16 @@ export function RuntimeRow({ runtime }: { runtime: Runtime }) {
   const test = useTestRuntime();
   const isClaude = runtime.kind === "claude_code";
 
+  // Every edit starts from what is saved. Without this, fields changed and
+  // then cancelled would come back on the next edit and be saved with it.
+  const startEditing = () => {
+    setName(runtime.name);
+    setBinaryPath(runtime.binaryPath ?? "");
+    setConfigDir(runtime.configDir ?? "");
+    update.reset();
+    setEditing(true);
+  };
+
   return (
     <Card tone="soft" as="li" className="space-y-2" data-testid={`runtime-${runtime.name}`}>
       <div className="flex items-start justify-between gap-3">
@@ -41,7 +51,11 @@ export function RuntimeRow({ runtime }: { runtime: Runtime }) {
           >
             Test
           </Button>
-          <Button variant="secondary" onClick={() => setEditing((v) => !v)} aria-expanded={editing}>
+          <Button
+            variant="secondary"
+            onClick={() => (editing ? setEditing(false) : startEditing())}
+            aria-expanded={editing}
+          >
             {editing ? "Cancel" : "Edit"}
           </Button>
           <Button
