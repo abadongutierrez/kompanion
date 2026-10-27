@@ -123,10 +123,10 @@ class InMemoryRunStore(
 // Answers stopAll() from a fixed set: tasks in `survivors` keep a process
 // that would not die.
 class FakeRunProcesses(private val survivors: Set<UUID> = emptySet()) : RunProcesses {
-    val stopped = mutableListOf<UUID>()
+    val stopped = mutableListOf<Pair<UUID, java.time.Instant>>()
 
-    override fun stopAll(taskId: UUID): Boolean {
-        stopped += taskId
+    override fun stopAll(taskId: UUID, since: java.time.Instant): Boolean {
+        stopped += taskId to since
         return taskId !in survivors
     }
 }

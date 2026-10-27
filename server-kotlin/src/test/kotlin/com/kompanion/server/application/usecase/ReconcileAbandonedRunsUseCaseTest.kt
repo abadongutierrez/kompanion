@@ -6,18 +6,23 @@ import com.kompanion.server.fake.FakeRunProcesses
 import com.kompanion.server.fake.InMemoryRunStore
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
+import java.time.Instant
 import java.util.UUID
 
 // No Spring context, no database.
 class ReconcileAbandonedRunsUseCaseTest {
 
-    private fun abandoned(taskId: UUID = UUID.randomUUID()) = AbandonedRun(UUID.randomUUID(), taskId)
+    private val now = Instant.parse("2026-10-27T12:00:00Z")
+
+    private fun abandoned(taskId: UUID = UUID.randomUUID(), startedAt: Instant = now) =
+        AbandonedRun(UUID.randomUUID(), taskId, startedAt)
 
     @Test
     fun `runs whose processes are gone are failed with a summary that says why`() {
         val taskId = UUID.randomUUID()
-        // Two stale rows on one task: its processes are checked once.
-        val first = abandoned(taskId)
+        // Two stale rows on one task: its processes are checked once, from
+        // the earlier start.
+        val first = abandoned(taskId, now.minusSeconds(60))
         val second = abandoned(taskId)
         val store = InMemoryRunStore(abandoned = listOf(first, second))
         val processes = FakeRunProcesses()
@@ -29,7 +34,7 @@ class ReconcileAbandonedRunsUseCaseTest {
             listOf(first.runId, second.runId).map { it to ReconcileAbandonedRunsUseCase.SUMMARY },
             store.failed,
         )
-        assertEquals(listOf(taskId), processes.stopped)
+        assertEquals(listOf(taskId to now.minusSeconds(60)), processes.stopped)
     }
 
     @Test

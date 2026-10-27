@@ -3,6 +3,8 @@ package com.kompanion.server.adapter.outbound.process
 import com.kompanion.server.application.port.outbound.RunProcesses
 import org.springframework.stereotype.Component
 import java.io.File
+import java.time.Duration
+import java.time.Instant
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 
@@ -21,39 +23,83 @@ class OsRunProcesses : RunProcesses {
 
     // A few rounds, not one: a process can fork between the scan and the
     // kill, and its child only shows up on the next scan.
-    override fun stopAll(taskId: UUID): Boolean {
+    override fun stopAll(taskId: UUID, since: Instant): Boolean {
         if (!proc.isDirectory) return false
         val marker = "TASK_ID=$taskId"
 
         repeat(ROUNDS) {
-            val found = carrying(marker)
-            if (found.isEmpty()) return true
-            found.forEach { it.destroyForcibly() }
-            found.forEach { runCatching { it.onExit().get(KILL_WAIT_SECONDS, TimeUnit.SECONDS) } }
+            val scan = scan(marker, since)
+            if (scan.blocked) return false
+            if (scan.found.isEmpty()) return true
+            scan.found.forEach { it.destroyForcibly() }
+            scan.found.forEach { runCatching { it.onExit().get(KILL_WAIT_SECONDS, TimeUnit.SECONDS) } }
         }
-        return carrying(marker).isEmpty()
+        return scan(marker, since).let { !it.blocked && it.found.isEmpty() }
     }
 
-    // Live processes whose environment holds this exact entry. Skips this
-    // JVM and its ancestors: the server may itself have been started from an
-    // agent's run, and must not kill itself or the shell that launched it.
-    private fun carrying(marker: String): List<ProcessHandle> {
-        val self = ProcessHandle.current()
-        val spared = generateSequence(self) { it.parent().orElse(null) }.map { it.pid() }.toSet()
-        val pids = proc.listFiles().orEmpty().mapNotNull { it.name.toLongOrNull() }
-        return pids
-            .filter { it !in spared && environment(it).contains(marker) }
-            .mapNotNull { ProcessHandle.of(it).orElse(null) }
-            .filter { it.isAlive }
+    // found: live processes whose environment holds this exact entry, safe to
+    // kill. blocked: one may belong to the run but must not or cannot be
+    // killed, so the task has to stay claimed:
+    // - this JVM or an ancestor carries the marker. The server may have been
+    //   started from inside an agent's run; it must not kill itself or the
+    //   shell that launched it, and that agent is still alive.
+    // - a process of our own user, started since the run began, hides its
+    //   environment (it can, by making itself non-dumpable), so we cannot
+    //   tell whether it is the run's. One started earlier cannot be — that
+    //   spares the ssh-agent and gpg-agent of the login session.
+    private class Scan(val found: List<ProcessHandle>, val blocked: Boolean)
+
+    private fun scan(marker: String, since: Instant): Scan {
+        val spared = generateSequence(ProcessHandle.current()) { it.parent().orElse(null) }.map { it.pid() }.toSet()
+        val ourUid = uid(ProcessHandle.current().pid())
+        val found = mutableListOf<ProcessHandle>()
+        var blocked = false
+        for (pid in proc.listFiles().orEmpty().mapNotNull { it.name.toLongOrNull() }) {
+            val env = environment(pid)
+            val carries = when {
+                env != null -> marker in env
+                // Unreadable: gone by now, or another user's — not ours,
+                // since children keep their parent's user. Otherwise unknown.
+                uid(pid) == ourUid && couldBeTheRuns(pid, since) -> {
+                    blocked = true
+                    false
+                }
+                else -> false
+            }
+            if (!carries) continue
+            if (pid in spared) {
+                blocked = true
+                continue
+            }
+            ProcessHandle.of(pid).orElse(null)?.takeIf { it.isAlive }?.let(found::add)
+        }
+        return Scan(found, blocked)
     }
 
-    // NUL-separated KEY=value entries. Unreadable means the process is gone
-    // or belongs to another user — not one of ours either way.
-    private fun environment(pid: Long): List<String> =
-        runCatching { File(proc, "$pid/environ").readText().split('\u0000') }.getOrDefault(emptyList())
+    // NUL-separated KEY=value entries, or null when the file cannot be read.
+    private fun environment(pid: Long): List<String>? =
+        runCatching { File(proc, "$pid/environ").readText().split('\u0000') }.getOrNull()
+
+    // The real uid, from the status file. Not the owner of /proc/<pid>: for a
+    // non-dumpable process that shows as root. Null once the process is gone.
+    private fun uid(pid: Long): String? =
+        runCatching {
+            File(proc, "$pid/status").readLines().first { it.startsWith("Uid:") }.split(Regex("\\s+"))[1]
+        }.getOrNull()
+
+    // Alive, and not known to have started before the run did.
+    private fun couldBeTheRuns(pid: Long, since: Instant): Boolean {
+        val handle = ProcessHandle.of(pid).orElse(null)?.takeIf { it.isAlive } ?: return false
+        val started = handle.info().startInstant().orElse(null) ?: return true
+        return !started.isBefore(since.minus(START_SLACK))
+    }
 
     companion object {
         private const val ROUNDS = 3
         private const val KILL_WAIT_SECONDS = 5L
+
+        // Start times are coarse, and the run row is written by a different
+        // clock read than the one that stamps the process.
+        private val START_SLACK = Duration.ofSeconds(5)
     }
 }

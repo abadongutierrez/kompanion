@@ -26,7 +26,9 @@ class ReconcileAbandonedRunsUseCase(
     @Transactional
     override fun handle(): ReconcileResult {
         val abandoned = runs.abandonedRuns()
-        val clearTasks = abandoned.map { it.taskId }.distinct().filter(processes::stopAll).toSet()
+        val clearTasks = abandoned.groupBy { it.taskId }
+            .filter { (taskId, taskRuns) -> processes.stopAll(taskId, taskRuns.minOf { it.startedAt }) }
+            .keys
         val stopped = abandoned.filter { it.taskId in clearTasks }
         runs.failAbandonedRuns(stopped.map { it.runId }, SUMMARY)
         return ReconcileResult(closed = stopped.size, stillRunning = abandoned.size - stopped.size)

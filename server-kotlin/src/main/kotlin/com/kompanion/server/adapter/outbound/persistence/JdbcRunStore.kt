@@ -58,11 +58,12 @@ class JdbcRunStore(private val jdbc: JdbcTemplate) : RunStore {
     )
 
     override fun abandonedRuns(): List<AbandonedRun> = jdbc.query(
-        "select id, task_id from task_runs where status = 'running'",
+        "select id, task_id, created_at from task_runs where status = 'running'",
         { rs, _ ->
             AbandonedRun(
                 runId = UUID.fromString(rs.getString("id")),
                 taskId = UUID.fromString(rs.getString("task_id")),
+                startedAt = rs.getObject("created_at", OffsetDateTime::class.java).toInstant(),
             )
         },
     )
