@@ -413,7 +413,9 @@ export type ProjectDailySpend = z.infer<typeof ProjectDailySpend>;
 // A runtime's display name: the Agent form's label when there is one, the
 // raw value otherwise.
 export function runtimeLabel(runtime: string): string {
-  return (AGENT_RUNTIME_LABEL as Record<string, string>)[runtime] ?? runtime;
+  return Object.hasOwn(AGENT_RUNTIME_LABEL, runtime)
+    ? (AGENT_RUNTIME_LABEL as Record<string, string>)[runtime]
+    : runtime;
 }
 
 export const UpdateTeamBudgetInput = z.object({

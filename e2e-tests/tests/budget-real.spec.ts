@@ -22,7 +22,15 @@ test.describe("Budget tab against the real backend", () => {
       }
     }
     test.skip(!found, "no project has runs this month");
-    const { id, spend } = found!;
+    const { id } = found!;
+
+    // Assert against the response the page itself rendered, not the
+    // discovery one: runs can start or finish in between.
+    const spendResponse = page.waitForResponse(
+      (r) => r.url().endsWith(`/api/projects/${id}/spend`) && r.ok(),
+    );
+    await page.goto(`/projects/${id}/budget`);
+    const spend: Spend = await (await spendResponse).json();
 
     const mtd = new Map<string, { spendUsd: number; runCount: number }>();
     for (const d of spend.byDay) {
@@ -38,7 +46,6 @@ test.describe("Budget tab against the real backend", () => {
     }
     expect([...mtd.values()].reduce((a, t) => a + t.spendUsd, 0)).toBeCloseTo(spend.monthSpendUsd, 8);
 
-    await page.goto(`/projects/${id}/budget`);
     const table = page.getByRole("table", { name: "Spend by day" });
     await expect(table.getByRole("columnheader", { name: "Day (UTC)" })).toBeVisible();
 
