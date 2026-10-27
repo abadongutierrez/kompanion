@@ -135,6 +135,26 @@ export const TaskWithRepositories = Task.extend({
 });
 export type TaskWithRepositories = z.infer<typeof TaskWithRepositories>;
 
+// One linked repository's local diff: the task's worktree (committed and
+// uncommitted changes) against the merge base with the branch it was cut
+// from. worktreeExists is false until the task has run on that repository.
+export const RepositoryDiff = z.object({
+  repositoryId: z.string(),
+  repositoryName: z.string(),
+  baseBranch: z.string(),
+  branch: z.string(),
+  worktreeExists: z.boolean(),
+  mergeBase: z.string().nullable(),
+  diff: z.string(),
+  // The server caps the diff text; true when it was cut short.
+  truncated: z.boolean(),
+  shortStat: z.string().nullable(),
+  // New files git does not track yet — they are not in the diff text.
+  untrackedFiles: z.array(z.string()),
+  error: z.string().nullable(),
+});
+export type RepositoryDiff = z.infer<typeof RepositoryDiff>;
+
 export const TaskDependencyType = z.enum([
   "blocked_by",
   "depends_on",
