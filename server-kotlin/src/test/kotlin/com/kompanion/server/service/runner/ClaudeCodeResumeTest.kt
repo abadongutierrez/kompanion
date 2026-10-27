@@ -101,6 +101,18 @@ class ClaudeCodeResumeTest {
         assertEquals(0, BigDecimal("0.00020900").compareTo(interpreted.costUsd))
     }
 
+    // A resume that fails before loading the session reports a $0 total.
+    // $0.40, then that failure, then $0.50 must store $0.50 in all, not $0.90.
+    @Test
+    fun `a failed resume that reported zero does not reset the baseline`(@TempDir tmp: File) {
+        val failed = result(0.0, subtype = "error_during_execution", text = null)
+        val interpreted = runner.interpret(
+            ctx(tmp, "follow-up", ResumeContext("s", listOf(failed, result(0.4)))),
+            listOf(result(0.5)), 0, "",
+        )
+        assertEquals(0, BigDecimal("0.1").compareTo(interpreted.costUsd))
+    }
+
     @Test
     fun `a resume with no earlier total takes the reported figure`(@TempDir tmp: File) {
         val interpreted = runner.interpret(

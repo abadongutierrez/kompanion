@@ -70,6 +70,9 @@ export function useResumeRun(teamId: string, taskId: string, runId: string) {
     onSettled: () => {
       refresh();
       queryClient.invalidateQueries({ queryKey: budgetKeys.teamSpend(teamId) });
+      // The run row doesn't know its project, so every project's spend is
+      // refreshed; only the one on screen actually refetches.
+      queryClient.invalidateQueries({ queryKey: budgetKeys.allProjectSpend() });
     },
   });
 }

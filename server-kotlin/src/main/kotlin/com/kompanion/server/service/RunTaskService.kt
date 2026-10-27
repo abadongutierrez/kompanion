@@ -471,7 +471,7 @@ class RunTaskService(
     )
 
     fun runTaskWithClaude(task: Task, agent: Agent, mentionContext: String? = null): TaskRunResponse =
-        startRun(task, agent, mentionContext, resume = null)
+        startRun(task, agent, mentionContext, resolveResume = null)
 
     // -- Resume ---------------------------------------------------------------
 
@@ -552,12 +552,17 @@ class RunTaskService(
     // SSE, timeout — as a new task_runs row linked back to the one it resumed.
     fun resumeRun(task: Task, agent: Agent?, runId: UUID, message: String): TaskRunResponse {
         if (message.isBlank()) throw ResumeRefusedException("a follow-up message is required")
-        val run = findRun(task.id!!, runId) ?: throw RunNotFoundException()
-        refusalFor(task, agent, run)?.let { throw ResumeRefusedException(it) }
-        return startRun(
-            task, agent!!, mentionContext = null,
-            resume = ResumeSource(run.id, run.sessionId!!, message.trim(), sessionRawOutputs(task.id, run.sessionId)),
-        )
+        // Checked once up front so a refusal costs nothing, and again by
+        // startRun once the task is claimed: a run started and finished in
+        // between would make this one no longer the newest, and its session
+        // history (the cost baseline) stale.
+        fun source(): ResumeSource {
+            val run = findRun(task.id!!, runId) ?: throw RunNotFoundException()
+            refusalFor(task, agent, run)?.let { throw ResumeRefusedException(it) }
+            return ResumeSource(run.id, run.sessionId!!, message.trim(), sessionRawOutputs(task.id, run.sessionId))
+        }
+        source()
+        return startRun(task, agent!!, mentionContext = null, resolveResume = ::source)
     }
 
     // Every earlier run of one CLI session, newest first. A session never
@@ -569,7 +574,14 @@ class RunTaskService(
         taskId, sessionId,
     )
 
-    private fun startRun(task: Task, agent: Agent, mentionContext: String?, resume: ResumeSource?): TaskRunResponse {
+    // `resolveResume` is called once the task is claimed, so what it reads
+    // can't change under the run; a refusal it throws releases the claim.
+    private fun startRun(
+        task: Task,
+        agent: Agent,
+        mentionContext: String?,
+        resolveResume: (() -> ResumeSource)?,
+    ): TaskRunResponse {
         val taskId = task.id!!
         val agentId = agent.id!!
         val harnessDir = claudeHarnessService.resolveHarnessDir(agent) ?: throw NoHarnessException()
@@ -602,8 +614,9 @@ class RunTaskService(
         // The run row is created now, at status "running", rather than only
         // at the end — task_run_events needs a run_id to attach to from the
         // very first streamed line.
-        val runId = try {
-            insertRunningRun(taskId, agent, runner.sessionStore(), resume)
+        val (runId, resume) = try {
+            val source = resolveResume?.invoke()
+            insertRunningRun(taskId, agent, runner.sessionStore(), source) to source
         } catch (e: Exception) {
             // Nothing below runs, so release the claim here — a task must
             // never be left frozen by a run that never started.

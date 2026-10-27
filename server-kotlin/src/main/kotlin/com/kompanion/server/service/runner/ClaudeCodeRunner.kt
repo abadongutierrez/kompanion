@@ -124,18 +124,20 @@ class ClaudeCodeRunner(
     // $0.0015 on a session that had cost $0.0020 reported $0.0035. Stored as
     // is, the earlier turns would count toward the budget twice. The previous
     // run's raw result holds the total as of its end, so the difference is
-    // what this run spent. The newest earlier run that reported a total is
-    // the baseline, not just the run being resumed: a run that failed, timed
-    // out or was killed reports none, and falling back to the full total
-    // then would count every turn before it again. Whatever such a run spent
+    // what this run spent. The highest total any earlier run of the session
+    // reported is the baseline, not just the run being resumed's: a run that
+    // failed, timed out or was killed reports none, and a resume that failed
+    // before loading the session reports $0 — taking either as the baseline
+    // would count every turn before it again. A session's total only grows,
+    // so the highest one is the latest real figure. Whatever such a run spent
     // unreported lands in this run's difference, so it too counts once. If
     // the CLI did not carry the total over (it reports less than the
     // previous total), the figure already is this run's.
     @Suppress("UNCHECKED_CAST")
     private fun costOfThisRun(reported: BigDecimal, previousRawOutputs: List<Any?>): BigDecimal {
-        val previous = previousRawOutputs.firstNotNullOfOrNull {
-            ((it as? Map<String, Any?>)?.get("total_cost_usd") as? Number)
-        }?.let { BigDecimal.valueOf(it.toDouble()) }
+        val previous = previousRawOutputs.mapNotNull {
+            ((it as? Map<String, Any?>)?.get("total_cost_usd") as? Number)?.let { n -> BigDecimal.valueOf(n.toDouble()) }
+        }.maxOrNull()
             ?: return reported
         return if (reported >= previous) reported - previous else reported
     }
