@@ -86,6 +86,16 @@ export function AgentFormPage({ mode }: { mode: "create" | "edit" | "view" }) {
   // picked, fall back to what the Agent already has (for the placeholders).
   const selectedRuntime = (runtimes.data ?? []).find((r) => r.id === runtimeId);
   const runtime: AgentRuntime = selectedRuntime?.kind ?? agent?.runtime ?? "claude_code";
+  // What the Runtime select says while nothing is picked. View never picks one
+  // for the Agent, so it says what the Agent runs on instead of prompting for a
+  // choice nobody can make there.
+  const runtimePlaceholder = runtimes.isError
+    ? "Could not load runtimes"
+    : isView && agent
+      ? `${AGENT_RUNTIME_LABEL[agent.runtime]} (no runtime selected)`
+      : runtimes.isSuccess
+        ? "Select a runtime"
+        : "Loading…";
   const [harnessTemplate, setHarnessTemplate] = useState("");
 
   // Seed the fields once the agent (and its template) arrive. Keyed on the
@@ -111,7 +121,10 @@ export function AgentFormPage({ mode }: { mode: "create" | "edit" | "view" }) {
     if (isEdit && !agent) return;
     const match = runtimes.data.find((r) => !agent || r.kind === agent.runtime);
     if (match) setRuntimeId(match.id);
-  }, [runtimes.data, agent?.id]);
+    // runtimeId is a dependency so this reruns after the seeding effect clears
+    // it: moving straight from one Agent's edit page to a legacy Agent's would
+    // otherwise have run this with the previous Agent's id still in state.
+  }, [runtimes.data, agent?.id, runtimeId]);
 
   useEffect(() => {
     if (template.data) setHarnessTemplate(template.data.content);
@@ -237,15 +250,7 @@ export function AgentFormPage({ mode }: { mode: "create" | "edit" | "view" }) {
             >
               {!selectedRuntime && (
                 <option value="" disabled>
-                  {
-                    // View never picks one for the Agent, so say what it runs
-                    // on instead of prompting for a choice nobody can make.
-                    isView && agent
-                      ? `${AGENT_RUNTIME_LABEL[agent.runtime]} (no runtime selected)`
-                      : runtimes.isSuccess
-                        ? "Select a runtime"
-                        : "Loading…"
-                  }
+                  {runtimePlaceholder}
                 </option>
               )}
               {(runtimes.data ?? []).map((r) => (
@@ -264,6 +269,14 @@ export function AgentFormPage({ mode }: { mode: "create" | "edit" | "view" }) {
               onChange={(e) => setModel(e.target.value)}
             />
           </div>
+          {runtimes.isError && (
+            <ErrorText>
+              Could not load the runtimes.{" "}
+              <button type="button" className="underline" onClick={() => runtimes.refetch()}>
+                Retry
+              </button>
+            </ErrorText>
+          )}
           {runtimes.isSuccess && runtimes.data.length === 0 && (
             <Muted size="xs">
               No runtimes yet. <Link to="/settings" className="underline">Add one in Settings</Link>{" "}
@@ -321,7 +334,10 @@ export function AgentFormPage({ mode }: { mode: "create" | "edit" | "view" }) {
           </div>
         ) : (
           <div className="flex gap-2">
-            <Button type="submit" disabled={saveAgent.isPending || assignSkills.isPending}>
+            <Button
+              type="submit"
+              disabled={saveAgent.isPending || assignSkills.isPending || !selectedRuntime}
+            >
               {isEdit ? "Save changes" : "Create agent"}
             </Button>
             <Link

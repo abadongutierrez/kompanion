@@ -104,6 +104,40 @@ test.describe("agent pages", () => {
     expect(agents.find((a) => a.id === created.id)?.runtimeId).toBe(second.id);
   });
 
+  test("moving from one agent's edit page to a legacy agent's preselects a runtime", async ({ page, request }) => {
+    const withRuntime: { id: string } = await request
+      .post("/api/agents", {
+        data: { title: `E2E UI Nav A ${Date.now()}`, harnessPath, runtimeId: runtime.id },
+      })
+      .then((r) => r.json());
+    const legacy: { id: string } = await request
+      .post("/api/agents", { data: { title: `E2E UI Nav B ${Date.now()}`, harnessPath } })
+      .then((r) => r.json());
+
+    await page.goto(`/agents/${withRuntime.id}`);
+    await expect(page.getByLabel("Runtime", { exact: true })).toHaveValue(runtime.id);
+
+    // Client-side navigation: the form is not remounted, so the previous
+    // agent's runtime is still in its state when the next agent loads.
+    await page.evaluate((id) => {
+      history.pushState({}, "", `/agents/${id}`);
+      dispatchEvent(new PopStateEvent("popstate"));
+    }, legacy.id);
+
+    await expect(page.getByLabel("Runtime", { exact: true })).not.toHaveValue("");
+    await expect(page.getByRole("button", { name: "Save changes" })).toBeEnabled();
+  });
+
+  test("a runtimes load failure is shown with a retry, and Save stays disabled", async ({ page }) => {
+    await page.route("**/api/runtimes", (route) => route.fulfill({ status: 500, body: "{}" }));
+
+    await page.goto("/agents/new");
+    await expect(page.getByText("Could not load the runtimes.")).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole("button", { name: "Retry" })).toBeVisible();
+    await expect(page.getByLabel("Runtime", { exact: true })).toContainText("Could not load runtimes");
+    await expect(page.getByRole("button", { name: "Create agent" })).toBeDisabled();
+  });
+
   test("viewing an agent from before runtimes shows its kind, not a prompt", async ({ page, request }) => {
     const created: { id: string } = await request
       .post("/api/agents", { data: { title: `E2E UI Legacy ${Date.now()}`, harnessPath } })

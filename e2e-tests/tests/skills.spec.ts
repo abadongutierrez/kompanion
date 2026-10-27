@@ -1,7 +1,7 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { ensureProjectAndTeam, ensureAgents, deleteTask } from "./fixtures.js";
+import { ensureProjectAndTeam, ensureAgents, ensureClaudeRuntime, deleteTask } from "./fixtures.js";
 
 // The skills library, end to end. A skill is a folder on disk, so these tests
 // make real folders under the repo's library/skills/ — which is where the
@@ -47,6 +47,8 @@ test.describe("skills library", () => {
   }
 
   test.beforeAll(async ({ request }) => {
+    // The Agent form will not save without a runtime to pick.
+    await ensureClaudeRuntime(request);
     const { teamId } = await ensureProjectAndTeam(request);
     await ensureAgents(request, teamId);
     const agents: AgentRow[] = await request.get("/api/agents").then((r) => r.json());
