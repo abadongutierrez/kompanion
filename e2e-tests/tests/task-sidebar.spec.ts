@@ -208,6 +208,13 @@ test.describe("task page sidebar", () => {
     await expect(qa).toContainText("—");
     await expect(qa).not.toContainText("$0.0000");
     await expect(qa).not.toContainText("0%");
+    // Engineer's known $0.50 is not 100% of a total that includes QA's
+    // unknown cost — its share is unknown too, and its bar stays empty.
+    const eng = sidebar.getByTestId("task-spent-agent").filter({ hasText: "Engineer" });
+    await expect(eng).toContainText("$0.5000");
+    await expect(eng).toContainText("—");
+    await expect(eng).not.toContainText("%");
+    await expect(eng.getByRole("progressbar")).toHaveAttribute("aria-valuetext", "unknown");
   });
 
   test("every run with unknown cost: total reads Unknown", async ({ page, request }) => {

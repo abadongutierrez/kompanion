@@ -19,7 +19,8 @@ function formatDuration(ms: number): string {
 // reporting one. Those runs are never treated as free: the total and the
 // affected Agent rows get a trailing "+" (the figure is a lower bound) and a
 // note says how many runs it leaves out; when nothing at all is known the
-// figure reads "Unknown" rather than $0.
+// figure reads "Unknown" rather than $0. Percentages need the whole total, so
+// any unknown cost turns every Agent's share into "—".
 //
 // Below the lg breakpoint each Agent row drops its cost and progress bar and
 // keeps only its time and percentage. Below md the sidebar stacks under the
@@ -109,10 +110,11 @@ function Spend({ runs }: { runs: TaskRun[] }) {
       {agents.length > 0 && (
         <ul className="mt-3 space-y-2" aria-label="Spend by agent">
           {agents.map(([name, a]) => {
-            // A share of an unknown is meaningless, so an Agent whose every
-            // run lacks a cost gets "—" instead of 0%.
+            // One unknown cost anywhere makes the denominator unknown, so
+            // no Agent's share can be stated: every row gets "—" and an
+            // empty bar rather than a share of the known part only.
             const pct =
-              a.known === 0
+              unknownCount > 0
                 ? null
                 : totalCostUsd > 0
                   ? Math.round((a.costUsd / totalCostUsd) * 100)
@@ -123,9 +125,7 @@ function Spend({ runs }: { runs: TaskRun[] }) {
                 <div className="flex gap-2 text-xs text-neutral-500">
                   <span className="hidden lg:inline">{money(a.costUsd, a.known, a.unknown)}</span>
                   <span>{formatDuration(a.durationMs)}</span>
-                  <span className="ml-auto">
-                    {pct === null ? "—" : `${pct}%${a.unknown > 0 ? "+" : ""}`}
-                  </span>
+                  <span className="ml-auto">{pct === null ? "—" : `${pct}%`}</span>
                 </div>
                 <div
                   className="mt-1 hidden h-1.5 rounded bg-neutral-100 lg:block"
