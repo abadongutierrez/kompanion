@@ -53,6 +53,14 @@ pnpm test:e2e:ui       # Playwright's interactive UI mode
   real folders under the repo's `library/skills/`, so it assumes the server runs
   with its default `LIBRARY_ROOT`. It un-teaches, unregisters and deletes
   everything it made, and puts the Agent it used back as it found it.
+- `tests/resume-run.spec.ts` — the Resume action on a task's newest run: the
+  follow-up is sent and the resumed run is listed; a run that can't be resumed
+  shows why and offers no Resume; the API refuses an empty follow-up and an
+  unknown run. Runs are stubbed, since real runs cost money.
+
+To test a worktree next to an instance already on :5173/:3200, run its server
+on another port and point the UI at it:
+`UI_PORT=5199 API_URL=http://localhost:3299 pnpm test:e2e`.
 
 ## Notes on test data
 

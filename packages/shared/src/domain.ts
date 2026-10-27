@@ -441,9 +441,22 @@ export const TaskRun = z.object({
   gitSha: z.string().nullable(),
   gitDirty: z.boolean().nullable(),
   skills: z.array(RunSkill),
+  // The CLI session the run worked in (null until the CLI names it, and for
+  // runtimes that don't), and the run whose session this one continued when
+  // it was a resume. Optional so a run from an older server still parses.
+  sessionId: z.string().nullable().optional(),
+  resumedFromRunId: z.string().nullable().optional(),
   createdAt: z.string(),
 });
 export type TaskRun = z.infer<typeof TaskRun>;
+
+// Whether a run's session can be continued with a follow-up. reason says why
+// not, in words meant for the operator; the API refuses a resume with it too.
+export const ResumeEligibility = z.object({
+  resumable: z.boolean(),
+  reason: z.string().nullable(),
+});
+export type ResumeEligibility = z.infer<typeof ResumeEligibility>;
 
 // One day's spend within the current month. `day` is an ISO date in UTC,
 // matching how the month window itself is computed server-side.

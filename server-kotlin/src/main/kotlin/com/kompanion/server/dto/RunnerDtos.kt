@@ -42,8 +42,19 @@ data class TaskRunResponse(
     val gitSha: String?,
     val gitDirty: Boolean?,
     val skills: List<RunSkillResponse>,
+    // The CLI session this run worked in (null until the CLI reports it, and
+    // for runtimes that don't), and the run whose session it continued, when
+    // it was a resume.
+    val sessionId: String?,
+    val resumedFromRunId: UUID?,
     val createdAt: OffsetDateTime?,
 )
+
+// Whether a run can be resumed, and if not, why — the UI shows the Resume
+// action only when `resumable`, and the API refuses with the same reason.
+data class ResumeEligibilityResponse(val resumable: Boolean, val reason: String?)
+
+data class ResumeRunRequest(val message: String? = null)
 
 // One skill as a run saw it. outcome is loaded, skipped_harness_has_it or
 // missing; hash is null when the folder was missing.

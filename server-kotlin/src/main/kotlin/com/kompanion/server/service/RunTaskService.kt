@@ -9,6 +9,8 @@ import com.kompanion.server.entity.Repository
 import com.kompanion.server.entity.Agent
 import com.kompanion.server.entity.Task
 import com.kompanion.server.domain.model.TaskStatus
+import com.kompanion.server.domain.rule.ResumeEligibility
+import com.kompanion.server.domain.rule.ResumeFacts
 import com.kompanion.server.domain.rule.isValidTaskTransition
 import org.springframework.jdbc.core.JdbcTemplate
 import com.kompanion.server.domain.model.AgentRuntime
@@ -16,6 +18,7 @@ import com.kompanion.server.application.port.inbound.PrepareAgentInstance
 import com.kompanion.server.application.port.inbound.PrepareAgentInstanceCommand
 import com.kompanion.server.application.port.outbound.RuntimeStore
 import com.kompanion.server.service.runner.AgentRunner
+import com.kompanion.server.service.runner.ResumeContext
 import com.kompanion.server.service.runner.RunContext
 import com.kompanion.server.service.runner.TokenUsage
 import org.springframework.beans.factory.annotation.Value
@@ -29,6 +32,18 @@ import java.util.UUID
 class NoHarnessException : RuntimeException("no harness for this agent")
 class OverBudgetException(val run: TaskRunResponse) : RuntimeException("team is over its monthly budget")
 class TaskAlreadyRunningException : RuntimeException("task is already running")
+class RunNotFoundException : RuntimeException("run not found")
+class ResumeRefusedException(reason: String) : RuntimeException(reason)
+
+// What a resumed run continues from: the run it resumes, that run's CLI
+// session, the operator's follow-up, and the raw output of every earlier run
+// of that session, newest first (see ResumeContext).
+private data class ResumeSource(
+    val fromRunId: UUID,
+    val sessionId: String,
+    val followUp: String,
+    val previousRawOutputs: List<Any?>,
+)
 
 private data class RunResult(
     val ok: Boolean,
@@ -262,6 +277,7 @@ class RunTaskService(
         // accumulates cost across every step_finish), and the list is bounded
         // by the run's own output.
         val events = mutableListOf<Map<String, Any?>>()
+        var sessionRecorded = false
 
         process.inputStream.bufferedReader().forEachLine { line ->
             val trimmed = line.trim()
@@ -281,6 +297,15 @@ class RunTaskService(
             runEventsBus.publishEvent(runId, currentSeq, trimmed)
             events += parsed
             runner.observe(parsed)
+            // Stored on the run as soon as the CLI names it, not dug out of
+            // the events later: resume reads it straight off the row, and a
+            // run killed by the timeout still has a session worth resuming.
+            if (!sessionRecorded) {
+                runner.sessionIdFrom(parsed)?.let {
+                    jdbc.update("update task_runs set session_id = ? where id = ?", it, runId)
+                    sessionRecorded = true
+                }
+            }
         }
 
         val exitCode = process.waitFor()
@@ -299,7 +324,7 @@ class RunTaskService(
         }
         val durationMs = (System.currentTimeMillis() - started).toInt()
 
-        val interpreted = runner.interpret(events, exitCode, stderrBuilder.toString().trim())
+        val interpreted = runner.interpret(ctx, events, exitCode, stderrBuilder.toString().trim())
         return RunResult(
             ok = interpreted.ok,
             summary = interpreted.summary,
@@ -369,6 +394,8 @@ class RunTaskService(
             gitSha = rs.getString("git_sha"),
             gitDirty = rs.getObject("git_dirty") as Boolean?,
             skills = runSkills(UUID.fromString(rs.getString("id"))),
+            sessionId = rs.getString("session_id"),
+            resumedFromRunId = rs.getString("resumed_from_run_id")?.let { UUID.fromString(it) },
             createdAt = rs.getObject("created_at", OffsetDateTime::class.java),
         )
     }
@@ -398,14 +425,18 @@ class RunTaskService(
     // back through agent_id later: the Agent can be switched to another CLI
     // afterwards and this run's events still have to replay under the shape
     // that produced them.
-    private fun insertRunningRun(taskId: UUID, agent: Agent): UUID =
+    //
+    // session_store likewise: where the CLI keeps its sessions as of now, so
+    // a later resume can tell whether it would still find this one. A resumed
+    // run starts with the session id it continues already filled in.
+    private fun insertRunningRun(taskId: UUID, agent: Agent, sessionStore: String?, resume: ResumeSource?): UUID =
         jdbc.query(
             """
-            insert into task_runs (task_id, agent_id, runtime, model, status)
-            values (?, ?, ?, ?, 'running') returning id
+            insert into task_runs (task_id, agent_id, runtime, model, status, session_store, session_id, resumed_from_run_id)
+            values (?, ?, ?, ?, 'running', ?, ?, ?) returning id
             """.trimIndent(),
             { rs, _ -> UUID.fromString(rs.getString("id")) },
-            taskId, agent.id, agent.runtime.name, agent.model,
+            taskId, agent.id, agent.runtime.name, agent.model, sessionStore, resume?.sessionId, resume?.fromRunId,
         ).first()
 
     private fun updateRunToTerminal(
@@ -454,7 +485,121 @@ class RunTaskService(
         taskId,
     )
 
-    fun runTaskWithClaude(task: Task, agent: Agent, mentionContext: String? = null): TaskRunResponse {
+    fun runTaskWithClaude(task: Task, agent: Agent, mentionContext: String? = null): TaskRunResponse =
+        startRun(task, agent, mentionContext, resolveResume = null)
+
+    // -- Resume ---------------------------------------------------------------
+
+    private data class ResumableRun(
+        val id: UUID,
+        val status: String,
+        val agentId: UUID,
+        val runtime: String,
+        val instanceHash: String?,
+        val sessionId: String?,
+        val sessionStore: String?,
+    )
+
+    private fun findRun(taskId: UUID, runId: UUID): ResumableRun? = jdbc.query(
+        """
+        select id, status, agent_id, runtime, instance_hash, session_id, session_store
+        from task_runs where id = ? and task_id = ?
+        """.trimIndent(),
+        { rs, _ ->
+            ResumableRun(
+                id = UUID.fromString(rs.getString("id")),
+                status = rs.getString("status"),
+                agentId = UUID.fromString(rs.getString("agent_id")),
+                runtime = rs.getString("runtime"),
+                instanceHash = rs.getString("instance_hash"),
+                sessionId = rs.getString("session_id"),
+                sessionStore = rs.getString("session_store"),
+            )
+        },
+        runId, taskId,
+    ).firstOrNull()
+
+    // The newest run that actually ran. A budget refusal leaves a row too, but
+    // it has no session and must not take the Resume action away from the
+    // run before it once the budget is raised.
+    private fun latestRunId(taskId: UUID): UUID? = jdbc.query(
+        "select id from task_runs where task_id = ? and status <> 'over_budget' order by created_at desc limit 1",
+        { rs, _ -> UUID.fromString(rs.getString("id")) },
+        taskId,
+    ).firstOrNull()
+
+    // null when `runId` can be resumed; otherwise why not. `agent` is the
+    // task's Agent now (null when unassigned or deleted).
+    fun resumeRefusal(task: Task, agent: Agent?, runId: UUID): String? =
+        refusalFor(task, agent, findRun(task.id!!, runId) ?: throw RunNotFoundException())
+
+    private fun refusalFor(task: Task, agent: Agent?, run: ResumableRun): String? {
+        val runner = runners.values.firstOrNull { it.runtime.name == run.runtime }
+        val supports = runner?.supportsResume == true
+        // Building the instance is the one costly fact, so only when it can
+        // still change the answer.
+        val currentHash =
+            if (supports && agent != null && agent.id == run.agentId && agent.runtime.name == run.runtime) {
+                prepareAgentInstance.currentHash(agent.id!!, agent.runtime, agent.harnessPath)
+            } else null
+        return ResumeEligibility.refusal(
+            ResumeFacts(
+                runId = run.id,
+                runStatus = run.status,
+                runAgentId = run.agentId,
+                runRuntime = run.runtime,
+                runInstanceHash = run.instanceHash,
+                runSessionId = run.sessionId,
+                runSessionStore = run.sessionStore,
+                latestRunId = latestRunId(task.id!!),
+                taskRunning = task.runningSince != null,
+                taskAgentId = agent?.id,
+                taskAgentRuntime = agent?.runtime?.name,
+                currentInstanceHash = currentHash,
+                runtimeSupportsResume = supports,
+                // The task's Agent may have moved to another runtime, and so
+                // another config dir, since the run: its session isn't there.
+                currentSessionStore =
+                    if (supports) runner?.sessionStore(agent?.runtimeId?.let { runtimeStore.findById(it) }) else null,
+            ),
+        )
+    }
+
+    // Continues `runId`'s CLI session with `message` as the next prompt. Goes
+    // through the same path as any run — budget gate, status changes, events,
+    // SSE, timeout — as a new task_runs row linked back to the one it resumed.
+    fun resumeRun(task: Task, agent: Agent?, runId: UUID, message: String): TaskRunResponse {
+        if (message.isBlank()) throw ResumeRefusedException("a follow-up message is required")
+        // Checked once up front so a refusal costs nothing, and again by
+        // startRun once the task is claimed: a run started and finished in
+        // between would make this one no longer the newest, and its session
+        // history (the cost baseline) stale.
+        fun source(): ResumeSource {
+            val run = findRun(task.id!!, runId) ?: throw RunNotFoundException()
+            refusalFor(task, agent, run)?.let { throw ResumeRefusedException(it) }
+            return ResumeSource(run.id, run.sessionId!!, message.trim(), sessionRawOutputs(task.id, run.sessionId))
+        }
+        source()
+        return startRun(task, agent!!, mentionContext = null, resolveResume = ::source)
+    }
+
+    // Every earlier run of one CLI session, newest first. A session never
+    // spans tasks, and only the newest run is ever resumed, so this is the
+    // session's whole history in order.
+    private fun sessionRawOutputs(taskId: UUID, sessionId: String): List<Any?> = jdbc.query(
+        "select raw_output from task_runs where task_id = ? and session_id = ? order by created_at desc",
+        { rs, _ -> rs.getString("raw_output")?.let { objectMapper.readValue<Any>(it) } },
+        taskId, sessionId,
+    )
+
+    // `resolveResume` is called once the task is claimed, so what it reads
+    // can't change under the run; a refusal it throws releases the claim.
+    private fun startRun(
+        task: Task,
+        agent: Agent,
+        mentionContext: String?,
+        resolveResume: (() -> ResumeSource)?,
+    ): TaskRunResponse {
         val taskId = task.id!!
         val agentId = agent.id!!
         val harnessDir = claudeHarnessService.resolveHarnessDir(agent) ?: throw NoHarnessException()
@@ -484,11 +629,17 @@ class RunTaskService(
         )
         if (claimed == 0) throw TaskAlreadyRunningException()
 
+        // Looked up once: the run row records the session store it implies,
+        // and the run itself launches through it. A runtime deleted since the
+        // Agent was loaded fails the run below, where the context is built.
+        val configuredRuntime = agent.runtimeId?.let { runtimeStore.findById(it) }
+
         // The run row is created now, at status "running", rather than only
         // at the end — task_run_events needs a run_id to attach to from the
         // very first streamed line.
-        val runId = try {
-            insertRunningRun(taskId, agent)
+        val (runId, resume) = try {
+            val source = resolveResume?.invoke()
+            insertRunningRun(taskId, agent, runner.sessionStore(configuredRuntime), source) to source
         } catch (e: Exception) {
             // Nothing below runs, so release the claim here — a task must
             // never be left frozen by a run that never started.
@@ -549,8 +700,14 @@ class RunTaskService(
                     )
                 }
 
-                val teamSnapshot = if (agent.slug == "project-manager") buildTeamSnapshot(task.teamId) else null
-                val prompt = buildPrompt(task, manifest, teamSnapshot, mentionContext)
+                // A resumed session already has the task prompt; it gets only
+                // the follow-up.
+                val prompt = if (resume != null) {
+                    resume.followUp
+                } else {
+                    val teamSnapshot = if (agent.slug == "project-manager") buildTeamSnapshot(task.teamId) else null
+                    buildPrompt(task, manifest, teamSnapshot, mentionContext)
+                }
 
                 // The harness plus the Agent's skills, laid out for this
                 // runtime and stored by hash. What the run was built from is
@@ -570,15 +727,30 @@ class RunTaskService(
                     // Only meaningful when the team has a budget; the gate
                     // above already refused if the remainder were negative.
                     remainingBudgetUsd = spend.monthlyBudgetUsd?.minus(spend.spendUsd),
+                    resume = resume?.let { ResumeContext(it.sessionId, it.previousRawOutputs) },
                     // An Agent with no runtime uses the CLI defaults. One that
                     // names a runtime must get it: falling back would quietly
                     // run the wrong binary, or the wrong Claude account, if the
                     // runtime was deleted after the Agent was loaded.
                     runtime = agent.runtimeId?.let {
-                        runtimeStore.findById(it)
+                        configuredRuntime
                             ?: throw IllegalStateException("the runtime selected for this Agent no longer exists")
                     },
                 )
+
+                // A session the CLI can't find would otherwise start a blank
+                // conversation, or fail with a CLI-specific message. Fail the
+                // run here, plainly, and leave the task's status alone: no
+                // work happened.
+                if (resume != null) {
+                    val problem = runner.sessionStore(ctx.runtime)?.let { runner.resumeProblem(resume.sessionId, it) }
+                    if (problem != null) {
+                        val run = updateRunToTerminal(runId, "failed", problem, null, null, 0, agent.title, TokenUsage.NONE)
+                        runEventsBus.publishEnd(runId)
+                        return run
+                    }
+                }
+
                 runner.prepareWorkspace(ctx, manifest)
 
                 // Starting a run means work is happening: move

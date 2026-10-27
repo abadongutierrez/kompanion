@@ -2,6 +2,7 @@ package com.kompanion.server.service.runner
 
 import com.kompanion.server.application.port.inbound.RecordClaudeRateLimit
 import com.kompanion.server.domain.model.AgentRuntime
+import com.kompanion.server.domain.model.Runtime
 import com.kompanion.server.service.WorkspaceEnforcementService
 import com.kompanion.server.service.WorkspaceManifest
 import org.springframework.stereotype.Component
@@ -57,8 +58,11 @@ class ClaudeCodeRunner(
 
     override fun buildCommand(ctx: RunContext): List<String> {
         val bin = ctx.binary("CLAUDE_BIN", "claude")
-        val args = mutableListOf(
-            bin, "-p", ctx.prompt,
+        val args = mutableListOf(bin, "-p", ctx.prompt)
+        // On resume ctx.prompt is the follow-up, and the session already holds
+        // everything that came before it.
+        ctx.resume?.let { args += listOf("--resume", it.sessionId) }
+        args += listOf(
             "--output-format", "stream-json",
             "--include-partial-messages",
             "--verbose",
@@ -94,6 +98,71 @@ class ClaudeCodeRunner(
     private fun readSystemPrompt(instanceDir: File): String? =
         File(instanceDir, "CLAUDE.md").takeIf { it.exists() }?.readText()
 
+    // -- Resume ----------------------------------------------------------
+
+    override val supportsResume = true
+
+    // The first stream-json line, system/init, names the session. On resume
+    // it names the same session again: Claude Code keeps the id.
+    override fun sessionIdFrom(event: Map<String, Any?>): String? =
+        if (event["type"] == "system" && event["subtype"] == "init") event["session_id"] as? String else null
+
+    // The Runtime's config dir when it names one (environment() hands it to
+    // the CLI); otherwise whatever the CLI inherits from the server's own
+    // environment.
+    override fun sessionStore(runtime: Runtime?): String =
+        runtime?.resolvedConfigDir()
+            ?: System.getenv("CLAUDE_CONFIG_DIR")?.takeIf { it.isNotBlank() }
+            ?: File(System.getProperty("user.home"), ".claude").path
+
+    // Sessions live at <store>/projects/<escaped cwd>/<id>.jsonl. How the cwd
+    // is escaped is Claude Code's business (long paths get shortened), so any
+    // project folder holding the file counts; ids are UUIDs, so a stray match
+    // is not a real risk. Without this check a missing file makes the CLI
+    // print "No conversation found" — but only once a process has started,
+    // and only for as long as the CLI keeps that behaviour.
+    override fun resumeProblem(sessionId: String, store: String): String? {
+        val projects = File(store, "projects")
+        val found = projects.listFiles()?.any { File(it, "$sessionId.jsonl").isFile } ?: false
+        return if (found) null
+        else "Claude Code session $sessionId was not found under ${projects.path} — " +
+            "the session file is gone, so this run can't be resumed. Start a fresh run instead."
+    }
+
+    override fun interpret(
+        ctx: RunContext,
+        events: List<Map<String, Any?>>,
+        exitCode: Int,
+        stderr: String,
+    ): Interpretation {
+        val base = interpret(events, exitCode, stderr)
+        val resume = ctx.resume ?: return base
+        return base.copy(costUsd = base.costUsd?.let { costOfThisRun(it, resume.previousRawOutputs) })
+    }
+
+    // Measured against Claude Code: on --resume, total_cost_usd is the
+    // session's running total, not this process's spend — a follow-up costing
+    // $0.0015 on a session that had cost $0.0020 reported $0.0035. Stored as
+    // is, the earlier turns would count toward the budget twice. The previous
+    // run's raw result holds the total as of its end, so the difference is
+    // what this run spent. The highest total any earlier run of the session
+    // reported is the baseline, not just the run being resumed's: a run that
+    // failed, timed out or was killed reports none, and a resume that failed
+    // before loading the session reports $0 — taking either as the baseline
+    // would count every turn before it again. A session's total only grows,
+    // so the highest one is the latest real figure. Whatever such a run spent
+    // unreported lands in this run's difference, so it too counts once. If
+    // the CLI did not carry the total over (it reports less than the
+    // previous total), the figure already is this run's.
+    @Suppress("UNCHECKED_CAST")
+    private fun costOfThisRun(reported: BigDecimal, previousRawOutputs: List<Any?>): BigDecimal {
+        val previous = previousRawOutputs.mapNotNull {
+            ((it as? Map<String, Any?>)?.get("total_cost_usd") as? Number)?.let { n -> BigDecimal.valueOf(n.toDouble()) }
+        }.maxOrNull()
+            ?: return reported
+        return if (reported >= previous) reported - previous else reported
+    }
+
     override fun interpret(
         events: List<Map<String, Any?>>,
         exitCode: Int,
@@ -105,7 +174,11 @@ class ClaudeCodeRunner(
         if (result != null) {
             return Interpretation(
                 ok = result["subtype"] == "success",
-                summary = result["result"] as? String,
+                // An error result carries no `result` text; its reason is in
+                // `errors` (e.g. "No conversation found with session ID: …").
+                summary = result["result"] as? String
+                    ?: (result["errors"] as? List<*>)?.joinToString("; ")?.ifEmpty { null }
+                    ?: stderr.ifEmpty { null },
                 rawOutput = result,
                 costUsd = (result["total_cost_usd"] as? Number)?.let { BigDecimal.valueOf(it.toDouble()) },
                 tokens = tokensFrom(result),

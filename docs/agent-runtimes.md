@@ -165,6 +165,28 @@ recording an `over_budget` run row. Only Claude Code can additionally enforce
 a ceiling mid-run (`--max-budget-usd`); opencode (v1 and v2) and pi have no
 such flag.
 
+### Resuming a run
+
+`POST /api/teams/{teamId}/tasks/{taskId}/runs/{runId}/resume` with
+`{ "message": "<follow-up>" }` continues a finished run's CLI session as a new
+run (`task_runs.resumed_from_run_id` points back). It goes through the normal
+run path: budget gate, status changes, events, SSE, timeout. `GET` on the same
+URL answers `{ resumable, reason }`; the Runs tab asks it for the newest run
+and shows the Resume action only when `resumable`.
+
+The rules are `domain/rule/ResumeEligibility.kt`: only the newest run that
+actually ran (budget refusals don't count), only a finished one, only on a
+runtime that supports resume, only while the task's Agent, its runtime and its
+agent instance hash are the run's, only with a recorded session id, and only
+when the CLI keeps its sessions where it did then (`task_runs.session_store`).
+After a handoff or a harness or skill change, start a fresh run instead.
+
+A runner opts in through `AgentRunner`: `supportsResume`, `sessionIdFrom`
+(stored on `task_runs.session_id` as soon as the CLI reports it),
+`sessionStore`, `resumeProblem` (checked before the CLI starts, so a missing
+session fails the run plainly instead of opening a blank one) and
+`RunContext.resume`. Only Claude Code does today; pi and opencode are refused.
+
 ---
 
 ## `claude_code`
@@ -174,6 +196,9 @@ claude -p <prompt> --output-format stream-json --include-partial-messages
        --verbose --dangerously-skip-permissions
        [--model <model>] [--append-system-prompt <harness CLAUDE.md>]
        [--max-budget-usd <team remainder>]
+
+# resume: the follow-up is the prompt
+claude -p <follow-up> --resume <session_id> ...the same flags
 ```
 
 - Binary from `CLAUDE_BIN`, default `claude`.
@@ -187,6 +212,15 @@ claude -p <prompt> --output-format stream-json --include-partial-messages
   work natively. Library skills are added to `.claude/skills/` in the instance.
 - Events: Anthropic's streaming Messages format. Cost comes from the final
   `result` line's `total_cost_usd`; tokens from its `usage`.
+- Resume: the session id comes from the first event, `system/init`, and stays
+  the same across resumes. Sessions live in `<CLAUDE_CONFIG_DIR or
+  ~/.claude>/projects/<escaped cwd>/<id>.jsonl`; the server runs the CLI with
+  its own user and environment, so a resume finds what the run wrote. On
+  `--resume`, `total_cost_usd` is the **session's running total**, not this
+  process's spend (measured: $0.00204, then $0.00349 after a follow-up), so a
+  resumed run stores the reported total minus the previous run's. A missing
+  session makes the CLI print `No conversation found with session ID` and exit
+  1; the server checks for the file first.
 
 ## `opencode`
 

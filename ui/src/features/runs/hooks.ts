@@ -41,6 +41,46 @@ export function useRunTask(teamId: string, taskId: string, projectId: string) {
   });
 }
 
+// Asked only for the newest finished run: the server builds the Agent's
+// current instance to answer, so it is not free.
+export function useResumeEligibility(
+  teamId: string,
+  taskId: string,
+  runId: string,
+  { enabled }: { enabled: boolean },
+) {
+  return useQuery({
+    queryKey: runKeys.resumeEligibility(runId),
+    queryFn: () => runsApi.resumeEligibility(teamId, taskId, runId),
+    enabled,
+  });
+}
+
+// The POST only returns when the resumed run ends, so the caches that show it
+// running are refreshed shortly after it starts rather than on success alone:
+// the task's runningSince is what turns on the run list's polling.
+export function useResumeRun(teamId: string, taskId: string, runId: string) {
+  const queryClient = useQueryClient();
+  const refresh = () => {
+    queryClient.invalidateQueries({ queryKey: runKeys.byTask(taskId) });
+    queryClient.invalidateQueries({ queryKey: taskKeys.byTeam(teamId) });
+    queryClient.invalidateQueries({ queryKey: runKeys.resumeEligibility(runId) });
+  };
+  return useMutation({
+    mutationFn: (message: string) => runsApi.resumeRun(teamId, taskId, runId, message),
+    onMutate: () => {
+      setTimeout(refresh, 1000);
+    },
+    onSettled: () => {
+      refresh();
+      queryClient.invalidateQueries({ queryKey: budgetKeys.teamSpend(teamId) });
+      // The run row doesn't know its project, so every project's spend is
+      // refreshed; only the one on screen actually refetches.
+      queryClient.invalidateQueries({ queryKey: budgetKeys.allProjectSpend() });
+    },
+  });
+}
+
 // SSE, not a query: the transcript subscribes to this URL with an
 // EventSource rather than fetching it.
 export function runEventsUrl(teamId: string, taskId: string, runId: string) {

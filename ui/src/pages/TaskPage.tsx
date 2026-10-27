@@ -39,6 +39,10 @@ export function TaskPage() {
         ? (runs.data?.[0]?.id ?? null)
         : null;
 
+  // The run a Resume would continue: the newest one that actually ran. A
+  // budget refusal leaves a row but no session, and does not count.
+  const latestRunId = runs.data?.find((r) => r.status !== "over_budget")?.id ?? null;
+
   const toggleRun = (runId: string) =>
     setChoice(runId === openRunId ? { kind: "closed" } : { kind: "open", runId });
 
@@ -123,6 +127,8 @@ export function TaskPage() {
                       taskId={task.id}
                       isOpen={r.id === openRunId}
                       onToggle={() => toggleRun(r.id)}
+                      isLatest={r.id === latestRunId}
+                      taskRunning={!!task.runningSince}
                     />
                   ))}
                 </div>

@@ -15,6 +15,10 @@ import com.kompanion.server.service.NoHarnessException
 import com.kompanion.server.service.OverBudgetException
 import com.kompanion.server.service.RunTaskService
 import com.kompanion.server.service.TaskAlreadyRunningException
+import com.kompanion.server.service.ResumeRefusedException
+import com.kompanion.server.service.RunNotFoundException
+import com.kompanion.server.dto.ResumeEligibilityResponse
+import com.kompanion.server.dto.ResumeRunRequest
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.jdbc.core.JdbcTemplate
@@ -266,4 +270,61 @@ class TaskController(
 
     @GetMapping("/{taskId}/runs")
     fun runs(@PathVariable teamId: UUID, @PathVariable taskId: UUID) = runTaskService.listRuns(taskId)
+
+    // Whether a run can be resumed, and why not. Asked by the UI for the
+    // newest run only — it builds the Agent's current instance to compare.
+    @GetMapping("/{taskId}/runs/{runId}/resume")
+    fun resumeEligibility(
+        @PathVariable teamId: UUID,
+        @PathVariable taskId: UUID,
+        @PathVariable runId: UUID,
+    ): ResponseEntity<Any> {
+        val task = tasks.findById(taskId).orElse(null)
+            ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ErrorResponse("task not found"))
+        val agent = task.agentId?.let { agents.findById(it).orElse(null) }
+        return try {
+            val reason = runTaskService.resumeRefusal(task, agent, runId)
+            ResponseEntity.ok(ResumeEligibilityResponse(resumable = reason == null, reason = reason))
+        } catch (e: RunNotFoundException) {
+            ResponseEntity.status(HttpStatus.NOT_FOUND).body(ErrorResponse("run not found"))
+        }
+    }
+
+    // Continues the run's CLI session with a follow-up, as a new run. Same
+    // outcomes as /run, plus a 409 with the reason when the run can't be
+    // resumed.
+    @PostMapping("/{taskId}/runs/{runId}/resume")
+    fun resume(
+        @PathVariable teamId: UUID,
+        @PathVariable taskId: UUID,
+        @PathVariable runId: UUID,
+        @RequestBody body: ResumeRunRequest,
+    ): ResponseEntity<Any> {
+        val task = tasks.findById(taskId).orElse(null)
+            ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ErrorResponse("task not found"))
+        val message = body.message?.trim().orEmpty()
+        if (message.isEmpty()) {
+            return ResponseEntity.badRequest().body(ErrorResponse("a follow-up message is required"))
+        }
+        val agent = task.agentId?.let { agents.findById(it).orElse(null) }
+
+        return try {
+            ResponseEntity.status(HttpStatus.CREATED).body(runTaskService.resumeRun(task, agent, runId, message))
+        } catch (e: RunNotFoundException) {
+            ResponseEntity.status(HttpStatus.NOT_FOUND).body(ErrorResponse("run not found"))
+        } catch (e: ResumeRefusedException) {
+            ResponseEntity.status(HttpStatus.CONFLICT).body(ErrorResponse(e.message ?: "run can't be resumed"))
+        } catch (e: NoHarnessException) {
+            ResponseEntity.badRequest()
+                .body(ErrorResponse("no harness directory found at agent's harnessPath \"${agent?.harnessPath}\""))
+        } catch (e: TaskAlreadyRunningException) {
+            ResponseEntity.status(HttpStatus.CONFLICT).body(ErrorResponse("task is already running"))
+        } catch (e: OverBudgetException) {
+            ResponseEntity.status(HttpStatus.CREATED).body(e.run)
+        } catch (e: Exception) {
+            System.err.println("task resume failed: ${e.message}")
+            ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(ErrorResponse(e.message ?: "resume failed"))
+        }
+    }
 }
