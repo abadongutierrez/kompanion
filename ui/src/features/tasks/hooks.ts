@@ -143,10 +143,28 @@ export function useRemoveTaskDependency(teamId: string, taskId: string) {
   );
 }
 
-export function useTaskComments(teamId: string, taskId: string) {
+// Each comment carries the runs it started, which decide whether its
+// "Run as" buttons are live. Those runs can start and end in another tab, so
+// the thread is polled while the task is running, and refetched once when the
+// run ends — the last poll may still show it as running.
+export function useTaskComments(
+  teamId: string,
+  taskId: string,
+  { isRunning = false }: { isRunning?: boolean } = {},
+) {
+  const queryClient = useQueryClient();
+  const wasRunning = useRef(isRunning);
+  useEffect(() => {
+    if (wasRunning.current && !isRunning) {
+      void queryClient.invalidateQueries({ queryKey: taskKeys.comments(taskId) });
+    }
+    wasRunning.current = isRunning;
+  }, [isRunning, queryClient, taskId]);
+
   return useQuery({
     queryKey: taskKeys.comments(taskId),
     queryFn: () => tasksApi.listTaskComments(teamId, taskId),
+    refetchInterval: isRunning ? 3000 : false,
   });
 }
 

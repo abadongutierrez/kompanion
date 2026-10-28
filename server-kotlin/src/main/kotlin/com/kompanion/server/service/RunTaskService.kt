@@ -385,17 +385,17 @@ class RunTaskService(
         runId,
     )
 
-    private fun insertOverBudgetRun(taskId: UUID, agent: Agent, summary: String): TaskRunResponse =
+    private fun insertOverBudgetRun(taskId: UUID, agent: Agent, summary: String, triggerCommentId: UUID?): TaskRunResponse =
         jdbc.query(
             """
-            insert into task_runs (task_id, agent_id, runtime, runtime_id, model, status, summary, cost_usd, duration_ms)
-            values (?, ?, ?, ?, ?, 'over_budget', ?, 0, 0)
+            insert into task_runs (task_id, agent_id, runtime, runtime_id, model, status, summary, cost_usd, duration_ms, trigger_comment_id)
+            values (?, ?, ?, ?, ?, 'over_budget', ?, 0, 0, ?)
             returning *
             """.trimIndent(),
             // `returning *` can't join, so the title comes from the Agent the
             // caller already has rather than a second round trip.
             { rs, _ -> mapTaskRun(rs, agent.title) },
-            taskId, agent.id, agent.runtime.name, agent.runtimeId, agent.model, summary,
+            taskId, agent.id, agent.runtime.name, agent.runtimeId, agent.model, summary, triggerCommentId,
         ).first()
 
     // runtime/model are stamped here, at the moment the run starts, not read
@@ -403,14 +403,14 @@ class RunTaskService(
     // afterwards and this run's events still have to replay under the shape
     // that produced them. runtime_id likewise pins which configured Runtime
     // the run was billed to, for the sidebar's per-runtime spend.
-    private fun insertRunningRun(taskId: UUID, agent: Agent): UUID =
+    private fun insertRunningRun(taskId: UUID, agent: Agent, triggerCommentId: UUID?): UUID =
         jdbc.query(
             """
-            insert into task_runs (task_id, agent_id, runtime, runtime_id, model, status)
-            values (?, ?, ?, ?, ?, 'running') returning id
+            insert into task_runs (task_id, agent_id, runtime, runtime_id, model, status, trigger_comment_id)
+            values (?, ?, ?, ?, ?, 'running', ?) returning id
             """.trimIndent(),
             { rs, _ -> UUID.fromString(rs.getString("id")) },
-            taskId, agent.id, agent.runtime.name, agent.runtimeId, agent.model,
+            taskId, agent.id, agent.runtime.name, agent.runtimeId, agent.model, triggerCommentId,
         ).first()
 
     private fun updateRunToTerminal(
@@ -459,7 +459,12 @@ class RunTaskService(
         taskId,
     )
 
-    fun runTaskWithClaude(task: Task, agent: Agent, mentionContext: String? = null): TaskRunResponse {
+    fun runTaskWithClaude(
+        task: Task,
+        agent: Agent,
+        mentionContext: String? = null,
+        triggerCommentId: UUID? = null,
+    ): TaskRunResponse {
         val taskId = task.id!!
         val agentId = agent.id!!
         val harnessDir = claudeHarnessService.resolveHarnessDir(agent) ?: throw NoHarnessException()
@@ -474,7 +479,7 @@ class RunTaskService(
         if (spend.monthlyBudgetUsd != null && spend.spendUsd >= spend.monthlyBudgetUsd) {
             val summary = "Team spend \$${spend.spendUsd.setScale(2, java.math.RoundingMode.HALF_UP)} has reached " +
                 "its \$${spend.monthlyBudgetUsd.setScale(2, java.math.RoundingMode.HALF_UP)} monthly budget — run refused before invoking Claude."
-            throw OverBudgetException(insertOverBudgetRun(taskId, agent, summary))
+            throw OverBudgetException(insertOverBudgetRun(taskId, agent, summary, triggerCommentId))
         }
 
         // running_since is the one signal any client can poll to know a run
@@ -506,7 +511,7 @@ class RunTaskService(
         // at the end — task_run_events needs a run_id to attach to from the
         // very first streamed line.
         val runId = try {
-            insertRunningRun(taskId, agent)
+            insertRunningRun(taskId, agent, triggerCommentId)
         } catch (e: Exception) {
             // Nothing below runs, so release the claim here — a task must
             // never be left frozen by a run that never started.

@@ -1,5 +1,6 @@
 package com.kompanion.server.controller
 
+import com.kompanion.server.dto.CommentRunResponse
 import com.kompanion.server.dto.CreateTaskCommentRequest
 import com.kompanion.server.dto.ErrorResponse
 import com.kompanion.server.dto.MentionedAgentResponse
@@ -65,6 +66,18 @@ class TaskCommentController(
         ).firstOrNull()
     }
 
+    private fun commentRuns(commentId: UUID): List<CommentRunResponse> = jdbc.query(
+        "select agent_id, id, status from task_runs where trigger_comment_id = ? order by created_at",
+        { rs, _ ->
+            CommentRunResponse(
+                agentId = UUID.fromString(rs.getString("agent_id")),
+                runId = UUID.fromString(rs.getString("id")),
+                status = rs.getString("status"),
+            )
+        },
+        commentId,
+    )
+
     private fun toResponse(teamId: UUID, comment: TaskComment) = TaskCommentResponse(
         id = comment.id!!,
         taskId = comment.taskId,
@@ -72,6 +85,7 @@ class TaskCommentController(
         authorTitle = authorTitle(comment.agentId),
         body = comment.body,
         mentionedAgents = resolveMentions(teamId, comment.body),
+        runs = commentRuns(comment.id!!),
         createdAt = comment.createdAt,
         updatedAt = comment.updatedAt,
     )
@@ -184,13 +198,26 @@ class TaskCommentController(
             ?.takeIf { isAssigned }
             ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ErrorResponse("agent not found on this team"))
 
+        // One successful run per comment and agent: refuse while one is running
+        // or once one succeeded. Failed or over-budget tries may be retried.
+        val alreadyRan = jdbc.query(
+            "select 1 from task_runs where trigger_comment_id = ? and agent_id = ? and status in ('running', 'succeeded') limit 1",
+            { _, _ -> 1 },
+            commentId,
+            agentId,
+        ).firstOrNull() != null
+        if (alreadyRan) {
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ErrorResponse("this comment already has a running or successful run for this agent"))
+        }
+
         val mentionAuthorTitle = authorTitle(comment.agentId) ?: "Operator"
         val mentionContext = "You were mentioned by $mentionAuthorTitle in a comment: \"${comment.body}\""
 
         ensureOriginalSummaryComment(taskId)
 
         val replyBody = try {
-            val run = runTaskService.runTaskWithClaude(task, agent, mentionContext)
+            val run = runTaskService.runTaskWithClaude(task, agent, mentionContext, commentId)
             run.summary ?: "(${run.status}, no summary returned)"
         } catch (e: NoHarnessException) {
             "Couldn't run — no harness directory found at agent's harnessPath \"${agent.harnessPath}\"."
