@@ -144,4 +144,27 @@ test.describe("comment run link", () => {
     await expect(page.getByRole("tab", { name: /^Runs/ })).toHaveAttribute("aria-selected", "true");
     await expect(logsToggle(page, "Ran Agent")).toHaveAttribute("aria-expanded", "true");
   });
+
+  test("clicking the same View run again shows the run again", async ({ page, request }) => {
+    await stubTask(page, request);
+    await page.goto(`/projects/${projectId}/tasks/${taskId}?team=${teamId}`);
+    await page.getByRole("tab", { name: /^Comments/ }).click();
+    await page.getByRole("link", { name: "View run", exact: true }).click();
+    await expect(logsToggle(page, "Ran Agent")).toHaveAttribute("aria-expanded", "true");
+
+    // Collapse the run and go back to Comments: `?run=` is unchanged, so the
+    // second click must still switch tabs and reopen the run.
+    await logsToggle(page, "Ran Agent").click();
+    await expect(logsToggle(page, "Ran Agent")).toHaveAttribute("aria-expanded", "false");
+    await page.getByRole("tab", { name: /^Comments/ }).click();
+
+    const runsFetched = page.waitForRequest(
+      (r) => r.method() === "GET" && r.url().endsWith(`/tasks/${taskId}/runs`),
+    );
+    await page.getByRole("link", { name: "View run", exact: true }).click();
+    await runsFetched;
+
+    await expect(page.getByRole("tab", { name: /^Runs/ })).toHaveAttribute("aria-selected", "true");
+    await expect(logsToggle(page, "Ran Agent")).toHaveAttribute("aria-expanded", "true");
+  });
 });

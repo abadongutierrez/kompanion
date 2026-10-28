@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useParams, useSearchParams } from "react-router-dom";
 import { ProjectChrome } from "@/app/layouts/ProjectChrome.js";
 import { useCurrentTeamId } from "@/features/teams/index.js";
 import {
@@ -23,6 +23,7 @@ import { RunRow, useTaskRuns } from "@/features/runs/index.js";
 export function TaskPage() {
   const { projectId, taskId } = useParams<{ projectId: string; taskId: string }>();
   const [searchParams] = useSearchParams();
+  const location = useLocation();
   const teamParam = searchParams.get("team");
 
   const teams = useCurrentTeamId(projectId);
@@ -49,11 +50,19 @@ export function TaskPage() {
     runParam ? { kind: "open", runId: runParam } : { kind: "auto" },
   );
 
-  // The link lives on this same page, so it changes  without a
-  // remount: follow the param after the first render too.
+  // The link lives on this same page, so following it changes `?run=`
+  // without a remount: follow the param after the first render too. Keyed on
+  // the navigation, not the param, so clicking the same link again still
+  // reopens a run the reader collapsed since. The run may have started and
+  // ended between polls of the run list, so refetch it too — once the team
+  // is known, hence teamId in the deps.
+  const focusRunKey = runParam ? location.key : null;
+  const refetchRuns = runs.refetch;
   useEffect(() => {
-    if (runParam) setChoice({ kind: "open", runId: runParam });
-  }, [runParam]);
+    if (!runParam) return;
+    setChoice({ kind: "open", runId: runParam });
+    if (teamId) void refetchRuns();
+  }, [focusRunKey, runParam, teamId, refetchRuns]);
 
   const openRunId =
     choice.kind === "open"
@@ -134,7 +143,7 @@ export function TaskPage() {
               taskId={task.id}
               runCount={runs.data?.length}
               isRunning={!!task.runningSince}
-              focusRunKey={runParam}
+              focusRunKey={focusRunKey}
             >
               {runs.data && runs.data.length > 0 ? (
                 // The list scrolls, not the transcript's container — with one row
@@ -185,7 +194,8 @@ function TaskTabs({
   taskId: string;
   runCount: number | undefined;
   isRunning: boolean;
-  //  value; a change means a link asked to show that run.
+  // Changes on each navigation that names a run in `?run=`; a change means
+  // a link asked to show that run.
   focusRunKey: string | null;
   children: React.ReactNode;
 }) {
@@ -193,7 +203,7 @@ function TaskTabs({
   useEffect(() => {
     if (focusRunKey) setTab("runs");
   }, [focusRunKey]);
-  const comments = useTaskComments(teamId, taskId);
+  const comments = useTaskComments(teamId, taskId, { isRunning });
   const agents = useTeamAgents(teamId);
   // Fetched even while another tab is open so the Diff label can show the
   // count; TaskDiff shares this query's cache.
@@ -275,7 +285,12 @@ function TaskTabs({
         className="flex min-h-0 flex-1 flex-col"
       >
         <div className="min-h-0 flex-1 overflow-y-auto">
-          <CommentsThread teamId={teamId} taskId={taskId} agents={agents.data ?? []} />
+          <CommentsThread
+            teamId={teamId}
+            taskId={taskId}
+            agents={agents.data ?? []}
+            isRunning={isRunning}
+          />
         </div>
       </div>
       <div

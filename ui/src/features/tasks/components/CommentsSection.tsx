@@ -20,7 +20,7 @@ export function CommentsSection({
   task: TaskWithRepositories;
   agents: Agent[];
 }) {
-  const comments = useTaskComments(teamId, task.id);
+  const comments = useTaskComments(teamId, task.id, { isRunning: !!task.runningSince });
   const count = comments.data?.length ?? 0;
 
   return (
@@ -28,7 +28,12 @@ export function CommentsSection({
       <summary className="cursor-pointer font-medium text-neutral-500">
         Comments {count > 0 && `(${count})`}
       </summary>
-      <CommentsThread teamId={teamId} taskId={task.id} agents={agents} />
+      <CommentsThread
+        teamId={teamId}
+        taskId={task.id}
+        agents={agents}
+        isRunning={!!task.runningSince}
+      />
     </details>
   );
 }
@@ -37,10 +42,13 @@ export function CommentsThread({
   teamId,
   taskId,
   agents,
+  isRunning,
 }: {
   teamId: string;
   taskId: string;
   agents: Agent[];
+  // Whether the task has a run going; the thread polls while it does.
+  isRunning: boolean;
 }) {
   const { projectId } = useParams<{ projectId: string }>();
   const [body, setBody] = useState("");
@@ -49,7 +57,7 @@ export function CommentsThread({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editBody, setEditBody] = useState("");
 
-  const comments = useTaskComments(teamId, taskId);
+  const comments = useTaskComments(teamId, taskId, { isRunning });
   const addComment = useAddTaskComment(teamId, taskId);
   const replyAsAgent = useReplyAsAgent(teamId, taskId);
   const editComment = useUpdateTaskComment(teamId, taskId);
