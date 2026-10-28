@@ -1,4 +1,14 @@
-import type { TaskRun } from "@kompanion/shared";
+import { TASK_STATUS_TRANSITIONS } from "@kompanion/shared";
+import type { TaskRun, TaskStatus, TaskWithRepositories } from "@kompanion/shared";
+import { useUpdateTaskStatus } from "../hooks.js";
+
+const STATUS_LABEL: Record<TaskStatus, string> = {
+  backlog: "Backlog",
+  in_progress: "In Progress",
+  in_review: "In Review",
+  blocked: "Blocked",
+  done: "Done",
+};
 
 // Compact run time for the sidebar: 42s, 3m 20s, 1h 5m.
 function formatDuration(ms: number): string {
@@ -27,9 +37,13 @@ function formatDuration(ms: number): string {
 // task column instead of squeezing it, capped in height (scrolling inside) so
 // a long Agent list can't crowd the runs out of the page's fixed height.
 export function TaskSidebar({
+  teamId,
+  task,
   runs,
   isError = false,
 }: {
+  teamId: string;
+  task: TaskWithRepositories;
   runs: TaskRun[] | undefined;
   isError?: boolean;
 }) {
@@ -38,6 +52,7 @@ export function TaskSidebar({
       aria-label="Task details"
       className="max-h-40 w-full shrink-0 space-y-4 overflow-y-auto rounded border border-neutral-200 p-3 md:max-h-none md:w-36 md:self-start md:overflow-visible lg:w-56"
     >
+      <StatusSection teamId={teamId} task={task} />
       <section>
         <h3 className="text-xs font-medium uppercase tracking-wide text-neutral-500">
           Spent so far
@@ -53,6 +68,38 @@ export function TaskSidebar({
         )}
       </section>
     </aside>
+  );
+}
+
+// Shows the current status and one button per allowed next status, taken from
+// the same transition table the server enforces.
+function StatusSection({ teamId, task }: { teamId: string; task: TaskWithRepositories }) {
+  const updateStatus = useUpdateTaskStatus(teamId);
+  const nextStatuses = TASK_STATUS_TRANSITIONS[task.status];
+  return (
+    <section>
+      <h3 className="text-xs font-medium uppercase tracking-wide text-neutral-500">Status</h3>
+      <p className="mt-1 text-sm font-medium" data-testid="task-status">
+        {STATUS_LABEL[task.status]}
+      </p>
+      {nextStatuses.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1" aria-label="Move task to">
+          {nextStatuses.map((status) => (
+            <button
+              key={status}
+              className="rounded border border-neutral-300 px-2 py-1 text-xs hover:bg-neutral-100 disabled:opacity-50"
+              disabled={updateStatus.isPending}
+              onClick={() => updateStatus.mutate({ taskId: task.id, status })}
+            >
+              → {STATUS_LABEL[status]}
+            </button>
+          ))}
+        </div>
+      )}
+      {updateStatus.isError && (
+        <p className="mt-1 text-xs text-red-600">{(updateStatus.error as Error).message}</p>
+      )}
+    </section>
   );
 }
 
