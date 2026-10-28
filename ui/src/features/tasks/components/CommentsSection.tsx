@@ -61,10 +61,20 @@ export function CommentsThread({
     <div className="space-y-2 text-xs">
 
       {(comments.data ?? []).map((comment) => (
-        <div key={comment.id} className="space-y-1 rounded bg-neutral-50 p-2">
+        <div
+          key={comment.id}
+          className={`space-y-1 rounded-md border border-l-4 border-neutral-200 bg-white p-2 shadow-sm ${
+            comment.agentId === null ? "border-l-neutral-400" : "border-l-indigo-400"
+          }`}
+        >
           <div className="flex items-center justify-between text-neutral-400">
-            <span className="font-medium text-neutral-600">
+            <span className="font-semibold text-neutral-700">
               {comment.authorTitle ?? "Operator"}
+              {comment.agentId !== null && (
+                <span className="ml-1 rounded bg-indigo-50 px-1 font-normal text-indigo-600">
+                  agent
+                </span>
+              )}
             </span>
             <span>
               {new Date(comment.createdAt).toLocaleTimeString()}
