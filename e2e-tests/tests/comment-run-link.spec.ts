@@ -145,6 +145,21 @@ test.describe("comment run link", () => {
     await expect(logsToggle(page, "Ran Agent")).toHaveAttribute("aria-expanded", "true");
   });
 
+  test("View run from the keyboard moves focus to the Runs tab", async ({ page, request }) => {
+    await stubTask(page, request);
+    await page.goto(`/projects/${projectId}/tasks/${taskId}?team=${teamId}`);
+    await page.getByRole("tab", { name: /^Comments/ }).click();
+
+    // The link sits in the Comments panel, which hides once Runs is selected.
+    // Focus must land on the Runs tab rather than drop to the page body.
+    await page.getByRole("link", { name: "View run", exact: true }).focus();
+    await page.keyboard.press("Enter");
+
+    const runsTab = page.getByRole("tab", { name: /^Runs/ });
+    await expect(runsTab).toHaveAttribute("aria-selected", "true");
+    await expect(runsTab).toBeFocused();
+  });
+
   test("clicking the same View run again shows the run again", async ({ page, request }) => {
     await stubTask(page, request);
     await page.goto(`/projects/${projectId}/tasks/${taskId}?team=${teamId}`);

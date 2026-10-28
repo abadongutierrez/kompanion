@@ -201,7 +201,14 @@ function TaskTabs({
 }) {
   const [tab, setTab] = useState<Tab>("runs");
   useEffect(() => {
-    if (focusRunKey) setTab("runs");
+    if (!focusRunKey) return;
+    // A View run link in the Comments panel is about to be hidden along with
+    // that panel, which would drop keyboard focus. Hand it to the Runs tab.
+    const fromComments = document
+      .getElementById("task-tabpanel-comments")
+      ?.contains(document.activeElement);
+    setTab("runs");
+    if (fromComments) document.getElementById("task-tab-runs")?.focus();
   }, [focusRunKey]);
   const comments = useTaskComments(teamId, taskId, { isRunning });
   const agents = useTeamAgents(teamId);
