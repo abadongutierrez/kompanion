@@ -97,7 +97,7 @@ function StatusSection({ teamId, task }: { teamId: string; task: TaskWithReposit
         </div>
       )}
       {updateStatus.isError && (
-        <p className="mt-1 text-xs text-red-600">{(updateStatus.error as Error).message}</p>
+        <p role="alert" className="mt-1 text-xs text-red-600">{(updateStatus.error as Error).message}</p>
       )}
     </section>
   );
