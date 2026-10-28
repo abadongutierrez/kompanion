@@ -2,10 +2,11 @@ import { NavLink } from "react-router-dom";
 import { SpentByRuntimeCard } from "@/features/budget/index.js";
 import { ClaudeUsageCard } from "@/features/system/index.js";
 
-export type Section = "board" | "agents" | "repositories" | "budget";
+export type Section = "board" | "runs" | "agents" | "repositories" | "budget";
 
 const NAV_ITEMS: { section: Section; label: string }[] = [
   { section: "board", label: "Board" },
+  { section: "runs", label: "Runs" },
   { section: "agents", label: "Agents" },
   { section: "repositories", label: "Repositories" },
   { section: "budget", label: "Budget" },

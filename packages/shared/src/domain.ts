@@ -598,6 +598,22 @@ export const ProjectSpend = z.object({
 });
 export type ProjectSpend = z.infer<typeof ProjectSpend>;
 
+// A run in flight right now, for the project's Runs tab. Basic facts only —
+// tokens and cost are only known once a run ends; the live transcript stays
+// on the task page. `runtime` is a plain string, like RuntimeSpend's.
+export const ActiveRun = z.object({
+  runId: z.string(),
+  taskId: z.string(),
+  taskTitle: z.string(),
+  teamId: z.string(),
+  teamName: z.string(),
+  agentTitle: z.string().nullable(),
+  runtime: z.string(),
+  model: z.string().nullable(),
+  startedAt: z.string(),
+});
+export type ActiveRun = z.infer<typeof ActiveRun>;
+
 // A comment's @mentions are resolved on read against the team's current
 // Agent slugs rather than stored — so an agent rename doesn't strand old
 // mentions pointing at a stale identifier.

@@ -223,6 +223,9 @@ class RunTaskService(
         // manifest.json from — deliberately separate from cwd (the real
         // repo being worked on) once repos are linked.
         processBuilder.environment()["TASK_WORKSPACE_DIR"] = ctx.taskWorkspaceDir.path
+        // TASK_ID also marks every process of the run: children inherit it,
+        // even once reparented. If this JVM dies mid-run, the next boot finds
+        // the leftovers by it (see OsRunProcesses).
         processBuilder.environment()["TASK_ID"] = ctx.taskId.toString()
         processBuilder.environment().putAll(runner.environment(ctx))
 
@@ -480,9 +483,22 @@ class RunTaskService(
         // update makes "start a run" atomic: whoever flips null -> now()
         // owns the run, and any concurrent caller (a second POST /run, a
         // mention reply) loses the race here instead of both proceeding.
+        //
+        // The project row is held FOR SHARE meanwhile, so a repository path
+        // change (RepositoryController.update) cannot slip between its
+        // "nothing is running" check and its save: this run then reads the
+        // repository paths only after that change is done.
         val claimed = jdbc.update(
-            "update tasks set running_since = now() where id = ? and running_since is null",
-            taskId,
+            """
+            with project as (
+              select p.id from projects p join teams t on t.project_id = p.id
+              where t.id = ?
+              for share of p
+            )
+            update tasks set running_since = now()
+            where id = ? and running_since is null and exists (select 1 from project)
+            """.trimIndent(),
+            task.teamId, taskId,
         )
         if (claimed == 0) throw TaskAlreadyRunningException()
 

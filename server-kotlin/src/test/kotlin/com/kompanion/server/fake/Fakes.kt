@@ -10,11 +10,15 @@ import com.kompanion.server.application.port.outbound.RuntimeProbe
 import com.kompanion.server.application.port.outbound.RuntimeStore
 import com.kompanion.server.application.port.outbound.Harnesses
 import com.kompanion.server.application.port.outbound.ProjectStore
+import com.kompanion.server.application.port.outbound.RunProcesses
+import com.kompanion.server.application.port.outbound.RunStore
 import com.kompanion.server.application.port.outbound.SkillFiles
 import com.kompanion.server.application.port.outbound.SkillInspection
 import com.kompanion.server.application.port.outbound.SkillStore
 import com.kompanion.server.application.port.outbound.SpendStore
 import com.kompanion.server.application.port.outbound.TaskStore
+import com.kompanion.server.domain.model.AbandonedRun
+import com.kompanion.server.domain.model.ActiveRun
 import com.kompanion.server.domain.model.Agent
 import com.kompanion.server.domain.model.AgentInstance
 import com.kompanion.server.domain.model.AgentRuntime
@@ -99,6 +103,39 @@ class InMemorySpendStore(
     override fun projectDailySpend(projectId: UUID): List<DaySpend> = byDay
 
     override fun projectMonthSpendByConfiguredRuntime(projectId: UUID): List<ConfiguredRuntimeSpend> = byConfiguredRuntime
+}
+
+class InMemoryRunStore(
+    private val runs: List<ActiveRun> = emptyList(),
+    private val abandoned: List<AbandonedRun> = emptyList(),
+) : RunStore {
+    val asked = mutableListOf<UUID>()
+    val failed = mutableListOf<Pair<UUID, String>>()
+
+    override fun activeRuns(projectId: UUID): List<ActiveRun> {
+        asked += projectId
+        return runs
+    }
+
+    override fun abandonedRuns(): List<AbandonedRun> = abandoned
+
+    override fun failAbandonedRuns(runIds: List<UUID>, summary: String) {
+        runIds.forEach { failed += it to summary }
+    }
+}
+
+// Answers stopAll() from a fixed set: tasks in `survivors` keep a process
+// that would not die.
+class FakeRunProcesses(private val survivors: Set<UUID> = emptySet()) : RunProcesses {
+    val stopped = mutableListOf<Pair<UUID, java.time.Instant>>()
+
+    val folders = mutableListOf<List<String>>()
+
+    override fun stopAll(taskId: UUID, since: java.time.Instant, folders: List<String>): Boolean {
+        stopped += taskId to since
+        this.folders += folders
+        return taskId !in survivors
+    }
 }
 
 class InMemoryProjectStore(vararg seed: UUID) : ProjectStore {

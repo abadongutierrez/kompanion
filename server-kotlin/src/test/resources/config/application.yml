@@ -1,0 +1,7 @@
+# Layered over src/main/resources/application.yml for tests only
+# (classpath:/config/ wins over classpath:/).
+runs:
+  # Tests boot a Spring context against the shared dev database. The startup
+  # reconciler would fail every live run in it — and kill its CLI — including
+  # any run the real server is doing right now.
+  reconcile-on-startup: false

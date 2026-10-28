@@ -7,13 +7,20 @@ import com.kompanion.server.entity.Repository
 import com.kompanion.server.repository.RepositoryRepository
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
+import org.springframework.transaction.PlatformTransactionManager
+import org.springframework.transaction.support.TransactionTemplate
 import org.springframework.web.bind.annotation.*
 import java.io.File
 import java.util.UUID
 
 @RestController
 @RequestMapping("/api/projects/{projectId}/repositories")
-class RepositoryController(private val repositories: RepositoryRepository) {
+class RepositoryController(
+    private val repositories: RepositoryRepository,
+    txManager: PlatformTransactionManager,
+) {
+
+    private val tx = TransactionTemplate(txManager)
 
     // No cloning happens here — the operator is expected to have already
     // cloned the repo to localPath. We only validate it's really there.
@@ -83,16 +90,34 @@ class RepositoryController(private val repositories: RepositoryRepository) {
                 return ResponseEntity.badRequest().body(ErrorResponse(it))
             }
         }
-        val existing = repositories.findById(repositoryId).orElse(null)
+        val found = repositories.findById(repositoryId).orElse(null)
             ?: return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(ErrorResponse("repository not found"))
 
-        val updated = existing.copy(
-            name = body.name ?: existing.name,
-            localPath = body.localPath ?: existing.localPath,
-            defaultBranch = body.defaultBranch ?: existing.defaultBranch,
-            gitUrl = body.gitUrl ?: existing.gitUrl,
-        )
-        return ResponseEntity.ok(repositories.save(updated))
+        return tx.execute {
+            // A run's worktree sits under the repository's path, and after a
+            // crash the next boot looks for the run's leftover processes
+            // there (DiskRunFolders). Moving the path mid-run would hide
+            // them. The project lock makes the check and the save one step
+            // against RunTaskService's claim, which takes the same lock: a
+            // claim either lands first and is seen here, or waits until the
+            // new path is saved and its run reads that one.
+            repositories.lockProject(found.projectId)
+            val existing = repositories.findById(repositoryId).orElse(found)
+            if (body.localPath != null && body.localPath != existing.localPath &&
+                repositories.projectHasRunningTask(existing.projectId)
+            ) {
+                return@execute ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body<Any>(ErrorResponse("a task in this project is running; change the local path once no run is in progress"))
+            }
+
+            val updated = existing.copy(
+                name = body.name ?: existing.name,
+                localPath = body.localPath ?: existing.localPath,
+                defaultBranch = body.defaultBranch ?: existing.defaultBranch,
+                gitUrl = body.gitUrl ?: existing.gitUrl,
+            )
+            ResponseEntity.ok<Any>(repositories.save(updated))
+        }!!
     }
 }
