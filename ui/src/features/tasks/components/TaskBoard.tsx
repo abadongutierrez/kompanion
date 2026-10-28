@@ -94,7 +94,6 @@ export function TaskBoard({
   }
 
   const agentsById = new Map(allAgents.map((a) => [a.id, a]));
-  const runningTasks = allTasks.filter((t) => t.runningSince);
 
   return (
     <div className="space-y-6">
@@ -112,13 +111,6 @@ export function TaskBoard({
         >
           + New Task
         </button>
-        {runningTasks.length > 0 && (
-          <span className="flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1 text-xs text-amber-700">
-            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-500" />
-            {runningTasks.length} task{runningTasks.length === 1 ? "" : "s"} running:{" "}
-            {runningTasks.map((t) => t.title).join(", ")}
-          </span>
-        )}
       </div>
 
       <div className="grid grid-cols-5 gap-4">
