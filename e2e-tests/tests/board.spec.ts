@@ -124,4 +124,33 @@ test.describe("task board", () => {
     await expect(card.getByText("Not run yet.")).toBeVisible();
     await expect(card.locator("details", { hasText: "Runs" })).toHaveCount(0);
   });
+
+  test("no 'tasks running' pill in the header while a task is running", async ({
+    page,
+    request,
+  }) => {
+    const title = `E2E running pill ${Date.now()}`;
+    const task: { id: string } = await request
+      .post(`/api/teams/${teamId}/tasks`, { data: { teamId, title, type: "story" } })
+      .then((r) => r.json());
+    createdTaskId = task.id;
+
+    // Mark the task as running without a real run — those need the Claude CLI.
+    await page.route(`**/api/teams/${teamId}/tasks`, async (route) => {
+      if (route.request().method() !== "GET") return route.fallback();
+      const response = await route.fetch();
+      const tasks: { id: string; runningSince?: string | null }[] = await response.json();
+      await route.fulfill({
+        response,
+        json: tasks.map((t) =>
+          t.id === task.id ? { ...t, runningSince: "2026-10-27T12:00:00.000Z" } : t,
+        ),
+      });
+    });
+
+    await page.goto(`/projects/${projectId}/board`);
+    await expect(page.locator("div.border-neutral-200", { hasText: title }).first()).toBeVisible();
+    // The header used to show "1 task running: <title>" next to + New Task.
+    await expect(page.getByText(/\d+ tasks? running/)).toHaveCount(0);
+  });
 });
