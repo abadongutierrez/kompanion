@@ -65,10 +65,37 @@ class OsRunProcesses : RunProcesses {
         val ourUid = uid(ProcessHandle.current().pid())
         val found = mutableListOf<ProcessHandle>()
         var blocked = false
-        // null when /proc cannot be listed: nothing was checked, which is
-        // not the same as nothing found.
-        val entries = proc.listFiles() ?: return Scan(emptyList(), blocked = true)
-        for (pid in entries.mapNotNull { it.name.toLongOrNull() }) {
+        // One listing is not enough: a run's process can fork and exit
+        // between the listing and the read of its environ. It is then gone
+        // and its child is not in the list. So list again and check the new
+        // pids, until a listing brings none — the child shows up in the next
+        // one. A listing that never settles counts as not checked.
+        val checked = mutableSetOf<Long>()
+        repeat(LISTINGS) {
+            // null when /proc cannot be listed: nothing was checked, which is
+            // not the same as nothing found.
+            val entries = proc.listFiles() ?: return Scan(emptyList(), blocked = true)
+            val fresh = entries.mapNotNull { it.name.toLongOrNull() }.filterNot(checked::contains)
+            if (fresh.isEmpty()) return Scan(found, blocked)
+            checked += fresh
+            if (inspect(fresh, marker, since, roots, spared, ourUid, found)) blocked = true
+        }
+        return Scan(found, blocked = true)
+    }
+
+    // Checks these pids, adding the run's killable processes to found.
+    // Returns whether one blocks the release.
+    private fun inspect(
+        pids: List<Long>,
+        marker: String,
+        since: Instant,
+        roots: List<Path>,
+        spared: Set<Long>,
+        ourUid: String?,
+        found: MutableList<ProcessHandle>,
+    ): Boolean {
+        var blocked = false
+        for (pid in pids) {
             val env = environment(pid)
             val carries = when {
                 env != null -> marker in env
@@ -90,7 +117,7 @@ class OsRunProcesses : RunProcesses {
             }
             ProcessHandle.of(pid).orElse(null)?.takeIf { it.isAlive }?.let(found::add)
         }
-        return Scan(found, blocked)
+        return blocked
     }
 
     // NUL-separated KEY=value entries, or null when the file cannot be read.
@@ -120,6 +147,10 @@ class OsRunProcesses : RunProcesses {
     companion object {
         private const val ROUNDS = 3
         private const val KILL_WAIT_SECONDS = 5L
+
+        // Each listing after the first only reads the pids born since the
+        // one before, a handful at most, so this settles in two or three.
+        private const val LISTINGS = 20
 
         // Start times are coarse, and the run row is written by a different
         // clock read than the one that stamps the process.
