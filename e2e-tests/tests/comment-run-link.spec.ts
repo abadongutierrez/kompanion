@@ -25,7 +25,17 @@ test.describe("comment run link", () => {
     taskId = undefined;
   });
 
-  async function stubTask(page: Page, request: import("@playwright/test").APIRequestContext) {
+  type CommentRun = { agentId: string; runId: string; status: string };
+  const defaultRuns: CommentRun[] = [
+    { agentId: ranAgent.id, runId: linkedRunId, status: "succeeded" },
+    { agentId: busyAgent.id, runId: newestRunId, status: "running" },
+  ];
+
+  async function stubTask(
+    page: Page,
+    request: import("@playwright/test").APIRequestContext,
+    commentRuns: CommentRun[] = defaultRuns,
+  ) {
     const task: { id: string } = await request
       .post(`/api/teams/${teamId}/tasks`, {
         data: { teamId, title: `E2E comment run ${Date.now()}`, type: "story" },
@@ -44,10 +54,7 @@ test.describe("comment run link", () => {
                 authorTitle: null,
                 body: "@ran-agent @fresh-agent @busy-agent please look",
                 mentionedAgents: [ranAgent, freshAgent, busyAgent],
-                runs: [
-                  { agentId: ranAgent.id, runId: linkedRunId, status: "succeeded" },
-                  { agentId: busyAgent.id, runId: newestRunId, status: "running" },
-                ],
+                runs: commentRuns,
                 createdAt: "2026-10-01T12:00:00.000Z",
                 updatedAt: null,
               },
@@ -101,6 +108,19 @@ test.describe("comment run link", () => {
       "href",
       new RegExp(`/projects/${projectId}/tasks/${taskId}\\?team=${teamId}&run=${linkedRunId}$`),
     );
+  });
+
+  test("failed or over-budget runs leave Run as enabled so it can be retried", async ({ page, request }) => {
+    await stubTask(page, request, [
+      { agentId: ranAgent.id, runId: linkedRunId, status: "failed" },
+      { agentId: busyAgent.id, runId: newestRunId, status: "over_budget" },
+    ]);
+    await page.goto(`/projects/${projectId}/tasks/${taskId}?team=${teamId}`);
+    await page.getByRole("tab", { name: /^Comments/ }).click();
+
+    await expect(page.getByRole("button", { name: "Run as Ran Agent" })).toBeEnabled();
+    await expect(page.getByRole("button", { name: "Run as Busy Agent" })).toBeEnabled();
+    await expect(page.getByRole("link", { name: /^View run/ })).toHaveCount(0);
   });
 
   test("a deep link with ?run= opens that run, not the newest", async ({ page, request }) => {
