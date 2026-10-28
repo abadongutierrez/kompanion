@@ -152,7 +152,7 @@ export function TaskPage() {
         </>
       )}
       </div>
-      {task && <TaskSidebar runs={runs.data} isError={runs.isError} />}
+      {task && teamId && <TaskSidebar teamId={teamId} task={task} runs={runs.data} isError={runs.isError} />}
     </div>,
   );
 }
