@@ -1,6 +1,7 @@
 import { NavLink } from "react-router-dom";
 import { SpentByRuntimeCard } from "@/features/budget/index.js";
 import { ClaudeUsageCard } from "@/features/system/index.js";
+import { useActiveRuns } from "@/features/runs/index.js";
 
 export type Section = "board" | "runs" | "agents" | "repositories" | "budget";
 
@@ -13,6 +14,10 @@ const NAV_ITEMS: { section: Section; label: string }[] = [
 ];
 
 export function Sidebar({ projectId }: { projectId: string }) {
+  // Same query the Runs tab polls, so the count costs no extra request.
+  const activeRuns = useActiveRuns(projectId);
+  const runningCount = activeRuns.data?.length ?? 0;
+
   return (
     <nav className="w-40 shrink-0 space-y-4 border-r border-neutral-200 bg-white p-3">
       <div className="space-y-1">
@@ -29,6 +34,14 @@ export function Sidebar({ projectId }: { projectId: string }) {
             }
           >
             {item.label}
+            {item.section === "runs" && runningCount > 0 && (
+              <span
+                className="ml-2 rounded-full bg-neutral-200 px-1.5 text-xs tabular-nums text-neutral-800"
+                aria-label={`${runningCount} active`}
+              >
+                {runningCount}
+              </span>
+            )}
           </NavLink>
         ))}
       </div>
