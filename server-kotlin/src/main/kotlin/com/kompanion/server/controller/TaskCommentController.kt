@@ -198,6 +198,19 @@ class TaskCommentController(
             ?.takeIf { isAssigned }
             ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ErrorResponse("agent not found on this team"))
 
+        // One successful run per comment and agent: refuse while one is running
+        // or once one succeeded. Failed or over-budget tries may be retried.
+        val alreadyRan = jdbc.query(
+            "select 1 from task_runs where trigger_comment_id = ? and agent_id = ? and status in ('running', 'succeeded') limit 1",
+            { _, _ -> 1 },
+            commentId,
+            agentId,
+        ).firstOrNull() != null
+        if (alreadyRan) {
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ErrorResponse("this comment already has a running or successful run for this agent"))
+        }
+
         val mentionAuthorTitle = authorTitle(comment.agentId) ?: "Operator"
         val mentionContext = "You were mentioned by $mentionAuthorTitle in a comment: \"${comment.body}\""
 

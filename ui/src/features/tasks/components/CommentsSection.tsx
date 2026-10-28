@@ -139,10 +139,13 @@ export function CommentsThread({
           {comment.mentionedAgents.length > 0 && (
             <div className="flex flex-wrap gap-1 pt-1">
               {comment.mentionedAgents.map((agent) => {
-                // A comment that already triggered a run for this agent
-                // (running or finished) can't trigger another: the button
-                // goes inert and a link to that run takes its place.
-                const run = comment.runs.find((r) => r.agentId === agent.id);
+                // A comment gets one successful run per agent: while one is
+                // running or once one succeeded, the button goes inert and a
+                // link to that run takes its place. Failed or refused tries
+                // don't count, so those can be retried.
+                const run = comment.runs.find(
+                  (r) => r.agentId === agent.id && (r.status === "running" || r.status === "succeeded"),
+                );
                 const replying = isReplying(comment.id, agent.id);
                 return (
                   <span key={agent.id} className="inline-flex items-center gap-1">

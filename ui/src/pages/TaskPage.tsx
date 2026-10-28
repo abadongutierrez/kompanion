@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { ProjectChrome } from "@/app/layouts/ProjectChrome.js";
 import { useCurrentTeamId } from "@/features/teams/index.js";
@@ -48,6 +48,12 @@ export function TaskPage() {
   const [choice, setChoice] = useState<OpenChoice>(
     runParam ? { kind: "open", runId: runParam } : { kind: "auto" },
   );
+
+  // The link lives on this same page, so it changes  without a
+  // remount: follow the param after the first render too.
+  useEffect(() => {
+    if (runParam) setChoice({ kind: "open", runId: runParam });
+  }, [runParam]);
 
   const openRunId =
     choice.kind === "open"
@@ -128,6 +134,7 @@ export function TaskPage() {
               taskId={task.id}
               runCount={runs.data?.length}
               isRunning={!!task.runningSince}
+              focusRunKey={runParam}
             >
               {runs.data && runs.data.length > 0 ? (
                 // The list scrolls, not the transcript's container — with one row
@@ -171,15 +178,21 @@ function TaskTabs({
   taskId,
   runCount,
   isRunning,
+  focusRunKey,
   children,
 }: {
   teamId: string;
   taskId: string;
   runCount: number | undefined;
   isRunning: boolean;
+  //  value; a change means a link asked to show that run.
+  focusRunKey: string | null;
   children: React.ReactNode;
 }) {
   const [tab, setTab] = useState<Tab>("runs");
+  useEffect(() => {
+    if (focusRunKey) setTab("runs");
+  }, [focusRunKey]);
   const comments = useTaskComments(teamId, taskId);
   const agents = useTeamAgents(teamId);
   // Fetched even while another tab is open so the Diff label can show the
