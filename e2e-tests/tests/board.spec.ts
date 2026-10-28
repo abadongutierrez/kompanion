@@ -106,6 +106,35 @@ test.describe("task board", () => {
     await expect(page.getByRole("button", { name: "+ New Task" })).toBeVisible();
   });
 
+  test("the card puts the title on its own row, above the type and actions", async ({
+    page,
+    request,
+  }) => {
+    // Long enough to wrap, so a shared row would squeeze the actions.
+    const title = `E2E card layout ${Date.now()} with a fairly long title that should wrap inside the card`;
+    const task: { id: string } = await request
+      .post(`/api/teams/${teamId}/tasks`, { data: { teamId, title, type: "bug" } })
+      .then((r) => r.json());
+    createdTaskId = task.id;
+
+    await page.goto(`/projects/${projectId}/board`);
+    const card = page.locator("div.border-neutral-200", { hasText: title }).first();
+    const titleBox = (await card.getByText(title, { exact: true }).boundingBox())!;
+    const typeBox = (await card.getByText("bug", { exact: true }).boundingBox())!;
+    const expandBox = (await card.getByRole("link", { name: "Expand" }).boundingBox())!;
+    const editBox = (await card.getByRole("button", { name: "Edit" }).boundingBox())!;
+
+    // Title row sits fully above the type/actions row.
+    expect(titleBox.y + titleBox.height).toBeLessThanOrEqual(typeBox.y);
+    expect(titleBox.y + titleBox.height).toBeLessThanOrEqual(expandBox.y);
+    // Type, Expand and Edit share one row: type on the left, actions on the right.
+    for (const box of [expandBox, editBox]) {
+      expect(Math.abs(box.y + box.height / 2 - (typeBox.y + typeBox.height / 2))).toBeLessThan(4);
+      expect(box.x).toBeGreaterThan(typeBox.x + typeBox.width);
+    }
+    expect(expandBox.x).toBeLessThan(editBox.x);
+  });
+
   test("the card shows only the run count, not per-run detail", async ({
     page,
     request,
