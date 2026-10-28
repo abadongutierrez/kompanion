@@ -481,9 +481,22 @@ class RunTaskService(
         // update makes "start a run" atomic: whoever flips null -> now()
         // owns the run, and any concurrent caller (a second POST /run, a
         // mention reply) loses the race here instead of both proceeding.
+        //
+        // The project row is held FOR SHARE meanwhile, so a repository path
+        // change (RepositoryController.update) cannot slip between its
+        // "nothing is running" check and its save: this run then reads the
+        // repository paths only after that change is done.
         val claimed = jdbc.update(
-            "update tasks set running_since = now() where id = ? and running_since is null",
-            taskId,
+            """
+            with project as (
+              select p.id from projects p join teams t on t.project_id = p.id
+              where t.id = ?
+              for share of p
+            )
+            update tasks set running_since = now()
+            where id = ? and running_since is null and exists (select 1 from project)
+            """.trimIndent(),
+            task.teamId, taskId,
         )
         if (claimed == 0) throw TaskAlreadyRunningException()
 

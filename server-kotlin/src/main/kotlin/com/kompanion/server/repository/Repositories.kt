@@ -36,4 +36,10 @@ interface RepositoryRepository : ListCrudRepository<Repository, UUID> {
         """,
     )
     fun projectHasRunningTask(projectId: UUID): Boolean
+
+    // Held while a repository's path is checked and changed. A run's claim
+    // takes the same row FOR SHARE (RunTaskService), so the two exclude each
+    // other while claims do not wait on one another. Needs a transaction.
+    @Query("select id from projects where id = :projectId for update")
+    fun lockProject(projectId: UUID): UUID?
 }
