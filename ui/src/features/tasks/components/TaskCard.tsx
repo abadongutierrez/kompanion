@@ -70,12 +70,12 @@ export function TaskCard({
 
   return (
     <Card tone="soft" className="space-y-2">
+      <div className="font-medium">{task.title}</div>
       <div className="flex items-center justify-between">
-        <span className="font-medium">{task.title}</span>
-        <div className="flex items-center gap-1">
-          <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-xs text-neutral-500">
-            {task.type}
-          </span>
+        <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-xs text-neutral-500">
+          {task.type}
+        </span>
+        <div className="flex items-center gap-2">
           <Link
             className="text-xs text-neutral-400 hover:text-neutral-700"
             to={`/projects/${projectId}/tasks/${task.id}`}
