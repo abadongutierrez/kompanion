@@ -67,6 +67,9 @@ data class UpdateTaskCommentRequest(val body: String)
 
 data class MentionedAgentResponse(val id: UUID, val title: String, val slug: String)
 
+// A run started from a comment's "Run as <agent>" button.
+data class CommentRunResponse(val agentId: UUID, val runId: UUID, val status: String)
+
 data class TaskCommentResponse(
     val id: UUID,
     val taskId: UUID,
@@ -74,6 +77,7 @@ data class TaskCommentResponse(
     val authorTitle: String?,
     val body: String,
     val mentionedAgents: List<MentionedAgentResponse>,
+    val runs: List<CommentRunResponse>,
     val createdAt: OffsetDateTime?,
     val updatedAt: OffsetDateTime?,
 )

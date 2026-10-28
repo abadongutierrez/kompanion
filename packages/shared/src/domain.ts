@@ -624,6 +624,14 @@ export const MentionedAgent = z.object({
 });
 export type MentionedAgent = z.infer<typeof MentionedAgent>;
 
+// A run started from a comment's "Run as <agent>" button.
+export const CommentRun = z.object({
+  agentId: z.string(),
+  runId: z.string(),
+  status: z.string(),
+});
+export type CommentRun = z.infer<typeof CommentRun>;
+
 export const TaskComment = z.object({
   id: z.string(),
   taskId: z.string(),
@@ -631,6 +639,7 @@ export const TaskComment = z.object({
   authorTitle: z.string().nullable(),
   body: z.string(),
   mentionedAgents: z.array(MentionedAgent),
+  runs: z.array(CommentRun),
   createdAt: z.string(),
   // Null until an Operator edits the comment.
   updatedAt: z.string().nullable(),

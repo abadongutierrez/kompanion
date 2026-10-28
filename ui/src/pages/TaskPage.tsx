@@ -43,7 +43,11 @@ export function TaskPage() {
     | { kind: "auto" }
     | { kind: "open"; runId: string }
     | { kind: "closed" };
-  const [choice, setChoice] = useState<OpenChoice>({ kind: "auto" });
+  // A comment's "View run" link names the run in `?run=`; open it first.
+  const runParam = searchParams.get("run");
+  const [choice, setChoice] = useState<OpenChoice>(
+    runParam ? { kind: "open", runId: runParam } : { kind: "auto" },
+  );
 
   const openRunId =
     choice.kind === "open"

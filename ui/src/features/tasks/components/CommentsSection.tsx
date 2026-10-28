@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link, useParams } from "react-router-dom";
 import type { Agent, TaskWithRepositories } from "@kompanion/shared";
 import {
   useAddTaskComment,
@@ -41,6 +42,7 @@ export function CommentsThread({
   taskId: string;
   agents: Agent[];
 }) {
+  const { projectId } = useParams<{ projectId: string }>();
   const [body, setBody] = useState("");
   const [asAgentId, setAsAgentId] = useState("");
   // Which Operator comment is open for editing, and its draft body.
@@ -136,20 +138,34 @@ export function CommentsThread({
           )}
           {comment.mentionedAgents.length > 0 && (
             <div className="flex flex-wrap gap-1 pt-1">
-              {comment.mentionedAgents.map((agent) => (
-                <button
-                  key={agent.id}
-                  className="rounded border border-neutral-300 bg-white px-1.5 py-0.5 text-neutral-600 hover:bg-neutral-100 disabled:opacity-50"
-                  disabled={isReplying(comment.id, agent.id)}
-                  onClick={() =>
-                    replyAsAgent.mutate({ commentId: comment.id, agentId: agent.id })
-                  }
-                >
-                  {isReplying(comment.id, agent.id)
-                    ? `Running ${agent.title}…`
-                    : `Run as ${agent.title}`}
-                </button>
-              ))}
+              {comment.mentionedAgents.map((agent) => {
+                // A comment that already triggered a run for this agent
+                // (running or finished) can't trigger another: the button
+                // goes inert and a link to that run takes its place.
+                const run = comment.runs.find((r) => r.agentId === agent.id);
+                const replying = isReplying(comment.id, agent.id);
+                return (
+                  <span key={agent.id} className="inline-flex items-center gap-1">
+                    <button
+                      className="rounded border border-neutral-300 bg-white px-1.5 py-0.5 text-neutral-600 hover:bg-neutral-100 disabled:opacity-50"
+                      disabled={replying || !!run}
+                      onClick={() =>
+                        replyAsAgent.mutate({ commentId: comment.id, agentId: agent.id })
+                      }
+                    >
+                      {replying ? `Running ${agent.title}…` : `Run as ${agent.title}`}
+                    </button>
+                    {run && projectId && (
+                      <Link
+                        className="text-indigo-600 underline hover:text-indigo-800"
+                        to={`/projects/${projectId}/tasks/${taskId}?team=${teamId}&run=${run.runId}`}
+                      >
+                        {run.status === "running" ? "View run (running)" : "View run"}
+                      </Link>
+                    )}
+                  </span>
+                );
+              })}
             </div>
           )}
         </div>
